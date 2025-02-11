@@ -23,7 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -472,7 +472,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	beneficiary := st.evm.Context.Coinbase
 	effectiveTip := msg.GasPrice
 
-	if consensus.IsIstanbul() {
+	if st.evm.Context.Difficulty.Cmp(istanbul.DefaultDifficulty) == 0 {
 		if collector := st.evm.ChainConfig().GetFoundationAddress(st.evm.Context.BlockNumber); collector != nil {
 			beneficiary = *collector
 		}
