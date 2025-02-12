@@ -37,6 +37,7 @@ const (
 	GrayGlacier
 	Paris
 	Shanghai
+	Cross // ##CROSS: fork
 	Cancun
 	Prague
 )
