@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -1642,10 +1643,11 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 // TransactionAPI exposes methods for reading and creating transaction data.
 type TransactionAPI struct {
-	b         Backend
-	nonceLock *AddrLocker
-	signer    types.Signer
-	gasAbs    *node.GasAbstraction // ##CROSS: fee delegation
+	b               Backend
+	nonceLock       *AddrLocker
+	signer          types.Signer
+	gasAbs          *node.GasAbstraction // ##CROSS: fee delegation
+	approvedAddress *sync.Map
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
@@ -1654,7 +1656,13 @@ func NewTransactionAPI(b Backend, nonceLock *AddrLocker, gasAbs *node.GasAbstrac
 	// signers to be backwards-compatible with old transactions.
 	signer := types.LatestSigner(b.ChainConfig())
 
-	return &TransactionAPI{b, nonceLock, signer, gasAbs}
+	s := &TransactionAPI{b, nonceLock, signer, gasAbs, &sync.Map{}}
+
+	// ##CROSS: fee delegation
+	for _, addr := range gasAbs.ApprovedAddresses {
+		s.approvedAddress.Store(addr, struct{}{})
+	}
+	return s
 }
 
 // GetBlockTransactionCountByNumber returns the number of transactions in the block with the given block number.
@@ -1953,8 +1961,8 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 
 	// ##CROSS: gas abstraction
 	if s.gasAbs != nil && tx.To() != nil && tx.Type() == types.DynamicFeeTxType {
-		if v, ok := s.gasAbs.OfficialAddress[*tx.To()]; ok {
-			log.Warn("GasAbstraction", "name", v.Name, "tx", tx.Hash().Hex(), "url", s.gasAbs.PayerURL)
+		if _, ok := s.approvedAddress.Load(*tx.To()); ok {
+			log.Warn("GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex(), "url", s.gasAbs.GasAbsURL)
 		}
 	}
 

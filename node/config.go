@@ -217,11 +217,8 @@ type Config struct {
 
 // ##CROSS: gas abstraction
 type GasAbstraction struct {
-	OfficialAddress map[common.Address]struct {
-		Name string
-	} `toml:",omitempty"`
-
-	PayerURL string `toml:",omitempty"`
+	ApprovedAddresses []common.Address `toml:",omitempty"`
+	GasAbsURL         string           `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

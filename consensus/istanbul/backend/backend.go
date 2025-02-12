@@ -90,8 +90,6 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Databas
 	recentMessages := lru.NewCache[common.Address, *lru.Cache[common.Hash, bool]](inmemoryPeers)
 	knownMessages := lru.NewCache[common.Hash, bool](inmemoryMessages)
 
-	consensus.SetIstanbul()
-
 	sb := &Backend{
 		config:           config,
 		istanbulEventMux: new(event.TypeMux),
