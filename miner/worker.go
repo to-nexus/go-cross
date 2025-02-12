@@ -1000,7 +1000,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		ParentHash: parent.Hash(),
 		Number:     number,
 		GasLimit: func() uint64 { // ##CROSS: basefee
-			if consensus.IsIstanbul() {
+			if types.IsIstanbulDigest(parent.MixDigest) {
 				if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
 					return *gasLimit
 				}

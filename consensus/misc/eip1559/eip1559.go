@@ -23,7 +23,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -63,7 +62,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 
 	// ##CROSS: basefee
 	var elasticityMultiplier uint64
-	if consensus.IsIstanbul() {
+	if types.IsIstanbulDigest(parent.MixDigest) {
 		elasticityMultiplier = config.GetElasticityMultiplier(parent.Number)
 	} else {
 		elasticityMultiplier = config.ElasticityMultiplier()
@@ -81,7 +80,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 	)
 
 	baseFeeChangeDenominator := func() uint64 {
-		if consensus.IsIstanbul() {
+		if types.IsIstanbulDigest(parent.MixDigest) {
 			if denominator := config.GetBaseFeeChangeDenominator(parent.Number); denominator > 0 {
 				return denominator
 			}
@@ -99,7 +98,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		baseFeeDelta := math.BigMax(num, common.Big1)
 
 		num.Add(parent.BaseFee, baseFeeDelta)
-		if consensus.IsIstanbul() {
+		if types.IsIstanbulDigest(parent.MixDigest) {
 			if max := config.GetMaxBaseFee(parent.Number); max != nil && num.Cmp(max) > 0 {
 				num.Set(max)
 			}
@@ -114,7 +113,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		baseFee := num.Sub(parent.BaseFee, num)
 
 		num = math.BigMax(baseFee, common.Big0)
-		if consensus.IsIstanbul() {
+		if types.IsIstanbulDigest(parent.MixDigest) {
 			if min := config.GetMinBaseFee(parent.Number); min != nil && num.Cmp(min) < 0 {
 				num.Set(min)
 			}
