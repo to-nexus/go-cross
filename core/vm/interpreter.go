@@ -58,8 +58,8 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	switch {
 	case evm.chainRules.IsCancun:
 		table = &cancunInstructionSet
-	case evm.chainRules.IsCross: // ##CROSS: fork
-		table = &crossInstructionSet
+	case evm.chainRules.IsCrossway: // ##CROSS: fork
+		table = &crosswayInstructionSet
 	case evm.chainRules.IsShanghai:
 		table = &shanghaiInstructionSet
 	case evm.chainRules.IsMerge:

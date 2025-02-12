@@ -66,7 +66,7 @@ var (
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
 		ShanghaiTime:                  newUint64(0),
-		CrossTime:                     newUint64(0), // ##CROSS: fork
+		CrosswayTime:                  newUint64(0), // ##CROSS: fork
 		CancunTime:                    nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -110,7 +110,7 @@ var (
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
 		ShanghaiTime:                  newUint64(0),
-		CrossTime:                     newUint64(0), // ##CROSS: fork
+		CrosswayTime:                  newUint64(0), // ##CROSS: fork
 		CancunTime:                    nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -152,7 +152,7 @@ var (
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
 		ShanghaiTime:                  newUint64(0),
-		CrossTime:                     newUint64(0), // ##CROSS: fork
+		CrosswayTime:                  newUint64(0), // ##CROSS: fork
 		CancunTime:                    nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -492,7 +492,7 @@ type ChainConfig struct {
 	// Fork scheduling was switched from blocks to timestamps here
 
 	ShanghaiTime *uint64 `json:"shanghaiTime,omitempty"` // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	CrossTime    *uint64 `json:"crossTime,omitempty"`    // Cross switch time (nil = no fork, 0 = already on shanghai) ##CROSS: fork
+	CrosswayTime *uint64 `json:"crosswayTime,omitempty"` // Crossway switch time (nil = no fork, 0 = already on shanghai) ##CROSS: fork
 	CancunTime   *uint64 `json:"cancunTime,omitempty"`   // Cancun switch time (nil = no fork, 0 = already on cancun)
 	PragueTime   *uint64 `json:"pragueTime,omitempty"`   // Prague switch time (nil = no fork, 0 = already on prague)
 	VerkleTime   *uint64 `json:"verkleTime,omitempty"`   // Verkle switch time (nil = no fork, 0 = already on verkle)
@@ -713,9 +713,9 @@ func (c *ChainConfig) IsShanghai(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.ShanghaiTime, time)
 }
 
-// IsCross returns whether time is either equal to the Cross fork time or greater. ##CROSS: fork
-func (c *ChainConfig) IsCross(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.CrossTime, time)
+// IsCrossway returns whether time is either equal to the Crossway fork time or greater. ##CROSS: fork
+func (c *ChainConfig) IsCrossway(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.CrosswayTime, time)
 }
 
 // IsCancun returns whether num is either equal to the Cancun fork time or greater.
@@ -925,8 +925,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.Prague
 	case c.IsCancun(london, time):
 		return forks.Cancun
-	case c.IsCross(london, time): // ##CROSS: fork
-		return forks.Cross
+	case c.IsCrossway(london, time): // ##CROSS: fork
+		return forks.Crossway
 	case c.IsShanghai(london, time):
 		return forks.Shanghai
 	default:
@@ -1066,7 +1066,7 @@ type Rules struct {
 	IsByzantium, IsConstantinople, IsPetersburg, IsIstanbul bool
 	IsBerlin, IsLondon                                      bool
 	IsMerge, IsShanghai                                     bool
-	IsCross                                                 bool // ##CROSS: fork
+	IsCrossway                                              bool // ##CROSS: fork
 	IsCancun, IsPrague                                      bool
 	IsVerkle                                                bool
 }
@@ -1093,7 +1093,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsLondon:         c.IsLondon(num),
 		IsMerge:          isMerge,
 		IsShanghai:       isMerge && c.IsShanghai(num, timestamp),
-		IsCross:          isMerge && c.IsCross(num, timestamp), // ##CROSS: fork
+		IsCrossway:       isMerge && c.IsCrossway(num, timestamp), // ##CROSS: fork
 		IsCancun:         isMerge && c.IsCancun(num, timestamp),
 		IsPrague:         isMerge && c.IsPrague(num, timestamp),
 		IsVerkle:         isMerge && c.IsVerkle(num, timestamp),
