@@ -39,19 +39,17 @@ func DialContext(ctx context.Context, cfg node.GasAbstraction) (*Client, error) 
 
 	_, err = cli.healthy(ctx)
 
+	t := time.NewTicker(healthyCheckInterval)
 	go func() {
-		t := time.NewTicker(healthyCheckInterval)
-		defer t.Stop()
 		for {
+			_, err = cli.healthy(ctx)
 			select {
 			case <-cli.closed:
 				return
 			case <-t.C:
-				cli.healthy(ctx)
 			}
 		}
 	}()
-
 	return cli, err
 }
 
@@ -98,15 +96,13 @@ func (ec *Client) IsApproved(ctx context.Context, contract common.Address) (bool
 func (ec *Client) healthy(ctx context.Context) (bool, error) {
 	var ok bool
 	err := ec.c.CallContext(ctx, &ok, "gasabs_healthy")
-	if !ok || err != nil {
-		ec.isHealthy = false
+	if err != nil {
 		ec.log.Error("Failed to request healty check GasAbstraction", "error", err, "ok", ok)
-	} else if !ec.isHealthy {
-		// write healthy log once
-		ec.isHealthy = true
-		ec.log.Info("Healthy")
 	}
-
+	if ec.isHealthy != ok {
+		ec.log.Info("The state of isHealthy has changed", "health", ok)
+	}
+	ec.isHealthy = ok
 	return ok, err
 }
 
