@@ -159,13 +159,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		networkID = chainConfig.ChainID.Uint64()
 	}
 
-	stackConfig := stack.Config()
-
 	// ##CROSS: istanbul
 	etherbase := func() common.Address {
 		if chainConfig.Istanbul != nil {
 			// force to set the istanbul etherbase to node key address
-			return crypto.PubkeyToAddress(stackConfig.NodeKey().PublicKey)
+			return crypto.PubkeyToAddress(stack.Config().NodeKey().PublicKey)
 		}
 		return config.Miner.Etherbase
 	}()
