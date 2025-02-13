@@ -1977,16 +1977,17 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	// ##CROSS: gas abstraction
 	if s.gasAbs != nil && tx.To() != nil && tx.Type() == types.DynamicFeeTxType {
 		if _, ok := s.approvedAddress.Load(*tx.To()); ok {
-			log.Info("Request GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex())
+			logger := log.New("to", *tx.To(), "tx", tx.Hash().Hex())
+			logger.Info("Request GasAbstraction")
 			if tx, err = s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
-				logger := log.Warn
+				errlog := logger.Warn
 				if errors.Is(err, syscall.ECONNREFUSED) {
-					logger = log.Error
+					errlog = logger.Error
 				}
-				logger("Failed to request GasAbstraction", "error", err)
+				errlog("Failed to request GasAbstraction", "error", err)
 				return tx.Hash(), err
 			}
-			log.Info("Successfully requested GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex())
+			logger.Info("Successfully requested GasAbstraction")
 		}
 	}
 
