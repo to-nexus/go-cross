@@ -18,7 +18,6 @@
 package eth
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -49,7 +48,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/internal/shutdowncheck"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
@@ -92,8 +90,6 @@ type Ethereum struct {
 	closeBloomHandler chan struct{}
 
 	APIBackend *EthAPIBackend
-
-	gasAbs *gasabs.Client
 
 	miner     *miner.Miner
 	gasPrice  *big.Int
@@ -174,12 +170,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return config.Miner.Etherbase
 	}()
 
-	// ##CROSS: gasAbs
-	gasAbsCli, err := gasabs.DialContext(context.Background(), stackConfig.GasAbs)
-	if err != nil {
-		return nil, err
-	}
-
 	eth := &Ethereum{
 		config:            config,
 		nodeConfig:        stack.Config(),
@@ -192,7 +182,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		networkID:         networkID,
 		gasPrice:          config.Miner.GasPrice,
 		etherbase:         etherbase,
-		gasAbs:            gasAbsCli,
 		bloomRequests:     make(chan chan *bloombits.Retrieval),
 		bloomIndexer:      core.NewBloomIndexer(chainDb, params.BloomBitsBlocks, params.BloomConfirms),
 		p2pServer:         stack.Server(),
@@ -340,7 +329,7 @@ func makeExtraData(extra []byte) []byte {
 // APIs return the collection of RPC services the ethereum package offers.
 // NOTE, some of these services probably need to be moved to somewhere else.
 func (s *Ethereum) APIs() []rpc.API {
-	apis := ethapi.GetAPIs(s.APIBackend, s.gasAbs)
+	apis := ethapi.GetAPIs(s.APIBackend, s.nodeConfig)
 
 	// Append any APIs exposed explicitly by the consensus engine
 	apis = append(apis, s.engine.APIs(s.BlockChain())...)

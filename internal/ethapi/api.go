@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -44,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -1651,16 +1653,29 @@ type TransactionAPI struct {
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
-func NewTransactionAPI(b Backend, nonceLock *AddrLocker, gasAbs *gasabs.Client) *TransactionAPI {
-	// The signer used by the API should always be the 'latest' known one because we expect
-	// signers to be backwards-compatible with old transactions.
-	signer := types.LatestSigner(b.ChainConfig())
+func NewTransactionAPI(b Backend, nonceLock *AddrLocker, cfg *node.GasAbstraction) *TransactionAPI {
+	var (
+		// The signer used by the API should always be the 'latest' known one because we expect
+		// signers to be backwards-compatible with old transactions.
+		signer = types.LatestSigner(b.ChainConfig())
+		gasAbs *gasabs.Client
+		err    error
+	)
+
+	// ##CROSS: gasAbs
+	if cfg != nil {
+		if gasAbs, err = gasabs.DialContext(context.Background(), *cfg); err != nil {
+			log.Error("Failed to dial gas abstraction", "error", err)
+		}
+	}
 
 	s := &TransactionAPI{b, nonceLock, signer, gasAbs, &sync.Map{}}
 
 	// ##CROSS: fee delegation
-	for _, addr := range gasAbs.Config.ApprovedAddresses {
-		s.approvedAddress.Store(addr, struct{}{})
+	if gasAbs != nil {
+		for _, addr := range gasAbs.Config.ApprovedAddresses {
+			s.approvedAddress.Store(addr, struct{}{})
+		}
 	}
 	return s
 }
@@ -1964,6 +1979,9 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 		if _, ok := s.approvedAddress.Load(*tx.To()); ok {
 			log.Warn("GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex(), "url", s.gasAbs.Host())
 			if recv, err := s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+				if errors.Is(err, syscall.ECONNREFUSED) {
+					log.Error("Failed to call GasAbstraction", "error", err)
+				}
 				return common.Hash{}, err
 			} else {
 				return SubmitTransaction(ctx, s.b, recv)
