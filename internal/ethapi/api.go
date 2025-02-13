@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -42,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/gasestimator"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -1646,21 +1648,31 @@ type TransactionAPI struct {
 	b               Backend
 	nonceLock       *AddrLocker
 	signer          types.Signer
-	gasAbs          *node.GasAbstraction // ##CROSS: fee delegation
+	gasAbs          *gasabs.Client // ##CROSS: fee delegation
 	approvedAddress *sync.Map
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
-func NewTransactionAPI(b Backend, nonceLock *AddrLocker, gasAbs *node.GasAbstraction) *TransactionAPI {
-	// The signer used by the API should always be the 'latest' known one because we expect
-	// signers to be backwards-compatible with old transactions.
-	signer := types.LatestSigner(b.ChainConfig())
+func NewTransactionAPI(b Backend, nonceLock *AddrLocker, cfg *node.GasAbstraction) *TransactionAPI {
+	var (
+		// The signer used by the API should always be the 'latest' known one because we expect
+		// signers to be backwards-compatible with old transactions.
+		signer = types.LatestSigner(b.ChainConfig())
+		gasAbs *gasabs.Client
+	)
+
+	// ##CROSS: gasAbs
+	if cfg != nil {
+		gasAbs, _ = gasabs.DialContext(context.Background(), *cfg)
+	}
 
 	s := &TransactionAPI{b, nonceLock, signer, gasAbs, &sync.Map{}}
 
 	// ##CROSS: fee delegation
-	for _, addr := range gasAbs.ApprovedAddresses {
-		s.approvedAddress.Store(addr, struct{}{})
+	if gasAbs != nil {
+		for _, addr := range gasAbs.Config.ApprovedAddresses {
+			s.approvedAddress.Store(addr, struct{}{})
+		}
 	}
 	return s
 }
@@ -1953,7 +1965,7 @@ func (s *TransactionAPI) FillTransaction(ctx context.Context, args TransactionAr
 
 // SendRawTransaction will add the signed transaction to the transaction pool.
 // The sender is responsible for signing the transaction and using the correct nonce.
-func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.Bytes) (common.Hash, error) {
+func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.Bytes) (hash common.Hash, err error) {
 	tx := new(types.Transaction)
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
@@ -1962,7 +1974,17 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	// ##CROSS: gas abstraction
 	if s.gasAbs != nil && tx.To() != nil && tx.Type() == types.DynamicFeeTxType {
 		if _, ok := s.approvedAddress.Load(*tx.To()); ok {
-			log.Warn("GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex(), "url", s.gasAbs.GasAbsURL)
+			logger := log.New("to", *tx.To(), "tx", tx.Hash().Hex())
+			logger.Info("Request GasAbstraction")
+			if tx, err = s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+				errlog := logger.Warn
+				if errors.Is(err, syscall.ECONNREFUSED) {
+					errlog = logger.Error
+				}
+				errlog("Failed to request GasAbstraction", "error", err)
+				return tx.Hash(), err
+			}
+			logger.Info("Successfully requested GasAbstraction")
 		}
 	}
 
