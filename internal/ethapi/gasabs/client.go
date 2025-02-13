@@ -37,8 +37,6 @@ func DialContext(ctx context.Context, cfg node.GasAbstraction) (*Client, error) 
 	}
 	cli := NewClient(c, cfg)
 
-	_, err = cli.healthy(ctx)
-
 	t := time.NewTicker(healthyCheckInterval)
 	go func() {
 		for {
@@ -61,7 +59,7 @@ func NewClient(c *rpc.Client, cfg node.GasAbstraction) *Client {
 // Close closes the underlying RPC connection.
 func (ec *Client) Close() {
 	ec.c.Close()
-	ec.closed <- struct{}{}
+	close(ec.closed)
 }
 
 // SignFeeDelegateTransaction
