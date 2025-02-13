@@ -1968,7 +1968,7 @@ func (s *TransactionAPI) FillTransaction(ctx context.Context, args TransactionAr
 
 // SendRawTransaction will add the signed transaction to the transaction pool.
 // The sender is responsible for signing the transaction and using the correct nonce.
-func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.Bytes) (common.Hash, error) {
+func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.Bytes) (hash common.Hash, err error) {
 	tx := new(types.Transaction)
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
@@ -1977,15 +1977,16 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	// ##CROSS: gas abstraction
 	if s.gasAbs != nil && tx.To() != nil && tx.Type() == types.DynamicFeeTxType {
 		if _, ok := s.approvedAddress.Load(*tx.To()); ok {
-			log.Warn("GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex(), "url", s.gasAbs.Host())
-			if recv, err := s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+			log.Info("Request GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex())
+			if tx, err = s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+				logger := log.Warn
 				if errors.Is(err, syscall.ECONNREFUSED) {
-					log.Error("Failed to call GasAbstraction", "error", err)
+					logger = log.Error
 				}
-				return common.Hash{}, err
-			} else {
-				return SubmitTransaction(ctx, s.b, recv)
+				logger("Failed to request GasAbstraction", "error", err)
+				return tx.Hash(), err
 			}
+			log.Info("Successfully requested GasAbstraction", "to", *tx.To(), "tx", tx.Hash().Hex())
 		}
 	}
 
