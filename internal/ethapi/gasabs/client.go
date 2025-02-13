@@ -2,6 +2,9 @@ package gasabs
 
 import (
 	"context"
+	"time"
+
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -10,10 +13,15 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+const healthyCheckInterval = 10e9
+
 // Client defines typed wrappers for the Ethereum RPC API.
 type Client struct {
-	Config node.GasAbstraction
-	c      *rpc.Client
+	Config    node.GasAbstraction
+	c         *rpc.Client
+	log       log.Logger
+	closed    chan struct{}
+	isHealthy bool
 }
 
 // Dial connects a client to the given URL.
@@ -27,17 +35,35 @@ func DialContext(ctx context.Context, cfg node.GasAbstraction) (*Client, error) 
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(c, cfg), nil
+	cli := NewClient(c, cfg)
+
+	_, err = cli.healthy(ctx)
+
+	go func() {
+		t := time.NewTicker(healthyCheckInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-cli.closed:
+				return
+			case <-t.C:
+				cli.healthy(ctx)
+			}
+		}
+	}()
+
+	return cli, err
 }
 
 // NewClient creates a client that uses the given RPC client.
 func NewClient(c *rpc.Client, cfg node.GasAbstraction) *Client {
-	return &Client{cfg, c}
+	return &Client{cfg, c, log.New("module", "gasabs"), make(chan struct{}), true}
 }
 
 // Close closes the underlying RPC connection.
 func (ec *Client) Close() {
 	ec.c.Close()
+	ec.closed <- struct{}{}
 }
 
 // SignFeeDelegateTransaction
@@ -60,6 +86,7 @@ func (ec *Client) SignFeeDelegateTransaction(ctx context.Context, tx *types.Tran
 	}
 }
 
+// IsApproved
 func (ec *Client) IsApproved(ctx context.Context, contract common.Address) (bool, error) {
 	var resp bool
 	if err := ec.c.CallContext(ctx, &resp, "gasabs_isApproved", contract); err != nil {
@@ -68,6 +95,22 @@ func (ec *Client) IsApproved(ctx context.Context, contract common.Address) (bool
 	return resp, nil
 }
 
+func (ec *Client) healthy(ctx context.Context) (bool, error) {
+	var ok bool
+	err := ec.c.CallContext(ctx, &ok, "gasabs_healthy")
+	if !ok || err != nil {
+		ec.isHealthy = false
+		ec.log.Error("Failed to request healty check GasAbstraction", "error", err, "ok", ok)
+	} else if !ec.isHealthy {
+		// write healthy log once
+		ec.isHealthy = true
+		ec.log.Info("Healthy")
+	}
+
+	return ok, err
+}
+
+// Host
 func (ec *Client) Host() string {
 	return ec.Config.GasAbsURL
 }

@@ -1659,14 +1659,11 @@ func NewTransactionAPI(b Backend, nonceLock *AddrLocker, cfg *node.GasAbstractio
 		// signers to be backwards-compatible with old transactions.
 		signer = types.LatestSigner(b.ChainConfig())
 		gasAbs *gasabs.Client
-		err    error
 	)
 
 	// ##CROSS: gasAbs
 	if cfg != nil {
-		if gasAbs, err = gasabs.DialContext(context.Background(), *cfg); err != nil {
-			log.Error("Failed to dial gas abstraction", "error", err)
-		}
+		gasAbs, _ = gasabs.DialContext(context.Background(), *cfg)
 	}
 
 	s := &TransactionAPI{b, nonceLock, signer, gasAbs, &sync.Map{}}
