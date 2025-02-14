@@ -28,8 +28,8 @@ import (
 // Genesis hashes to enforce below configs on.
 var (
 	// ##CROSS: config
-	CrossGenesisHash     = common.HexToHash("0x9c38fd94c9371967b2129554fec03de3ae35dba218a0e766c5786ff66247d53c")
-	CrossTestGenesisHash = common.HexToHash("0x4449ee02f1a21408f9811c20973f78b64092d09a8b2827131e1f211dd52b2239")
+	CrossGenesisHash     = common.HexToHash("0x19a630fa72945e1ce5100ae6177769193543b218e9ad0af39135211c79948db6")
+	CrossTestGenesisHash = common.HexToHash("0x76cad09be9c84fa8a35fd24270bd4640ee14d71a6916f817bb337aec940a83df")
 	CrossDevGenesisHash  = common.HexToHash("0xfab91880e065a7dcc26b5276b2e432a80007ff943a0b2dfa24c5e8304ac2ed6f")
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
@@ -76,12 +76,29 @@ var (
 			ProposerPolicy:          0,
 			Ceil2Nby3Block:          nil,
 			Validators: []common.Address{
-				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-				common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
-				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
+				common.HexToAddress("0x9ba2594Af34F201d9a8f12C52820E2C85dE4d472"),
+				common.HexToAddress("0xBC3205DCe48F56Cfa498E496212BD7368bB3Aff3"),
+				common.HexToAddress("0x516d6936688beAeF49422943425f7F1FeB676Cd7"),
+				common.HexToAddress("0x530FBB44AcEFEe754F8A8839E8eb5E39cCB495ed"),
+				common.HexToAddress("0xc19C3CA6d2d34910156559a6Ddc8ef09c71C83d3"),
+				common.HexToAddress("0xad77eBb3b403ED653871F6E289FcCCe1006F7964"),
+				common.HexToAddress("0x5f74848A3090F0758A92a8c6f0b7d7662AF67ceF"),
+				common.HexToAddress("0x8fA0a643B3e65f51430C38836eA5657b000d7630"),
+				common.HexToAddress("0x66a7d85c7187761cF9E9e26fBa6E808B0802068A"),
+				common.HexToAddress("0x2bAa3B2D599691Af78bB6297A5f0F0b2395F8676"),
+				common.HexToAddress("0x52ad3cE29354915ae574cfdb4dd46eAbB96dbAe0"),
+				common.HexToAddress("0x8Ef8572c026c665abA45bC652b5608a4fA526FbF"),
+				common.HexToAddress("0x1Df0A53Fa3ED952114c45169c520b004c5022F32"),
+				common.HexToAddress("0xa6Ede5E37121B1B5f09C456465AF6b5b66C3EA27"),
+				common.HexToAddress("0xc220806aC7aF26FC98b5d30329D5e89e3E582f9e"),
+				common.HexToAddress("0x0f1b5a9dcC80a4cb0240394B2D111264e1Fb9322"),
+				common.HexToAddress("0x172fB48178fCB139e52045b8406f4B74cc28C4b0"),
+				common.HexToAddress("0x31005705a7a9F205fEFfB0B3a1Eed1507a6C3795"),
+				common.HexToAddress("0x578F993512Ef11FAE8bAe5e8f98CFc3790b298CC"),
+				common.HexToAddress("0x873Ca913204B391ad086759C658C24618b7b05cf"),
 			},
 			MaxRequestTimeoutSeconds: nil,
-			Foundation:               newAddressPtr("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
+			Foundation:               newAddressPtr("0x373656713952c8c60d0c34b4aececaee2f5b4eb8"),
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
@@ -120,12 +137,29 @@ var (
 			ProposerPolicy:          0,
 			Ceil2Nby3Block:          nil,
 			Validators: []common.Address{
-				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-				common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
-				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
+				common.HexToAddress("0x3AeE6025948c380cD0E4e71cBB041337cc0E2C4E"),
+                                common.HexToAddress("0x2bCFC7F77555B585941Ddb04d9B7977f1Ae612CB"),
+                                common.HexToAddress("0xfb2Ce154CF90F35851D3D3c2C378D9820dEd4eb5"),
+                                common.HexToAddress("0xd3f69551F006075aA71351a387eE23DdeaA5DbF1"),
+                                common.HexToAddress("0xFdF73a1e647Fa41b8EfA305d6133b29D867bD8B4"),
+                                common.HexToAddress("0x28a0Ef4a0cb8204a810615C9b01475006dA35ECD"),
+                                common.HexToAddress("0xDeAaa76b2Edc646F1eDfec2A28a28f2E23E5CE8D"),
+                                common.HexToAddress("0xe93bFdcBfB4aF67C6De8ABd53EC08aa2C2178BcD"),
+                                common.HexToAddress("0x23d20Fd630de515C921BB4c97707Fe90d9b47882"),
+                                common.HexToAddress("0xBf7ec3d88e99e260d66cAAfe1709fD77Df06b4f2"),
+                                common.HexToAddress("0x53bDC4196454c15af773BF00D3b4bC1BC913B751"),
+                                common.HexToAddress("0xd74AfE5741022651b51d92F12451D6840AC6009f"),
+                                common.HexToAddress("0x103F77261577B0D5852F1a319789e907C10005cf"),
+                                common.HexToAddress("0x713d0765bd738C3dF66402DB40f4C5251beDfD33"),
+                                common.HexToAddress("0xcCfB7b30456694754777737246a8AE18242B567b"),
+                                common.HexToAddress("0x88501713D1Bb34d81c4857C8F32905574D67Cd57"),
+                                common.HexToAddress("0x154b8b432206d77f092F31E905207E5ec72fb0EF"),
+                                common.HexToAddress("0x50D0A52ABEc2D2f902a78258Bd78a371CecE7FD0"),
+                                common.HexToAddress("0x8cA00027C72EF064fBf25d1fbbDe94dE499b7801"),
+                                common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90"),
 			},
 			MaxRequestTimeoutSeconds: nil,
-			Foundation:               newAddressPtr("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
+			Foundation:               newAddressPtr("0xd6a1404782809ae52c8ce0019a408affb5e7e500"),
 			ElasticityMultiplier:     newUint64(2),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)),
 		},

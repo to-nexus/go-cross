@@ -501,14 +501,14 @@ func DefaultCrossGenesisBlock() *Genesis {
 	return &Genesis{
 		Config:     params.CrossChainConfig,
 		Nonce:      4540,
-		Timestamp:  0x5f1663fc,
+		Timestamp:  0x67ae9b37,
 		ExtraData:  hexutil.MustDecode("0xc580c0c080c0"),
 		GasLimit:   105000000,
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
-			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
+			common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd"): types.Account{
 				Balance: new(big.Int).Mul(big.NewInt(100000000000), big.NewInt(1e18)),
 			},
 		},
@@ -520,14 +520,14 @@ func DefaultCrossTestGenesisBlock() *Genesis {
 	return &Genesis{
 		Config:     params.CrossTestChainConfig,
 		Nonce:      0xeeff,
-		Timestamp:  0x5f1663fc,
+		Timestamp:  0x67ae9b37,
 		ExtraData:  hexutil.MustDecode("0xc580c0c080c0"),
 		GasLimit:   105000000,
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
-			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
+			common.HexToAddress("0xe5dfec1e7ca7aa90acfbbc09a23b57b8e0d2e61c"): types.Account{
 				Balance: new(big.Int).Mul(big.NewInt(100000000000), big.NewInt(1e18)),
 			},
 		},
