@@ -95,7 +95,7 @@ var (
 				common.HexToAddress("0x172fB48178fCB139e52045b8406f4B74cc28C4b0"),
 				common.HexToAddress("0x31005705a7a9F205fEFfB0B3a1Eed1507a6C3795"),
 				common.HexToAddress("0x578F993512Ef11FAE8bAe5e8f98CFc3790b298CC"),
-				common.HexToAddress("0x873Ca913204B391ad086759C658C24618b7b05cf")
+				common.HexToAddress("0x873Ca913204B391ad086759C658C24618b7b05cf"),
 			},
 			MaxRequestTimeoutSeconds: nil,
 			Foundation:               newAddressPtr("0x373656713952c8c60d0c34b4aececaee2f5b4eb8"),
@@ -156,7 +156,7 @@ var (
                 common.HexToAddress("0x154b8b432206d77f092F31E905207E5ec72fb0EF"),
                 common.HexToAddress("0x50D0A52ABEc2D2f902a78258Bd78a371CecE7FD0"),
                 common.HexToAddress("0x8cA00027C72EF064fBf25d1fbbDe94dE499b7801"),
-                common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90")
+                common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90"),
 			},
 			MaxRequestTimeoutSeconds: nil,
 			Foundation:               newAddressPtr("0xd6a1404782809ae52c8ce0019a408affb5e7e500"),
