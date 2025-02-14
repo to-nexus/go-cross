@@ -1,73 +1,50 @@
-# Go Cross
+🚀 Go Cross
 
-## Overview
+Go Cross is a blockchain client based on Ethereum v1.13.15, integrating ConsenSys Quorum's latest BFT consensus algorithm. It features Crossway Fork, a custom fork that incorporates elements from the Shanghai and Cancun forks.
 
-This project is a customized blockchain client integrating an improved **Byzantine Fault Tolerant (BFT) consensus algorithm**. The modifications enhance transaction processing efficiency and usability by enabling validator-based consensus.
+🔢 Version Information
 
-## Versions
+Execution Layer: Ethereum: v1.13.15
 
-- **Ethereum**: 1.13.15
-- **ConsenSys Quorum**: v24.4.1
+Consensus Layer: ConsenSys Quorum: Latest BFT-based consensus algorithm
 
-## Consensus Algorithm: Byzantine Fault Tolerant (BFT) Protocols
+Fork Version: Crossway Fork (Shanghai + partial Cancun features applied)
 
-This blockchain client implements an improved version of the IBFT (Istanbul Byzantine Fault Tolerance) consensus mechanism, known as QBFT, addressing several limitations and enhancing overall network performance. Key improvements include:
+🛠 Installation and Execution Guide
 
-- **Enhanced Scalability**: The updated algorithm reduces message complexity, allowing for efficient operation with a larger validator set.
-- **Lower Network Overhead**: Optimized block proposal mechanisms minimize unnecessary message exchanges, improving network efficiency.
-- **Faster Finality**: The new consensus method reaches finality with lower latency, especially in networks with a higher number of participating nodes.
-- **Improved Fault Tolerance**: Better handling of faulty or malicious nodes ensures greater network stability and security.
-- **Optimized Validator Rotation**: A more efficient round-robin mechanism prevents congestion and improves fairness in validator selection.
+1️⃣ Prerequisites
 
-### Consensus Process
+Go 1.20 or higher
 
-The consensus process follows these key steps:
+Git
 
-1. **Block Proposal**: A designated validator proposes a new block to be added to the chain.
-2. **Pre-Prepare Phase**: Other validators receive the proposed block and verify its validity.
-3. **Prepare Phase**: Validators broadcast their agreement on the proposed block.
-4. **Commit Phase**: If a sufficient number of validators agree, they finalize the block and append it to the blockchain.
-5. **New Round**: The next validator in the round-robin schedule is selected to propose the next block.
+Docker (Optional for containerized deployment)
 
-These improvements make the updated BFT protocol more suitable for decentralized blockchain networks requiring high performance and resilience.
+2️⃣ Installation and Execution Steps
 
-## Installation Guide
+① Clone the Repository
 
-To set up and run the customized client:
+git clone https://github.com/to-nexus/go-cross.git
+cd go-cross
 
-### Prerequisites
+② Build the Client
 
-- Go (1.18 or higher)
-- Git
-- Docker (optional, for containerized deployment)
+make geth
 
-### Steps
+③ Initialize a New Blockchain
 
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/your-repo-name.git
-   cd your-repo-name
-   ```
-2. Build the client:
-   ```sh
-   make geth
-   ```
-3. Initialize a new blockchain:
-   ```sh
-   ./build/bin/geth --datadir <your-datadir> init <genesis.json>
-   ```
-4. Start the node:
-   ```sh
-   ./build/bin/geth --config config.toml
-   ```
+./build/bin/geth --datadir <your-datadir> init cross
 
-## Sample `config.toml`
+④ Start the Node
 
-Below is a sample `config.toml` file for running the node:
+./build/bin/geth --config config.toml
 
-```toml
+⚙️ Sample config.toml
+
+Below is a sample config.toml file for running the node:
+
 [Eth]
-SyncMode = "full" 
+SyncMode = "full"
 
 [Node]
 DataDir = <your-datadir>
@@ -81,23 +58,21 @@ WSOrigins = ["*"]
 WSModules = ["net", "web3", "eth", "istanbul"]
 
 [Node.P2P]
-ListenAddr = ":30001" 
+ListenAddr = ":30001"
 MaxPeers = 50
 NoDiscovery = false
 aDiscoveryV4 = false
 StaticNodes = []
 
-```
+📜 License
 
-## License
+This project is licensed under the MIT License. See the LICENSE file for details.
 
-This project is released under the **MIT License**. See the [LICENSE](./LICENSE) file for details.
+🤝 Contributing
 
-## Contributing
+Go Cross is an open-source project, and contributions are welcome! If you have improvements or fixes, feel free to open an issue or submit a pull request.
 
-Contributions are welcome! Please open an issue or submit a pull request if you'd like to improve the project.
+📞 Contact & Support
 
-## Contact
-
-For questions or collaboration inquiries, reach out via [GitHub Issues](https://github.com/your-repo-name/issues).
+For questions or collaboration inquiries, please reach out via GitHub Issues. 🚀
 
