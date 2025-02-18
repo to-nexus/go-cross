@@ -70,9 +70,12 @@ aDiscoveryV4 = false
 StaticNodes = []
 ```
 
+
 ## 📜 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+The go-cross library (i.e. all code outside of the cmd directory) is licensed under the GNU Lesser General Public License v3.0, also included in our repository in the COPYING.LESSER file.
+
+The go-cross binaries (i.e. all code inside of the cmd directory) are licensed under the GNU General Public License v3.0, also included in our repository in the COPYING file.
 
 ## 🤝 Contributing
 
