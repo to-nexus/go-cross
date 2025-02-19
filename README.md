@@ -1,73 +1,55 @@
-# Go Cross
+# 🚀 Go Cross
 
-## Overview
+Go Cross is a **blockchain client based on Ethereum v1.13.15**, integrating ConsenSys Quorum's latest BFT consensus algorithm. It features **Crossway Fork, a custom fork that incorporates elements from the Shanghai and Cancun forks**.
 
-This project is a customized blockchain client integrating an improved **Byzantine Fault Tolerant (BFT) consensus algorithm**. The modifications enhance transaction processing efficiency and usability by enabling validator-based consensus.
+## 🔢 Version Information
 
-## Versions
+- **Execution Layer: Ethereum**: v1.13.15
+- **Consensus Layer: ConsenSys Quorum**: Latest BFT-based consensus algorithm
+- **Fork Version**: Crossway Fork (Shanghai + partial Cancun features applied)
 
-- **Ethereum**: 1.13.15
-- **ConsenSys Quorum**: v24.4.1
+## 🛠 Installation and Execution Guide
 
-## Consensus Algorithm: Byzantine Fault Tolerant (BFT) Protocols
+### **1️⃣ Prerequisites**
 
-This blockchain client implements an improved version of the IBFT (Istanbul Byzantine Fault Tolerance) consensus mechanism, known as QBFT, addressing several limitations and enhancing overall network performance. Key improvements include:
+- **Go 1.20 or higher**
+- **Git**
+- **Docker (Optional for containerized deployment)**
 
-- **Enhanced Scalability**: The updated algorithm reduces message complexity, allowing for efficient operation with a larger validator set.
-- **Lower Network Overhead**: Optimized block proposal mechanisms minimize unnecessary message exchanges, improving network efficiency.
-- **Faster Finality**: The new consensus method reaches finality with lower latency, especially in networks with a higher number of participating nodes.
-- **Improved Fault Tolerance**: Better handling of faulty or malicious nodes ensures greater network stability and security.
-- **Optimized Validator Rotation**: A more efficient round-robin mechanism prevents congestion and improves fairness in validator selection.
+### **2️⃣ Installation and Execution Steps**
 
-### Consensus Process
+#### **① Clone the Repository**
 
-The consensus process follows these key steps:
+```bash
+git clone https://github.com/to-nexus/go-cross.git
+cd go-cross
+```
 
-1. **Block Proposal**: A designated validator proposes a new block to be added to the chain.
-2. **Pre-Prepare Phase**: Other validators receive the proposed block and verify its validity.
-3. **Prepare Phase**: Validators broadcast their agreement on the proposed block.
-4. **Commit Phase**: If a sufficient number of validators agree, they finalize the block and append it to the blockchain.
-5. **New Round**: The next validator in the round-robin schedule is selected to propose the next block.
+#### **② Build the Client**
 
-These improvements make the updated BFT protocol more suitable for decentralized blockchain networks requiring high performance and resilience.
+```bash
+make geth
+```
 
-## Installation Guide
+#### **③ Initialize a New Blockchain**
 
-To set up and run the customized client:
+```bash
+./build/bin/geth --datadir <your-datadir> init cross
+```
 
-### Prerequisites
+#### **④ Start the Node**
 
-- Go (1.18 or higher)
-- Git
-- Docker (optional, for containerized deployment)
+```bash
+./build/bin/geth --config config.toml
+```
 
-### Steps
-
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/your-repo-name.git
-   cd your-repo-name
-   ```
-2. Build the client:
-   ```sh
-   make geth
-   ```
-3. Initialize a new blockchain:
-   ```sh
-   ./build/bin/geth --datadir <your-datadir> init <genesis.json>
-   ```
-4. Start the node:
-   ```sh
-   ./build/bin/geth --config config.toml
-   ```
-
-## Sample `config.toml`
+## ⚙️ Sample `config.toml`
 
 Below is a sample `config.toml` file for running the node:
 
 ```toml
 [Eth]
-SyncMode = "full" 
+SyncMode = "full"
 
 [Node]
 DataDir = <your-datadir>
@@ -81,23 +63,29 @@ WSOrigins = ["*"]
 WSModules = ["net", "web3", "eth", "istanbul"]
 
 [Node.P2P]
-ListenAddr = ":30001" 
+ListenAddr = ":30001"
 MaxPeers = 50
 NoDiscovery = false
 aDiscoveryV4 = false
 StaticNodes = []
-
 ```
+
 
 ## License
 
-This project is released under the **MIT License**. See the [LICENSE](./LICENSE) file for details.
+The go-cross library (i.e. all code outside of the `cmd` directory) is licensed under the
+[GNU Lesser General Public License v3.0](https://www.gnu.org/licenses/lgpl-3.0.en.html),
+also included in our repository in the `COPYING.LESSER` file.
 
-## Contributing
+The go-cross binaries (i.e. all code inside of the `cmd` directory) are licensed under the
+[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), also
+included in our repository in the `COPYING` file.
 
-Contributions are welcome! Please open an issue or submit a pull request if you'd like to improve the project.
+## 🤝 Contributing
 
-## Contact
+Go Cross is an open-source project, and contributions are welcome! If you have improvements or fixes, feel free to **open an issue or submit a pull request**.
 
-For questions or collaboration inquiries, reach out via [GitHub Issues](https://github.com/your-repo-name/issues).
+## 📞 Contact & Support
+
+For questions or collaboration inquiries, please reach out via GitHub Issues. 🚀
 
