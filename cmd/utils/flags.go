@@ -1771,8 +1771,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 612044
 		}
-		cfg.Genesis = core.DefaultCrossDevGenesisBlock()
-		SetDNSDiscoveryDefaults(cfg, params.CrossDevGenesisHash)
+		cfg.Genesis = core.DefaultCrossTestGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.CrossTestGenesisHash)
 	case ctx.Bool(CrossDevFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 612066
@@ -2111,6 +2111,8 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	// ##CROSS: config
 	case ctx.Bool(CrossFlag.Name):
 		genesis = core.DefaultCrossGenesisBlock()
+	case ctx.Bool(CrossTestFlag.Name):
+		genesis = core.DefaultCrossTestGenesisBlock()
 	case ctx.Bool(CrossDevFlag.Name):
 		genesis = core.DefaultCrossDevGenesisBlock()
 		// ##
