@@ -547,7 +547,20 @@ func DefaultCrossDevGenesisBlock() *Genesis {
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
 			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
-				Balance: new(big.Int).Mul(big.NewInt(100000000000), big.NewInt(1e18)),
+				Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
+			},
+			BridgeImpl: types.Account{
+				Code: BridgeBytes,
+			},
+			CrossMintableERC20Code: types.Account{
+				Code: CrossMintableERC20CodeBytes,
+			},
+			Bridge: types.Account{
+				Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
+				Code:    ERC1967ProxyBytes,
+				Storage: map[common.Hash]common.Hash{
+					ERC1967ProxyImplementationSlot: common.BytesToHash(BridgeImpl.Bytes()),
+				},
 			},
 		},
 	}
