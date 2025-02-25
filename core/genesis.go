@@ -370,6 +370,8 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return params.CrossChainConfig
 	case ghash == params.CrossTestGenesisHash:
 		return params.CrossTestChainConfig
+	case ghash == params.CrossDev3GenesisHash:
+		return params.CrossDev3ChainConfig
 	case ghash == params.CrossDevGenesisHash:
 		return params.CrossDevChainConfig
 		// ##
@@ -528,6 +530,25 @@ func DefaultCrossTestGenesisBlock() *Genesis {
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
 			common.HexToAddress("0xe5dfec1e7ca7aa90acfbbc09a23b57b8e0d2e61c"): types.Account{
+				Balance: new(big.Int).Mul(big.NewInt(100000000000), big.NewInt(1e18)),
+			},
+		},
+	}
+}
+
+// DefaultCrossDev3GenesisBlock returns the Cross dev net genesis block.
+func DefaultCrossDev3GenesisBlock() *Genesis {
+	return &Genesis{
+		Config:     params.CrossDev3ChainConfig,
+		Nonce:      0x3333,
+		Timestamp:  0x5f1663fc,
+		ExtraData:  hexutil.MustDecode("0xc580c0c080c0"),
+		GasLimit:   105000000,
+		Difficulty: istanbul.DefaultDifficulty,
+		Mixhash:    types.IstanbulDigest,
+		Coinbase:   common.HexToAddress("0x00"),
+		Alloc: types.GenesisAlloc{
+			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
 				Balance: new(big.Int).Mul(big.NewInt(100000000000), big.NewInt(1e18)),
 			},
 		},

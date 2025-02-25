@@ -22,7 +22,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -49,6 +48,7 @@ func (h *istanbulHandler) FindPeers(targets map[common.Address]bool) map[common.
 	m := make(map[common.Address]consensus.IstanbulPeer)
 	h.peers.lock.RLock()
 	defer h.peers.lock.RUnlock()
+
 	for _, p := range h.peers.peers {
 		pubKey := p.Node().Pubkey()
 		addr := crypto.PubkeyToAddress(*pubKey)
@@ -99,7 +99,7 @@ func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, versio
 					// add the rw protocol for the quorum subprotocol to the eth peer.
 					ethPeer.AddConsensusProtoRW(rw)
 					peer := eth.NewPeer(version, p, rw, h.txpool)
-					return h.handleConsensusLoop(peer, rw, nil)
+					return h.handleConsensusLoop(peer, rw)
 				}
 				p.Log().Error("consensus subprotocol retrieved nil eth peer from peerset", "ethPeer.id", p2pPeerId)
 				return errEthPeerNil
@@ -118,10 +118,10 @@ func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, versio
 	}
 }
 
-func (h *istanbulHandler) handleConsensusLoop(p *eth.Peer, protoRW p2p.MsgReadWriter, fallThroughBackend eth.Backend) error {
+func (h *istanbulHandler) handleConsensusLoop(p *eth.Peer, protoRW p2p.MsgReadWriter) error {
 	// Handle incoming messages until the connection is torn down
 	for {
-		if err := h.handleConsensus(p, protoRW, fallThroughBackend); err != nil {
+		if err := h.handleConsensus(p, protoRW); err != nil {
 			// allow the P2P connection to remain active during sync (when the engine is stopped)
 			if errors.Is(err, istanbul.ErrStoppedEngine) && h.downloader.Synchronising() {
 				// should this be warn or debug
@@ -135,7 +135,7 @@ func (h *istanbulHandler) handleConsensusLoop(p *eth.Peer, protoRW p2p.MsgReadWr
 }
 
 // This is a no-op because the eth handleMsg main loop handle ibf message as well.
-func (h *istanbulHandler) handleConsensus(p *eth.Peer, protoRW p2p.MsgReadWriter, _ eth.Backend) error {
+func (h *istanbulHandler) handleConsensus(p *eth.Peer, protoRW p2p.MsgReadWriter) error {
 	// Read the next message from the remote peer (in protoRW), and ensure it's fully consumed
 	msg, err := protoRW.ReadMsg()
 	if err != nil {
@@ -148,55 +148,18 @@ func (h *istanbulHandler) handleConsensus(p *eth.Peer, protoRW p2p.MsgReadWriter
 
 	// See if the consensus engine protocol can handle this message, e.g. istanbul will check for message is
 	// istanbulMsg = 0x11, and NewBlockMsg = 0x07.
-	handled, err := h.handleConsensusMsg(p, msg)
-	if handled {
-		p.Log().Debug("consensus message was handled by consensus engine", "msg", msg.Code, "istanbulConsensusProtocolName", istanbulConsensusProtocolName, "err", err)
+	if handled, err := h.handleConsensusMsg(p, msg); handled {
+		p.Log().Debug("consensus message was handled by consensus engine", "msg", msg.Code, "istanbulConsensusProtocolName", istanbulProtocolName, "err", err)
 		return err
 	}
 
 	return nil
 }
 
-func (h *istanbulHandler) handleConsensusMsg(p *eth.Peer, msg p2p.Msg) (bool, error) {
-	var handler consensus.IstanbulHandler
-	if handler, _ = h.engine.(consensus.IstanbulHandler); handler == nil {
-		if beacon, ok := h.engine.(*beacon.Beacon); ok {
-			handler, _ = beacon.InnerEngine().(consensus.IstanbulHandler)
-		}
-	}
-
-	if handler != nil {
+func (h *istanbulHandler) handleConsensusMsg(p *eth.Peer, msg p2p.Msg) (handled bool, err error) {
+	if h.istanbulHandler != nil {
 		pubKey := p.Node().Pubkey()
-		addr := crypto.PubkeyToAddress(*pubKey)
-		handled, err := handler.HandleMsg(addr, msg)
-		return handled, err
+		handled, err = h.istanbulHandler.HandleMsg(crypto.PubkeyToAddress(*pubKey), msg)
 	}
-	return false, nil
-}
-
-// makeLegacyProtocol is basically a copy of the eth makeProtocol, but for legacy subprotocols, e.g. "istanbul/99" "istabnul/64"
-// If support legacy subprotocols is removed, remove this and associated code as well.
-// If quorum is using a legacy protocol then the "eth" subprotocol should not be available.
-func (h *istanbulHandler) makeLegacyProtocol(protoName string, version uint, length uint64, backend eth.Backend, network uint64, dnsdisc enode.Iterator) p2p.Protocol {
-	log.Debug("registering a legacy protocol ", "protoName", protoName, "version", version)
-	return p2p.Protocol{
-		Name:    protoName,
-		Version: version,
-		Length:  length,
-		Run: func(p *p2p.Peer, rw p2p.MsgReadWriter) error {
-			peer := eth.NewPeer(version, p, rw, h.txpool)
-			return ((*handler)(h)).runEthPeer(peer, func(peer *eth.Peer) error {
-				// We pass through the backend so that we can 'handle' messages that we can't handle
-				return h.handleConsensusLoop(peer, rw, backend)
-			})
-		},
-		NodeInfo: func() interface{} {
-			return eth.NodeInfoFunc(backend.Chain(), network)
-		},
-		PeerInfo: func(id enode.ID) interface{} {
-			return backend.PeerInfo(id)
-		},
-		Attributes:     []enr.Entry{eth.CurrentENREntry(backend.Chain())},
-		DialCandidates: dnsdisc,
-	}
+	return
 }

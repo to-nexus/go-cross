@@ -135,7 +135,10 @@ type handler struct {
 	handlerStartCh chan struct{}
 	handlerDoneCh  chan struct{}
 
-	engine consensus.Engine // ##CROSS: istanbul
+	// ##CROSS: istanbul
+	engine          consensus.Engine
+	istanbulHandler consensus.IstanbulHandler
+	// ##
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -161,15 +164,16 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	// ##CROSS: istanbul
-	var handler consensus.IstanbulHandler
-	if handler, _ = h.engine.(consensus.IstanbulHandler); handler == nil {
+	//var handler consensus.IstanbulHandler
+	if h.istanbulHandler, _ = h.engine.(consensus.IstanbulHandler); h.istanbulHandler == nil {
 		if beacon, ok := h.engine.(*beacon.Beacon); ok {
-			handler, _ = beacon.InnerEngine().(consensus.IstanbulHandler)
+			h.istanbulHandler, _ = beacon.InnerEngine().(consensus.IstanbulHandler)
 		}
 	}
-	if handler != nil {
-		handler.SetBroadcaster((*istanbulHandler)(h))
+	if h.istanbulHandler != nil {
+		h.istanbulHandler.SetBroadcaster((*istanbulHandler)(h))
 	}
+	// ##
 
 	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap

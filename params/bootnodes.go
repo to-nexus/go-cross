@@ -31,6 +31,12 @@ var CrossTestBootnodes = []string{
 	"enode://34f27463761e467b1e3382a141e2500c799c240f189ff5b0882a742641bc5da711545d8b233d4f68627f32741846997e8d3019f418a7a03826a1dc266e76a2b4@127.0.0.1:0?discport=30301",
 }
 
+// CrossDev3Bootnodes are the enode URLs of the P2P bootstrap nodes running on
+// the cross dev network.
+var CrossDev3Bootnodes = []string{
+	"enode://34f27463761e467b1e3382a141e2500c799c240f189ff5b0882a742641bc5da711545d8b233d4f68627f32741846997e8d3019f418a7a03826a1dc266e76a2b4@127.0.0.1:0?discport=30301",
+}
+
 // CrossDevBootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the cross dev network.
 var CrossDevBootnodes = []string{
@@ -121,6 +127,8 @@ func KnownDNSNetwork(genesis common.Hash, protocol string) string {
 		net = "cross"
 	case CrossTestGenesisHash:
 		net = "crosstest"
+	case CrossDev3GenesisHash:
+		net = "crossdev3"
 	case CrossDevGenesisHash:
 		net = "crossdev"
 		// ##

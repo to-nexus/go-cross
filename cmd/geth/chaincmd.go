@@ -206,6 +206,8 @@ func initGenesis(ctx *cli.Context) error {
 			genesis = core.DefaultCrossGenesisBlock()
 		case "crosstest":
 			genesis = core.DefaultCrossTestGenesisBlock()
+		case "crossdev3":
+			genesis = core.DefaultCrossDev3GenesisBlock()
 		case "crossdev":
 			genesis = core.DefaultCrossDevGenesisBlock()
 			// ##
@@ -440,10 +442,12 @@ func importHistory(ctx *cli.Context) error {
 			network = "cross"
 		case ctx.Bool(utils.CrossTestFlag.Name):
 			network = "crosstest"
+		case ctx.Bool(utils.CrossDev3Flag.Name):
+			network = "crossdev3"
 		case ctx.Bool(utils.CrossDevFlag.Name):
 			network = "crossdev"
-		case ctx.Bool(utils.MainnetFlag.Name):
 			// ##
+		case ctx.Bool(utils.MainnetFlag.Name):
 			network = "mainnet"
 		case ctx.Bool(utils.SepoliaFlag.Name):
 			network = "sepolia"
