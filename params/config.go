@@ -99,7 +99,7 @@ var (
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
 			Foundation:               newAddressPtr("0x373656713952c8c60d0c34b4aececaee2f5b4eb8"),
-			ElasticityMultiplier:     newUint64(2),
+			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
@@ -160,7 +160,7 @@ var (
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
 			Foundation:               newAddressPtr("0xd6a1404782809ae52c8ce0019a408affb5e7e500"),
-			ElasticityMultiplier:     newUint64(2),
+			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
@@ -202,7 +202,7 @@ var (
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
 			Foundation:               newAddressPtr("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
-			ElasticityMultiplier:     newUint64(2),
+			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
