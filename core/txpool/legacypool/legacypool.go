@@ -139,6 +139,7 @@ type Config struct {
 
 // DefaultConfig contains the default configurations for the transaction pool.
 var DefaultConfig = Config{
+	NoLocals:  true, // ##CROSS: istanbul
 	Journal:   "transactions.rlp",
 	Rejournal: time.Hour,
 
@@ -268,10 +269,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 	pool.priced = newPricedList(pool.all)
 
 	if !config.NoLocals && config.Journal != "" {
-		// not use journal if consensus engine is istanbul
-		if chain.Config().Istanbul == nil { // ##CROSS: istanbul
-			pool.journal = newTxJournal(config.Journal)
-		}
+		pool.journal = newTxJournal(config.Journal)
 	}
 
 	return pool
