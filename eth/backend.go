@@ -159,15 +159,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		networkID = chainConfig.ChainID.Uint64()
 	}
 
-	// ##CROSS: istanbul
-	etherbase := func() common.Address {
-		if chainConfig.Istanbul != nil {
-			// force to set the istanbul etherbase to node key address
-			return crypto.PubkeyToAddress(stack.Config().NodeKey().PublicKey)
-		}
-		return config.Miner.Etherbase
-	}()
-
 	eth := &Ethereum{
 		config:            config,
 		nodeConfig:        stack.Config(),
@@ -179,7 +170,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		closeBloomHandler: make(chan struct{}),
 		networkID:         networkID,
 		gasPrice:          config.Miner.GasPrice,
-		etherbase:         etherbase,
+		etherbase:         config.Miner.Etherbase,
 		bloomRequests:     make(chan chan *bloombits.Retrieval),
 		bloomIndexer:      core.NewBloomIndexer(chainDb, params.BloomBitsBlocks, params.BloomConfirms),
 		p2pServer:         stack.Server(),
@@ -266,11 +257,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	eth.miner = miner.New(eth, &config.Miner, eth.blockchain.Config(), eth.EventMux(), eth.engine, eth.isLocalBlock)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
-
 	// ##CROSS: istanbul
 	if chainConfig.Istanbul != nil {
-		eth.miner.SetEtherbase(eth.etherbase)
+		// force to set the istanbul etherbase to node key address
+		eth.etherbase = crypto.PubkeyToAddress(stack.Config().NodeKey().PublicKey)
 	}
+	eth.miner.SetEtherbase(eth.etherbase)
+	// ##
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
 	if eth.APIBackend.allowUnprotectedTxs {
@@ -522,7 +515,7 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 
 	// ##CROSS: istanbul
 	// add additional quorum consensus protocol if set and if not set to "eth", e.g. istanbul
-	if istanbulConsensusProtocolName != "" && istanbulConsensusProtocolName != eth.ProtocolName {
+	if istanbulProtocolName != "" && istanbulProtocolName != eth.ProtocolName {
 		istanbulProtos := s.istanbulConsensusProtocols((*ethHandler)(s.handler), s.networkID, s.ethDialCandidates)
 		protos = append(protos, istanbulProtos...)
 	}

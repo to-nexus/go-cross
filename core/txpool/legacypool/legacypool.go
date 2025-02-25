@@ -268,8 +268,12 @@ func New(config Config, chain BlockChain) *LegacyPool {
 	pool.priced = newPricedList(pool.all)
 
 	if !config.NoLocals && config.Journal != "" {
-		pool.journal = newTxJournal(config.Journal)
+		// not use journal if consensus engine is istanbul
+		if chain.Config().Istanbul == nil { // ##CROSS: istanbul
+			pool.journal = newTxJournal(config.Journal)
+		}
 	}
+
 	return pool
 }
 

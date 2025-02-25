@@ -30,6 +30,7 @@ var (
 	// ##CROSS: config
 	CrossGenesisHash     = common.HexToHash("0x76cad09be9c84fa8a35fd24270bd4640ee14d71a6916f817bb337aec940a83df")
 	CrossTestGenesisHash = common.HexToHash("0x19a630fa72945e1ce5100ae6177769193543b218e9ad0af39135211c79948db6")
+	CrossDev3GenesisHash = common.HexToHash("0x1cc4b4d244929972ac571073c94870567b2f3192c17c37a89c48779ab1ab70fd")
 	CrossDevGenesisHash  = common.HexToHash("0xfab91880e065a7dcc26b5276b2e432a80007ff943a0b2dfa24c5e8304ac2ed6f")
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
@@ -162,6 +163,50 @@ var (
 			Foundation:               newAddressPtr("0xd6a1404782809ae52c8ce0019a408affb5e7e500"),
 			ElasticityMultiplier:     newUint64(2),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)),
+		},
+		Transitions: []Transition{},
+	}
+
+	CrossDev3ChainConfig = &ChainConfig{
+		ChainID:                       big.NewInt(612088),
+		HomesteadBlock:                big.NewInt(0),
+		DAOForkBlock:                  big.NewInt(0),
+		DAOForkSupport:                false,
+		EIP150Block:                   big.NewInt(0),
+		EIP155Block:                   big.NewInt(0),
+		EIP158Block:                   big.NewInt(0),
+		ByzantiumBlock:                big.NewInt(0),
+		ConstantinopleBlock:           big.NewInt(0),
+		PetersburgBlock:               big.NewInt(0),
+		IstanbulBlock:                 big.NewInt(0),
+		MuirGlacierBlock:              big.NewInt(0),
+		BerlinBlock:                   big.NewInt(0),
+		LondonBlock:                   big.NewInt(0),
+		ArrowGlacierBlock:             big.NewInt(0),
+		GrayGlacierBlock:              big.NewInt(0),
+		TerminalTotalDifficulty:       nil,
+		TerminalTotalDifficultyPassed: false,
+		ShanghaiTime:                  newUint64(0),
+		CrosswayTime:                  newUint64(0), // ##CROSS: fork
+		CancunTime:                    nil,
+		Istanbul: &IstanbulConfig{
+			EpochLength:             86400,
+			BlockPeriodSeconds:      1,
+			EmptyBlockPeriodSeconds: 0,
+			RequestTimeoutSeconds:   5,
+			ProposerPolicy:          0,
+			Ceil2Nby3Block:          nil,
+			Validators: []common.Address{
+				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
+				common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
+				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
+			},
+			MaxRequestTimeoutSeconds: nil,
+			Foundation:               newAddressPtr("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
+			ElasticityMultiplier:     newUint64(3),
+			BaseFeeChangeDenominator: newUint64(8),
+			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
+			MinBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 		},
 		Transitions: []Transition{},
 	}
@@ -486,6 +531,7 @@ var NetworkNames = map[string]string{
 	// ##CROSS: config
 	CrossChainConfig.ChainID.String():     "cross",
 	CrossTestChainConfig.ChainID.String(): "crosstest",
+	CrossDev3ChainConfig.ChainID.String(): "crossdev3",
 	CrossDevChainConfig.ChainID.String():  "crossdev",
 	// ##
 	MainnetChainConfig.ChainID.String(): "mainnet",

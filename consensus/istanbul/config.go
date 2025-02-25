@@ -130,8 +130,7 @@ type Config struct {
 	ValidatorContract        common.Address   `toml:",omitempty"`
 	Validators               []common.Address `toml:",omitempty"`
 	MaxRequestTimeoutSeconds uint64           `toml:",omitempty"`
-	//Client                   bind.ContractCaller   `toml:",omitempty"`
-	Transitions []params.Transition
+	Transitions              []params.Transition
 }
 
 var DefaultConfig = &Config{

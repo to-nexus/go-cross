@@ -233,6 +233,8 @@ func ethFilter(args []string) (nodeFilter, error) {
 		filter = forkid.NewStaticFilter(params.CrossChainConfig, core.DefaultCrossGenesisBlock().ToBlock())
 	case "crosstest":
 		filter = forkid.NewStaticFilter(params.CrossTestChainConfig, core.DefaultCrossTestGenesisBlock().ToBlock())
+	case "crossdev3":
+		filter = forkid.NewStaticFilter(params.CrossDev3ChainConfig, core.DefaultCrossDev3GenesisBlock().ToBlock())
 	case "crossdev":
 		filter = forkid.NewStaticFilter(params.CrossDevChainConfig, core.DefaultCrossDevGenesisBlock().ToBlock())
 		// ##
