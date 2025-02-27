@@ -62,7 +62,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 
 	// ##CROSS: basefee
 	var elasticityMultiplier uint64
-	if types.IsIstanbulDigest(parent.MixDigest) {
+	if config.IsCrossway(parent.Number, parent.Time) {
 		elasticityMultiplier = config.GetElasticityMultiplier(parent.Number)
 	} else {
 		elasticityMultiplier = config.ElasticityMultiplier()
@@ -80,7 +80,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 	)
 
 	baseFeeChangeDenominator := func() uint64 {
-		if types.IsIstanbulDigest(parent.MixDigest) {
+		if types.IstanbulDigest == parent.MixDigest {
 			if denominator := config.GetBaseFeeChangeDenominator(parent.Number); denominator > 0 {
 				return denominator
 			}
@@ -98,7 +98,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		baseFeeDelta := math.BigMax(num, common.Big1)
 
 		num.Add(parent.BaseFee, baseFeeDelta)
-		if types.IsIstanbulDigest(parent.MixDigest) {
+		if types.IstanbulDigest == parent.MixDigest {
 			if max := config.GetMaxBaseFee(parent.Number); max != nil && num.Cmp(max) > 0 {
 				num.Set(max)
 			}
@@ -113,7 +113,7 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		baseFee := num.Sub(parent.BaseFee, num)
 
 		num = math.BigMax(baseFee, common.Big0)
-		if types.IsIstanbulDigest(parent.MixDigest) {
+		if types.IstanbulDigest == parent.MixDigest {
 			if min := config.GetMinBaseFee(parent.Number); min != nil && num.Cmp(min) < 0 {
 				num.Set(min)
 			}

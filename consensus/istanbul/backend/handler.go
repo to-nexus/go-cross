@@ -116,7 +116,10 @@ func (sb *Backend) HandleMsg(addr common.Address, msg p2p.Msg) (bool, error) {
 				return false, nil
 			}
 			newRequestedBlock := request.Block
-			if types.IsIstanbulDigest(newRequestedBlock.Header().MixDigest) && sb.core.IsCurrentProposal(newRequestedBlock.Hash()) {
+			if (sb.chain.Config().IsCrossway(newRequestedBlock.Number(), newRequestedBlock.Time()) ||
+				types.IstanbulDigest == newRequestedBlock.Header().MixDigest) &&
+				sb.core.IsCurrentProposal(newRequestedBlock.Hash()) {
+
 				sb.logger.Debug("Istanbul: block already proposed", "hash", newRequestedBlock.Hash(), "sender", addr)
 				return true, nil
 			}

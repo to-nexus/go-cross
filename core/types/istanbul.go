@@ -17,11 +17,8 @@
 package types
 
 import (
-	"bytes"
-	"crypto/rand"
 	"errors"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"io"
 )
@@ -41,23 +38,6 @@ var (
 	// ErrInvalidIstanbulHeaderExtra is returned if the length of extra-data is less than 32 bytes
 	ErrInvalidIstanbulHeaderExtra = errors.New("invalid istanbul header extra-data")
 )
-
-// ##CROSS: istanbul digest
-func IsIstanbulDigest(digest common.Hash) bool {
-	return bytes.Equal(digest[:16], IstanbulDigest[:16])
-}
-
-func MakeIstanbulDigest() common.Hash {
-	digest := IstanbulDigest
-
-	_, err := rand.Read(digest[16:])
-	if err != nil {
-		log.Crit("Failed to generate random istanbul hash", "err", err)
-	}
-	return digest
-}
-
-// ##
 
 // IstanbulExtra represents header extradata for qbft protocol
 type IstanbulExtra struct {

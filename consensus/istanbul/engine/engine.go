@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"fmt"
+	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 	"time"
 
@@ -134,19 +135,33 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return istanbul.ErrInvalidExtraDataFormat
 	}
 
-	// Ensure that the mix digest is zero as we don't have fork protection currently
-	if !types.IsIstanbulDigest(header.MixDigest) {
-		return istanbul.ErrInvalidMixDigest
-	}
-
 	// Ensure that the block doesn't contain any uncles which are meaningless in Istanbul
 	if header.UncleHash != nilUncleHash {
 		return istanbul.ErrInvalidUncleHash
 	}
 
-	// Ensure that the block's difficulty is meaningful (may not be correct at this point)
-	if header.Difficulty == nil || header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
-		return istanbul.ErrInvalidDifficulty
+	if chain.Config().IsCrossway(header.Number, header.Time) && header.Number.Cmp(common.Big0) != 0 {
+		signature := header.Difficulty.Bytes()
+		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes()), signature); err != nil {
+			return istanbul.ErrInvalidSignature
+		} else if crypto.PubkeyToAddress(*pub) != header.Coinbase {
+			return istanbul.ErrInvalidProposal
+		} else {
+			parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+			if header.MixDigest != xorHash(crypto.Keccak256Hash(signature), parent.MixDigest) {
+				return istanbul.ErrInvalidMixDigest
+			}
+		}
+	} else {
+		// Ensure that the block's difficulty is meaningful (may not be correct at this point)
+		if header.Difficulty == nil || header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
+			return istanbul.ErrInvalidDifficulty
+		}
+
+		// Ensure that the mix digest is zero as we don't have fork protection currently
+		if types.IstanbulDigest != header.MixDigest {
+			return istanbul.ErrInvalidMixDigest
+		}
 	}
 
 	return e.verifyCascadingFields(chain, header, validators, parents)
@@ -302,9 +317,23 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 		return istanbul.ErrUnknownBlock
 	}
 
-	// ensure that the difficulty equals to istanbul.DefaultDifficulty
-	if header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
-		return istanbul.ErrInvalidDifficulty
+	if chain.Config().IsCrossway(header.Number, header.Time) {
+		signature := header.Difficulty.Bytes()
+		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes()), signature); err != nil {
+			return istanbul.ErrInvalidSignature
+		} else if crypto.PubkeyToAddress(*pub) != header.Coinbase {
+			return istanbul.ErrInvalidProposal
+		} else {
+			parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+			if header.MixDigest != xorHash(crypto.Keccak256Hash(signature), parent.MixDigest) {
+				return istanbul.ErrInvalidMixDigest
+			}
+		}
+	} else {
+		// ensure that the difficulty equals to istanbul.DefaultDifficulty
+		if header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
+			return istanbul.ErrInvalidDifficulty
+		}
 	}
 
 	return e.verifySigner(chain, header, nil, validators)
@@ -313,7 +342,6 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
-	header.MixDigest = types.MakeIstanbulDigest() // ##CROSS: istanbul digest
 
 	// copy the parent extra data as the header extra data
 	number := header.Number.Uint64()
@@ -322,9 +350,6 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
-
-	// use the same difficulty for all blocks
-	header.Difficulty = istanbul.DefaultDifficulty
 
 	// set header's timestamp
 	header.Time = parent.Time + e.cfg.GetConfig(header.Number).BlockPeriod
@@ -348,6 +373,21 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		}
 	}
 	validatorsList := validator.SortedAddresses(validators.List())
+
+	if chain.Config().IsCrossway(header.Number, header.Time) {
+		signature, err := e.sign(header.Number.Bytes())
+		if err != nil {
+			return fmt.Errorf("crossway: failed to sign message, %w", err)
+		}
+		header.Difficulty = new(big.Int).SetBytes(signature)
+		mixDigest := crypto.Keccak256Hash(signature)
+		header.MixDigest = xorHash(mixDigest, parent.MixDigest)
+	} else {
+		// use the same difficulty for all blocks
+		header.Difficulty = istanbul.DefaultDifficulty
+		header.MixDigest = types.IstanbulDigest
+	}
+
 	// add validators in snapshot to extraData's validators section
 	return ApplyHeaderIstanbulExtra(
 		header,
@@ -538,6 +578,13 @@ func setExtra(h *types.Header, extra *types.IstanbulExtra) error {
 
 	h.Extra = payload
 	return nil
+}
+
+func xorHash(x, y common.Hash) (result common.Hash) {
+	for i := 0; i < common.HashLength; i++ {
+		result[i] = x[i] ^ y[i]
+	}
+	return
 }
 
 // AccumulateRewards credits the beneficiary of the given block with a reward.

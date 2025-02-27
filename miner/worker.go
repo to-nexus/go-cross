@@ -993,7 +993,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		ParentHash: parent.Hash(),
 		Number:     number,
 		GasLimit: func() uint64 { // ##CROSS: basefee
-			if types.IsIstanbulDigest(parent.MixDigest) {
+			if w.chainConfig.IsCrossway(parent.Number, parent.Time) {
 				if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
 					return *gasLimit
 				}
