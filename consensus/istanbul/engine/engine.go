@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
@@ -27,15 +28,15 @@ type SignerFn func(data []byte) ([]byte, error)
 type Engine struct {
 	cfg *istanbul.Config
 
-	signer common.Address // Ethereum address of the signing key
-	sign   SignerFn       // Signer function to authorize hashes with
+	signer     common.Address // Ethereum address of the signing key
+	privateKey *ecdsa.PrivateKey
 }
 
-func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn) *Engine {
+func NewEngine(cfg *istanbul.Config, privateKey *ecdsa.PrivateKey, sign SignerFn) *Engine {
 	return &Engine{
-		cfg:    cfg,
-		signer: signer,
-		sign:   sign,
+		cfg:        cfg,
+		signer:     crypto.PubkeyToAddress(privateKey.PublicKey),
+		privateKey: privateKey,
 	}
 }
 
@@ -140,28 +141,14 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return istanbul.ErrInvalidUncleHash
 	}
 
-	if chain.Config().IsCrossway(header.Number, header.Time) && header.Number.Cmp(common.Big0) != 0 {
-		signature := header.Difficulty.Bytes()
-		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes()), signature); err != nil {
-			return istanbul.ErrInvalidSignature
-		} else if crypto.PubkeyToAddress(*pub) != header.Coinbase {
-			return istanbul.ErrInvalidProposal
-		} else {
-			parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-			if header.MixDigest != xorHash(crypto.Keccak256Hash(signature), parent.MixDigest) {
-				return istanbul.ErrInvalidMixDigest
-			}
-		}
-	} else {
-		// Ensure that the block's difficulty is meaningful (may not be correct at this point)
-		if header.Difficulty == nil || header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
-			return istanbul.ErrInvalidDifficulty
-		}
+	// Ensure that the block's difficulty is meaningful (may not be correct at this point)
+	if header.Difficulty == nil || header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
+		return istanbul.ErrInvalidDifficulty
+	}
 
-		// Ensure that the mix digest is zero as we don't have fork protection currently
-		if types.IstanbulDigest != header.MixDigest {
-			return istanbul.ErrInvalidMixDigest
-		}
+	// Ensure that the mix digest is zero as we don't have fork protection currently
+	if types.IstanbulDigest != header.MixDigest {
+		return istanbul.ErrInvalidMixDigest
 	}
 
 	return e.verifyCascadingFields(chain, header, validators, parents)
@@ -317,23 +304,9 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 		return istanbul.ErrUnknownBlock
 	}
 
-	if chain.Config().IsCrossway(header.Number, header.Time) {
-		signature := header.Difficulty.Bytes()
-		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes()), signature); err != nil {
-			return istanbul.ErrInvalidSignature
-		} else if crypto.PubkeyToAddress(*pub) != header.Coinbase {
-			return istanbul.ErrInvalidProposal
-		} else {
-			parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-			if header.MixDigest != xorHash(crypto.Keccak256Hash(signature), parent.MixDigest) {
-				return istanbul.ErrInvalidMixDigest
-			}
-		}
-	} else {
-		// ensure that the difficulty equals to istanbul.DefaultDifficulty
-		if header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
-			return istanbul.ErrInvalidDifficulty
-		}
+	// ensure that the difficulty equals to istanbul.DefaultDifficulty
+	if header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
+		return istanbul.ErrInvalidDifficulty
 	}
 
 	return e.verifySigner(chain, header, nil, validators)
@@ -342,6 +315,9 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
+	// use the same difficulty for all blocks
+	header.Difficulty = istanbul.DefaultDifficulty
+	header.MixDigest = types.IstanbulDigest
 
 	// copy the parent extra data as the header extra data
 	number := header.Number.Uint64()
@@ -373,20 +349,6 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		}
 	}
 	validatorsList := validator.SortedAddresses(validators.List())
-
-	if chain.Config().IsCrossway(header.Number, header.Time) {
-		signature, err := e.sign(header.Number.Bytes())
-		if err != nil {
-			return fmt.Errorf("crossway: failed to sign message, %w", err)
-		}
-		header.Difficulty = new(big.Int).SetBytes(signature)
-		mixDigest := crypto.Keccak256Hash(signature)
-		header.MixDigest = xorHash(mixDigest, parent.MixDigest)
-	} else {
-		// use the same difficulty for all blocks
-		header.Difficulty = istanbul.DefaultDifficulty
-		header.MixDigest = types.IstanbulDigest
-	}
 
 	// add validators in snapshot to extraData's validators section
 	return ApplyHeaderIstanbulExtra(
@@ -580,14 +542,32 @@ func setExtra(h *types.Header, extra *types.IstanbulExtra) error {
 	return nil
 }
 
-func xorHash(x, y common.Hash) (result common.Hash) {
-	for i := 0; i < common.HashLength; i++ {
-		result[i] = x[i] ^ y[i]
-	}
-	return
-}
-
 // AccumulateRewards credits the beneficiary of the given block with a reward.
 func (e *Engine) accumulateRewards(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) {
 
+}
+
+// Sign implements istanbul.Backend.Sign
+func (e *Engine) Sign(data []byte) ([]byte, error) {
+	hashData := crypto.Keccak256(data)
+	return crypto.Sign(hashData, e.privateKey)
+}
+
+// SignWithoutHashing implements istanbul.Backend.SignWithoutHashing and signs input data with the backend's private key without hashing the input data
+func (e *Engine) SignWithoutHashing(data []byte) ([]byte, error) {
+	return crypto.Sign(data, e.privateKey)
+}
+
+// CheckSignature implements istanbul.Backend.CheckSignature
+func (e *Engine) CheckSignature(data []byte, address common.Address, sig []byte) error {
+	signer, err := istanbul.GetSignatureAddress(data, sig)
+	if err != nil {
+		return err
+	}
+	// Compare derived addresses
+	if signer != address {
+		return istanbul.ErrInvalidSignature
+	}
+
+	return nil
 }

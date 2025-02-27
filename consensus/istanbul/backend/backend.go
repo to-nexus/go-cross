@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -44,9 +43,6 @@ const (
 
 type Backend struct {
 	config *istanbul.Config
-
-	privateKey *ecdsa.PrivateKey
-	address    common.Address
 
 	core *core.Core
 
@@ -93,8 +89,6 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Databas
 	sb := &Backend{
 		config:           config,
 		istanbulEventMux: new(event.TypeMux),
-		privateKey:       privateKey,
-		address:          crypto.PubkeyToAddress(privateKey.PublicKey),
 		logger:           log.New(),
 		db:               db,
 		commitCh:         make(chan *types.Block, 1),
@@ -105,7 +99,7 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Databas
 		knownMessages:    knownMessages,
 	}
 
-	sb.engine = engine.NewEngine(sb.config, sb.address, sb.Sign)
+	sb.engine = engine.NewEngine(sb.config, privateKey, sb.Sign) // todo felix
 	return sb
 }
 
@@ -252,27 +246,17 @@ func (sb *Backend) Verify(proposal istanbul.Proposal) (time.Duration, error) {
 
 // Sign implements istanbul.Backend.Sign
 func (sb *Backend) Sign(data []byte) ([]byte, error) {
-	hashData := crypto.Keccak256(data)
-	return crypto.Sign(hashData, sb.privateKey)
+	return sb.engine.Sign(data)
 }
 
 // SignWithoutHashing implements istanbul.Backend.SignWithoutHashing and signs input data with the backend's private key without hashing the input data
 func (sb *Backend) SignWithoutHashing(data []byte) ([]byte, error) {
-	return crypto.Sign(data, sb.privateKey)
+	return sb.engine.SignWithoutHashing(data)
 }
 
 // CheckSignature implements istanbul.Backend.CheckSignature
 func (sb *Backend) CheckSignature(data []byte, address common.Address, sig []byte) error {
-	signer, err := istanbul.GetSignatureAddress(data, sig)
-	if err != nil {
-		return err
-	}
-	// Compare derived addresses
-	if signer != address {
-		return istanbul.ErrInvalidSignature
-	}
-
-	return nil
+	return sb.engine.CheckSignature(data, address, sig)
 }
 
 // HasPropsal implements istanbul.Backend.HashBlock
