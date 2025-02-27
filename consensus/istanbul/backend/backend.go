@@ -99,7 +99,7 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Databas
 		knownMessages:    knownMessages,
 	}
 
-	sb.engine = engine.NewEngine(sb.config, privateKey)
+	sb.engine = engine.NewEngine(sb.config, true, privateKey)
 	return sb
 }
 

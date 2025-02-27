@@ -5,6 +5,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/consensus/istanbul/engine/bls"
 	ecdsaengine "github.com/ethereum/go-ethereum/consensus/istanbul/engine/ecdsa"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -12,7 +13,10 @@ import (
 	"time"
 )
 
-func NewEngine(cfg *istanbul.Config, privateKey *ecdsa.PrivateKey) Engine {
+func NewEngine(cfg *istanbul.Config, useBls bool, privateKey *ecdsa.PrivateKey) Engine {
+	if useBls {
+		return bls.NewEngine(cfg, privateKey)
+	}
 	return ecdsaengine.NewEngine(cfg, privateKey)
 }
 
