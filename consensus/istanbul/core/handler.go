@@ -249,7 +249,8 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 			logger.Error("Istanbul: invalid message payload", "err", err)
 			return err
 		}
-		source, err := c.validateFn(payload, m.Signature())
+		// todo felix check
+		source, err := c.checkValidatorSignature(payload, m.Signature())
 		if err != nil {
 			logger.Error("Istanbul: invalid message signature", "err", err)
 			return errInvalidSigner

@@ -53,8 +53,6 @@ func New(backend istanbul.Backend, config *istanbul.Config) *Core {
 		pendingRequestsMu:  new(sync.Mutex),
 		consensusTimestamp: time.Time{},
 	}
-
-	c.validateFn = c.checkValidatorSignature
 	return c
 }
 
@@ -72,8 +70,7 @@ type Core struct {
 	timeoutSub            *event.TypeMuxSubscription
 	futurePreprepareTimer *time.Timer
 
-	valSet     istanbul.ValidatorSet
-	validateFn func([]byte, []byte) (common.Address, error)
+	valSet istanbul.ValidatorSet
 
 	backlogs   map[common.Address]*prque.Prque[int64, protocols.Message]
 	backlogsMu *sync.Mutex
@@ -300,7 +297,15 @@ func (c *Core) newRoundChangeTimer() {
 }
 
 func (c *Core) checkValidatorSignature(data []byte, sig []byte) (common.Address, error) {
-	return istanbul.CheckValidatorSignature(c.valSet, data, sig)
+	signer, err := c.backend.CheckSignature(data, sig)
+	if err != nil {
+		log.Error("Failed to get signer address", "err", err)
+		return common.Address{}, err
+	}
+	if _, val := c.valSet.GetByAddress(signer); val != nil {
+		return val.Address(), nil
+	}
+	return common.Address{}, istanbul.ErrUnauthorizedAddress
 }
 
 func (c *Core) QuorumSize() int {

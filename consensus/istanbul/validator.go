@@ -27,7 +27,6 @@ import (
 type Validator interface {
 	// Address returns address
 	Address() common.Address
-
 	// String representation of Validator
 	String() string
 }
