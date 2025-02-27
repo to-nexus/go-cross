@@ -262,7 +262,7 @@ func (api *API) IsValidator(blockNum *rpc.BlockNumber) (bool, error) {
 	s, _ := api.GetValidators(&blockNumber)
 
 	for _, v := range s {
-		if v == api.backend.engine.Address() {
+		if v == api.backend.Address() {
 			return true, nil
 		}
 	}

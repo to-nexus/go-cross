@@ -1,4 +1,4 @@
-package engine
+package utils
 
 import "github.com/ethereum/go-ethereum/core/types"
 
@@ -17,7 +17,7 @@ func Combine(applies ...ApplyExtra) ApplyExtra {
 }
 
 func ApplyHeaderIstanbulExtra(header *types.Header, applies ...ApplyExtra) error {
-	extra, err := getExtra(header)
+	extra, err := GetExtra(header)
 	if err != nil {
 		return err
 	}
@@ -27,5 +27,5 @@ func ApplyHeaderIstanbulExtra(header *types.Header, applies ...ApplyExtra) error
 		return err
 	}
 
-	return setExtra(header, extra)
+	return SetExtra(header, extra)
 }

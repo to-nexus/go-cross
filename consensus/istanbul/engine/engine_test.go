@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"github.com/ethereum/go-ethereum/consensus/istanbul/engine/utils"
 	"math/big"
 	"reflect"
 	"testing"
@@ -22,9 +23,9 @@ func TestPrepareExtra(t *testing.T) {
 	expectedResult := hexutil.MustDecode("0xf87aa00000000000000000000000000000000000000000000000000000000000000000f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080c0")
 
 	h := &types.Header{}
-	err := ApplyHeaderIstanbulExtra(
+	err := utils.ApplyHeaderIstanbulExtra(
 		h,
-		WriteValidators(validators),
+		utils.WriteValidators(validators),
 	)
 	if err != nil {
 		t.Errorf("error mismatch: have %v, want: nil", err)
@@ -55,16 +56,16 @@ func TestWriteCommittedSeals(t *testing.T) {
 	}
 
 	// normal case
-	err := ApplyHeaderIstanbulExtra(
+	err := utils.ApplyHeaderIstanbulExtra(
 		h,
-		writeCommittedSeals([][]byte{expectedCommittedSeal}),
+		utils.WriteCommittedSeals([][]byte{expectedCommittedSeal}),
 	)
 	if err != nil {
 		t.Errorf("error mismatch: have %v, want: nil", err)
 	}
 
 	// verify istanbul extra-data
-	istExtra, err := getExtra(h)
+	istExtra, err := utils.GetExtra(h)
 	if err != nil {
 		t.Errorf("error mismatch: have %v, want nil", err)
 	}
@@ -74,9 +75,9 @@ func TestWriteCommittedSeals(t *testing.T) {
 
 	// invalid seal
 	unexpectedCommittedSeal := append(expectedCommittedSeal, make([]byte, 1)...)
-	err = ApplyHeaderIstanbulExtra(
+	err = utils.ApplyHeaderIstanbulExtra(
 		h,
-		writeCommittedSeals([][]byte{unexpectedCommittedSeal}),
+		utils.WriteCommittedSeals([][]byte{unexpectedCommittedSeal}),
 	)
 	if err != istanbul.ErrInvalidCommittedSeals {
 		t.Errorf("error mismatch: have %v, want %v", err, istanbul.ErrInvalidCommittedSeals)
@@ -105,16 +106,16 @@ func TestWriteRoundNumber(t *testing.T) {
 	}
 
 	// normal case
-	err := ApplyHeaderIstanbulExtra(
+	err := utils.ApplyHeaderIstanbulExtra(
 		h,
-		writeRoundNumber(big.NewInt(5)),
+		utils.WriteRoundNumber(big.NewInt(5)),
 	)
 	if err != expectedErr {
 		t.Errorf("error mismatch: have %v, want %v", err, expectedErr)
 	}
 
 	// verify istanbul extra-data
-	istExtra, err := getExtra(h)
+	istExtra, err := utils.GetExtra(h)
 	if err != nil {
 		t.Errorf("error mismatch: have %v, want nil", err)
 	}
@@ -142,16 +143,16 @@ func TestWriteValidatorVote(t *testing.T) {
 	}
 
 	// normal case
-	err := ApplyHeaderIstanbulExtra(
+	err := utils.ApplyHeaderIstanbulExtra(
 		h,
-		WriteVote(common.BytesToAddress(hexutil.MustDecode("0x44add0ec310f115a0e603b2d7db9f06777123456")), true),
+		utils.WriteVote(common.BytesToAddress(hexutil.MustDecode("0x44add0ec310f115a0e603b2d7db9f06777123456")), true),
 	)
 	if err != expectedErr {
 		t.Errorf("error mismatch: have %v, want %v", err, expectedErr)
 	}
 
 	// verify istanbul extra-data
-	istExtra, err := getExtra(h)
+	istExtra, err := utils.GetExtra(h)
 	if err != nil {
 		t.Errorf("error mismatch: have %v, want nil", err)
 	}

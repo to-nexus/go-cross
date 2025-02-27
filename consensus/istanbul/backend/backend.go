@@ -46,7 +46,7 @@ type Backend struct {
 
 	core *core.Core
 
-	engine *engine.Engine
+	engine engine.Engine
 
 	istanbulEventMux *event.TypeMux
 
@@ -99,11 +99,11 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Databas
 		knownMessages:    knownMessages,
 	}
 
-	sb.engine = engine.NewEngine(sb.config, privateKey, sb.Sign) // todo felix
+	sb.engine = engine.NewEngine(sb.config, privateKey)
 	return sb
 }
 
-func (sb *Backend) Engine() *engine.Engine {
+func (sb *Backend) Engine() engine.Engine {
 	return sb.engine
 }
 

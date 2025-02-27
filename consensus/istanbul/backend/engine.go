@@ -470,16 +470,16 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header) error {
 	}
 
 	// Resolve the authorization key and check against validators
-	validator, err := sb.Engine().Author(header)
+	author, err := sb.Engine().Author(header)
 	if err != nil {
 		logger.Error("Istanbul: invalid header author", "err", err)
 		return err
 	}
 
-	logger = logger.New("header.author", validator)
+	logger = logger.New("header.author", author)
 
-	if _, v := snap.ValSet.GetByAddress(validator); v == nil {
-		logger.Error("Istanbul: header author is not a validator", "Validators", snap.ValSet, "Author", validator)
+	if _, v := snap.ValSet.GetByAddress(author); v == nil {
+		logger.Error("Istanbul: header author is not a validator", "Validators", snap.ValSet, "Author", author)
 		return istanbul.ErrUnauthorized
 	}
 
@@ -493,7 +493,7 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header) error {
 	logger = logger.New("candidate", candidate.String(), "authorize", authorize)
 	// Header authorized, discard any previous votes from the validator
 	for i, vote := range snap.Votes {
-		if vote.Validator == validator && vote.Address == candidate {
+		if vote.Validator == author && vote.Address == candidate {
 			logger.Trace("Istanbul: discard previous vote from tally", "old.authorize", vote.Authorize)
 			// Uncast the vote from the cached tally
 			snap.uncast(vote.Address, vote.Authorize)
@@ -507,7 +507,7 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header) error {
 	logger.Debug("Istanbul: add vote to tally")
 	if snap.cast(candidate, authorize) {
 		snap.Votes = append(snap.Votes, &Vote{
-			Validator: validator,
+			Validator: author,
 			Block:     number,
 			Address:   candidate,
 			Authorize: authorize,
