@@ -15,7 +15,11 @@ import (
 
 func NewEngine(cfg *istanbul.Config, useBls bool, privateKey *ecdsa.PrivateKey) Engine {
 	if useBls {
-		return bls.NewEngine(cfg, privateKey)
+		engine, err := bls.NewEngine(cfg, privateKey)
+		if err != nil {
+			panic(err)
+		}
+		return engine
 	}
 	return ecdsaengine.NewEngine(cfg, privateKey)
 }

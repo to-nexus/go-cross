@@ -4,6 +4,8 @@
 package bls
 
 import (
+	"crypto/ecdsa"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/bls/blst"
 	"github.com/ethereum/go-ethereum/crypto/bls/common"
 	"github.com/ethereum/go-ethereum/crypto/bls/herumi"
@@ -12,6 +14,12 @@ import (
 // Initialize herumi temporarily while we transition to blst for ethdo.
 func init() {
 	herumi.Init()
+}
+
+// DeriveFromECDSA generates a BLS secret key from the given EC private key.
+// It is deterministic process. Same EC private key yields the same secret key.
+func DeriveFromECDSA(priv *ecdsa.PrivateKey) (SecretKey, error) {
+	return blst.GenerateKey(crypto.FromECDSA(priv))
 }
 
 // SecretKeyFromBytes creates a BLS private key from a BigEndian byte slice.

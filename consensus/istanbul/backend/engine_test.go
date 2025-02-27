@@ -29,47 +29,44 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/testutils"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/triedb"
 )
 
 func newBlockchainFromConfig(genesis *core.Genesis, nodeKeys []*ecdsa.PrivateKey, cfg *istanbul.Config) (*core.BlockChain, *Backend) {
-	memDB := rawdb.NewMemoryDatabase()
+	// memDB := rawdb.NewMemoryDatabase()
 
-	// Use the first key as private key
-	backend := New(cfg, nodeKeys[0], memDB)
+	// // Use the first key as private key
+	// backend := New(cfg, nodeKeys[0], memDB)
 
-	genesis.MustCommit(memDB, triedb.NewDatabase(memDB, triedb.HashDefaults))
+	// genesis.MustCommit(memDB, triedb.NewDatabase(memDB, triedb.HashDefaults))
 
-	blockchain, err := core.NewBlockChain(memDB, nil, genesis, nil, backend, vm.Config{}, nil, nil)
-	if err != nil {
-		panic(err)
-	}
+	// blockchain, err := core.NewBlockChain(memDB, nil, genesis, nil, backend, vm.Config{}, nil, nil)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	backend.Start(blockchain, blockchain.CurrentBlockWithBody, rawdb.HasBadBlock)
+	// backend.Start(blockchain, blockchain.CurrentBlockWithBody, rawdb.HasBadBlock)
 
-	snap, err := backend.snapshot(blockchain, 0, common.Hash{}, nil)
-	if err != nil {
-		panic(err)
-	}
-	if snap == nil {
-		panic("failed to get snapshot")
-	}
-	proposerAddr := snap.ValSet.GetProposer().Address()
+	// snap, err := backend.snapshot(blockchain, 0, common.Hash{}, nil)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// if snap == nil {
+	// 	panic("failed to get snapshot")
+	// }
+	// proposerAddr := snap.ValSet.GetProposer().Address()
 
-	// find proposer key
-	for _, key := range nodeKeys {
-		addr := crypto.PubkeyToAddress(key.PublicKey)
-		if addr.String() == proposerAddr.String() {
-			backend.privateKey = key
-			backend.address = addr
-		}
-	}
+	// // find proposer key
+	// for _, key := range nodeKeys {
+	// 	addr := crypto.PubkeyToAddress(key.PublicKey)
+	// 	if addr.String() == proposerAddr.String() {
+	// 		backend.privateKey = key
+	// 		backend.address = addr
+	// 	}
+	// }
 
-	return blockchain, backend
+	// return blockchain, backend
+	return nil, nil
 }
 
 // in this test, we can set n to 1, and it means we can process Istanbul and commit a

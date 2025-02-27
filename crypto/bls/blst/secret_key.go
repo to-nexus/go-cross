@@ -18,6 +18,19 @@ type bls12SecretKey struct {
 }
 
 // RandKey creates a new private key using a random method provided as an io.Reader.
+func GenerateKey(ikm []byte) (common.SecretKey, error) {
+	if len(ikm) != 32 {
+		return nil, fmt.Errorf("ikm must be %d bytes", 32)
+	}
+	// Defensive check, that we have not generated a secret key,
+	secKey := &bls12SecretKey{blst.KeyGen(ikm[:])}
+	if IsZero(secKey.Marshal()) {
+		return nil, common.ErrZeroKey
+	}
+	return secKey, nil
+}
+
+// RandKey creates a new private key using a random method provided as an io.Reader.
 func RandKey() (common.SecretKey, error) {
 	// Generate 32 bytes of randomness
 	var ikm [32]byte

@@ -1,7 +1,6 @@
 package bls
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
@@ -12,7 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/pkg/errors"
 	"math/big"
 	"time"
 )
@@ -21,15 +22,22 @@ type Engine struct {
 	cfg *istanbul.Config
 
 	signer     common.Address // Ethereum address of the signing key
-	privateKey *ecdsa.PrivateKey
+	publicKey  bls.PublicKey
+	privateKey bls.SecretKey
 }
 
-func NewEngine(cfg *istanbul.Config, privateKey *ecdsa.PrivateKey) *Engine {
+func NewEngine(cfg *istanbul.Config, privateKey *ecdsa.PrivateKey) (*Engine, error) {
+	pk, err := bls.DeriveFromECDSA(privateKey)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Engine{
 		cfg:        cfg,
 		signer:     crypto.PubkeyToAddress(privateKey.PublicKey),
-		privateKey: privateKey,
-	}
+		publicKey:  pk.PublicKey(),
+		privateKey: pk,
+	}, nil
 }
 
 func (e *Engine) Address() common.Address {
@@ -80,10 +88,10 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	// verify the header of proposed block
 	err := e.VerifyHeader(chain, block.Header(), nil, validators)
-	if err == nil || err == istanbul.ErrEmptyCommittedSeals {
+	if err == nil || errors.Is(err, istanbul.ErrEmptyCommittedSeals) {
 		// ignore errEmptyCommittedSeals error because we don't have the committed seals yet
 		return 0, nil
-	} else if err == consensus.ErrFutureBlock {
+	} else if errors.Is(err, consensus.ErrFutureBlock) {
 		return time.Until(time.Unix(int64(block.Header().Time), 0)), consensus.ErrFutureBlock
 	}
 
@@ -197,19 +205,26 @@ func (e *Engine) ExtractGenesisValidators(header *types.Header) ([]common.Addres
 
 // Sign implements istanbul.Backend.Sign
 func (e *Engine) Sign(data []byte) ([]byte, error) {
-	return bytes.Repeat([]byte{0x00}, 65), nil // todo
-	//hashData := crypto.Keccak256(data)
-	//return crypto.Sign(hashData, e.privateKey)
+	return e.privateKey.Sign(crypto.Keccak256(data)).Marshal(), nil
 }
 
 // SignWithoutHashing implements istanbul.Backend.SignWithoutHashing and signs input data with the backend's private key without hashing the input data
 func (e *Engine) SignWithoutHashing(data []byte) ([]byte, error) {
-	return crypto.Sign(data, e.privateKey)
+	return e.privateKey.Sign(data).Marshal(), nil
 }
 
 // CheckSignature implements istanbul.Backend.CheckSignature
 func (e *Engine) CheckSignature(data []byte, sig []byte) (common.Address, error) {
-	return istanbul.GetSignatureAddress(data, sig)
+	signature, err := bls.SignatureFromBytes(sig)
+	// todo
+	if err != nil {
+		return common.Address{}, err
+	}
+	if signature.Verify(e.publicKey, crypto.Keccak256(data)) {
+		return e.signer, nil
+	} else {
+		return common.Address{}, istanbul.ErrInvalidSignature
+	}
 }
 
 // Seal generates a new block for the given input block with the local miner's
@@ -279,14 +294,14 @@ func (e *Engine) ReadVote(header *types.Header) (candidate common.Address, autho
 
 // VerifyUncles verifies that the given block's uncles conform to the consensus
 // rules of a given engine.
-func (e *Engine) VerifyUncles(chain consensus.ChainReader, block *types.Block) error {
+func (e *Engine) VerifyUncles(_ consensus.ChainReader, block *types.Block) error {
 	if len(block.Uncles()) > 0 {
 		return istanbul.ErrInvalidUncleHash
 	}
 	return nil
 }
 
-func (e *Engine) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool, validators istanbul.ValidatorSet) (chan<- struct{}, <-chan error) {
+func (e *Engine) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, _ []bool, validators istanbul.ValidatorSet) (chan<- struct{}, <-chan error) {
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 	go func() {
