@@ -105,6 +105,16 @@ func TestFeeDelegationSigning(t *testing.T) {
 		}
 	})
 
+	// Verify that both the signing feepayer and transaction's feepayer are same
+	t.Run("Verify transaction's feepayer", func(t *testing.T) {
+		if feepayTx.FeePayer() == nil {
+			t.Fatal("feepayTx.FeePayer() == nil")
+		}
+		if *feepayTx.FeePayer() != payer {
+			t.Fatal("Mismatch feepayer tx and signed :", "tx", *feepayTx.FeePayer(), "signed", payer)
+		}
+	})
+
 	// Check the sender address of the original transaction using the LondonSigner
 	t.Run("Check sender of senderTx with LondonSigner", func(t *testing.T) {
 		got, err := londonSigner.Sender(senderTx)

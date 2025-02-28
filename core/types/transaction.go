@@ -49,7 +49,7 @@ const (
 	AccessListTxType             = 0x01
 	DynamicFeeTxType             = 0x02
 	BlobTxType                   = 0x03
-	FeeDelegatedDynamicFeeTxType = 0x04 // ##CROSS: fee delegation
+	FeeDelegatedDynamicFeeTxType = 0x07 // ##CROSS: fee delegation
 )
 
 // Transaction is an Ethereum transaction.
@@ -91,10 +91,6 @@ type TxData interface {
 
 	rawSignatureValues() (v, r, s *big.Int)
 	setSignatureValues(chainID, v, r, s *big.Int)
-
-	// ##CROSS: fee delegation
-	feePayer() *common.Address
-	rawFeePayerSignatureValues() (v, r, s *big.Int)
 
 	// effectiveGasPrice computes the gas price paid by the transaction, given
 	// the inclusion block baseFee.
@@ -317,12 +313,20 @@ func (tx *Transaction) Nonce() uint64 { return tx.inner.nonce() }
 
 // ##CROSS: fee delegation
 // FeePayer returns the feePayer's address of the transaction.
-func (tx *Transaction) FeePayer() *common.Address { return tx.inner.feePayer() }
+func (tx *Transaction) FeePayer() *common.Address {
+	if v, ok := tx.inner.(*FeeDelegatedDynamicFeeTx); ok {
+		return v.feePayer()
+	}
+	return nil
+}
 
 // RawFeePayerSignatureValues returns the feePayer's FV, FR, FS signature values of the transaction.
 // The return values should not be modified by the caller.
 func (tx *Transaction) RawFeePayerSignatureValues() (v, r, s *big.Int) {
-	return tx.inner.rawFeePayerSignatureValues()
+	if v, ok := tx.inner.(*FeeDelegatedDynamicFeeTx); ok {
+		return v.rawFeePayerSignatureValues()
+	}
+	return nil, nil, nil
 }
 
 // To returns the recipient address of the transaction.
