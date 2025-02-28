@@ -297,15 +297,7 @@ func (c *Core) newRoundChangeTimer() {
 }
 
 func (c *Core) checkValidatorSignature(data []byte, sig []byte) (common.Address, error) {
-	signer, err := c.backend.CheckSignature(data, sig)
-	if err != nil {
-		log.Error("Failed to get signer address", "err", err)
-		return common.Address{}, err
-	}
-	if _, val := c.valSet.GetByAddress(signer); val != nil {
-		return val.Address(), nil
-	}
-	return common.Address{}, istanbul.ErrUnauthorizedAddress
+	return istanbul.CheckValidatorSignature(c.valSet, data, sig)
 }
 
 func (c *Core) QuorumSize() int {

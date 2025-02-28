@@ -255,8 +255,8 @@ func (sb *Backend) SignWithoutHashing(data []byte) ([]byte, error) {
 }
 
 // CheckSignature implements istanbul.Backend.CheckSignature
-func (sb *Backend) CheckSignature(data []byte, sig []byte) (common.Address, error) {
-	return sb.engine.CheckSignature(data, sig)
+func (sb *Backend) CheckSignature(data []byte, address common.Address, sig []byte) error {
+	return sb.engine.CheckSignature(data, address, sig)
 }
 
 // HasPropsal implements istanbul.Backend.HashBlock

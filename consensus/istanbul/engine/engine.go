@@ -43,7 +43,7 @@ type Engine interface {
 
 	Sign(data []byte) ([]byte, error)
 	SignWithoutHashing(data []byte) ([]byte, error)
-	CheckSignature(data []byte, sig []byte) (common.Address, error)
+	CheckSignature(data []byte, address common.Address, sig []byte) error
 
 	Seal(chain consensus.ChainHeaderReader, block *types.Block, validators istanbul.ValidatorSet) (*types.Block, error)
 	SealHash(header *types.Header) common.Hash

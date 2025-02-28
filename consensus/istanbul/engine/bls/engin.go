@@ -131,7 +131,7 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
-	// use the same difficulty for all blocks
+	// todo felix check
 	header.Difficulty = istanbul.DefaultDifficulty
 	header.MixDigest = types.IstanbulDigest
 
@@ -210,21 +210,25 @@ func (e *Engine) Sign(data []byte) ([]byte, error) {
 
 // SignWithoutHashing implements istanbul.Backend.SignWithoutHashing and signs input data with the backend's private key without hashing the input data
 func (e *Engine) SignWithoutHashing(data []byte) ([]byte, error) {
+	if len(data) != crypto.DigestLength {
+		return nil, fmt.Errorf("hash is required to be exactly %d bytes (%d)", crypto.DigestLength, len(data))
+	}
 	return e.privateKey.Sign(data).Marshal(), nil
 }
 
 // CheckSignature implements istanbul.Backend.CheckSignature
-func (e *Engine) CheckSignature(data []byte, sig []byte) (common.Address, error) {
-	signature, err := bls.SignatureFromBytes(sig)
-	// todo
-	if err != nil {
-		return common.Address{}, err
-	}
-	if signature.Verify(e.publicKey, crypto.Keccak256(data)) {
-		return e.signer, nil
-	} else {
-		return common.Address{}, istanbul.ErrInvalidSignature
-	}
+func (e *Engine) CheckSignature(data []byte, address common.Address, sig []byte) error {
+	return nil
+	//signature, err := bls.SignatureFromBytes(sig)
+	//if err != nil {
+	//	return common.Address{}, err
+	//}
+	//// todo felix e.publicKey 이 아니라 입력을 받아야 함
+	//if signature.Verify(e.publicKey, crypto.Keccak256(data)) {
+	//	return e.signer, nil
+	//} else {
+	//	return common.Address{}, istanbul.ErrInvalidSignature
+	//}
 }
 
 // Seal generates a new block for the given input block with the local miner's

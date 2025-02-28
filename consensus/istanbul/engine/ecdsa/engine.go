@@ -206,8 +206,17 @@ func (e *Engine) SignWithoutHashing(data []byte) ([]byte, error) {
 }
 
 // CheckSignature implements istanbul.Backend.CheckSignature
-func (e *Engine) CheckSignature(data []byte, sig []byte) (common.Address, error) {
-	return istanbul.GetSignatureAddress(data, sig)
+func (e *Engine) CheckSignature(data []byte, address common.Address, sig []byte) error {
+	signer, err := istanbul.GetSignatureAddress(data, sig)
+	if err != nil {
+		return err
+	}
+	// Compare derived addresses
+	if signer != address {
+		return istanbul.ErrInvalidSignature
+	}
+
+	return nil
 }
 
 // Seal generates a new block for the given input block with the local miner's
