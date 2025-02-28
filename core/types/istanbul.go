@@ -46,9 +46,9 @@ func IsIstanbulDigest(digest common.Hash) bool {
 	return bytes.Equal(digest[:16], IstanbulDigest[:16])
 }
 
-func MakeIstanbulDigest(secret common.Hash) common.Hash {
+func MakeIstanbulDigest(seed common.Hash) common.Hash {
 	digest := IstanbulDigest
-	copy(digest[16:], secret[:16])
+	copy(digest[16:], seed[:16])
 	return digest
 }
 
