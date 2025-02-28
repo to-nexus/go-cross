@@ -1411,9 +1411,9 @@ type RPCTransaction struct {
 
 	// ##CROSS: fee delegation
 	FeePayer *common.Address `json:"feePayer,omitempty"`
-	Vf       *hexutil.Big    `json:"vf,omitempty"`
-	Rf       *hexutil.Big    `json:"rf,omitempty"`
-	Sf       *hexutil.Big    `json:"sf,omitempty"`
+	FV       *hexutil.Big    `json:"fv,omitempty"`
+	FR       *hexutil.Big    `json:"fr,omitempty"`
+	FS       *hexutil.Big    `json:"fs,omitempty"`
 }
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
@@ -1505,9 +1505,9 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 		}
 		result.FeePayer = tx.FeePayer()
 		v, r, s := tx.RawFeePayerSignatureValues()
-		result.Vf = (*hexutil.Big)(v)
-		result.Rf = (*hexutil.Big)(r)
-		result.Sf = (*hexutil.Big)(s)
+		result.FV = (*hexutil.Big)(v)
+		result.FR = (*hexutil.Big)(r)
+		result.FS = (*hexutil.Big)(s)
 	}
 	return result
 }
@@ -1885,7 +1885,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(b.ChainConfig().ChainID), tx); err != nil {
 			return common.Hash{}, err
 		} else if feePayer != *tx.FeePayer() {
-			return common.Hash{}, fmt.Errorf("feepayer's signature mismatch")
+			return common.Hash{}, fmt.Errorf("feepayer's signature mismatch. recoverd: %v want: %v", feePayer, *tx.FeePayer())
 		}
 	}
 

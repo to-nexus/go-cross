@@ -28,9 +28,9 @@ type FeeDelegatedDynamicFeeTx struct { // ##CROSS: fee delegation
 	SenderTx DynamicFeeTx
 	FeePayer *common.Address `rlp:"nil"`
 	// Signature values
-	Vf *big.Int `json:"vf" gencodec:"required"` // feePayer V
-	Rf *big.Int `json:"rf" gencodec:"required"` // feePayer R
-	Sf *big.Int `json:"sf" gencodec:"required"` // feePayer S
+	FV *big.Int `json:"fv" gencodec:"required"` // feePayer V
+	FR *big.Int `json:"fv" gencodec:"required"` // feePayer R
+	FS *big.Int `json:"fs" gencodec:"required"` // feePayer S
 }
 
 func (tx *FeeDelegatedDynamicFeeTx) SetSenderTx(senderTx DynamicFeeTx) {
@@ -55,18 +55,18 @@ func (tx *FeeDelegatedDynamicFeeTx) copy() TxData {
 	cpy := &FeeDelegatedDynamicFeeTx{
 		SenderTx: tx.copySenderTx(),
 		FeePayer: copyAddressPtr(tx.FeePayer),
-		Vf:       new(big.Int),
-		Rf:       new(big.Int),
-		Sf:       new(big.Int),
+		FV:       new(big.Int),
+		FR:       new(big.Int),
+		FS:       new(big.Int),
 	}
-	if tx.Vf != nil {
-		cpy.Vf.Set(tx.Vf)
+	if tx.FV != nil {
+		cpy.FV.Set(tx.FV)
 	}
-	if tx.Rf != nil {
-		cpy.Rf.Set(tx.Rf)
+	if tx.FR != nil {
+		cpy.FR.Set(tx.FR)
 	}
-	if tx.Sf != nil {
-		cpy.Sf.Set(tx.Sf)
+	if tx.FS != nil {
+		cpy.FS.Set(tx.FS)
 	}
 	return cpy
 }
@@ -126,7 +126,7 @@ func (tx *FeeDelegatedDynamicFeeTx) nonce() uint64             { return tx.Sende
 func (tx *FeeDelegatedDynamicFeeTx) to() *common.Address       { return tx.SenderTx.To }
 func (tx *FeeDelegatedDynamicFeeTx) feePayer() *common.Address { return tx.FeePayer }
 func (tx *FeeDelegatedDynamicFeeTx) rawFeePayerSignatureValues() (v, r, s *big.Int) {
-	return tx.Vf, tx.Rf, tx.Sf
+	return tx.FV, tx.FR, tx.FS
 }
 
 func (tx *FeeDelegatedDynamicFeeTx) rawSignatureValues() (v, r, s *big.Int) {
@@ -134,7 +134,7 @@ func (tx *FeeDelegatedDynamicFeeTx) rawSignatureValues() (v, r, s *big.Int) {
 }
 
 func (tx *FeeDelegatedDynamicFeeTx) setSignatureValues(chainID, v, r, s *big.Int) {
-	tx.Vf, tx.Rf, tx.Sf = v, r, s
+	tx.FV, tx.FR, tx.FS = v, r, s
 }
 
 func (tx *FeeDelegatedDynamicFeeTx) encode(b *bytes.Buffer) error {

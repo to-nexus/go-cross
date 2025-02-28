@@ -230,6 +230,10 @@ func (tx *Transaction) setDecoded(inner TxData, size uint64) {
 	}
 }
 
+func (tx *Transaction) GetTxData() TxData { // ##CROSS: fee delegation
+	return tx.inner.copy()
+}
+
 func sanityCheckSignature(v *big.Int, r *big.Int, s *big.Int, maybeProtected bool) error {
 	if isProtectedV(v) && !maybeProtected {
 		return ErrUnexpectedProtection
@@ -505,7 +509,14 @@ func (tx *Transaction) Hash() common.Hash {
 	if tx.Type() == LegacyTxType {
 		h = rlpHash(tx.inner)
 	} else {
-		h = prefixedRlpHash(tx.Type(), tx.inner)
+		// ##CROSS: fee delegation
+		txTyp, inner := tx.Type(), tx.inner
+		if txTyp == FeeDelegatedDynamicFeeTxType {
+			txTyp = DynamicFeeTxType
+			inner = &tx.inner.(*FeeDelegatedDynamicFeeTx).SenderTx
+		}
+		h = prefixedRlpHash(txTyp, inner)
+		// ##
 	}
 	tx.hash.Store(h)
 	return h

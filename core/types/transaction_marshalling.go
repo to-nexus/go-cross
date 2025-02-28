@@ -58,9 +58,9 @@ type txJSON struct {
 
 	// ##CROSS: fee delegation
 	FeePayer *common.Address `json:"feePayer,omitempty"`
-	Vf       *hexutil.Big    `json:"vf,omitempty"`
-	Rf       *hexutil.Big    `json:"rf,omitempty"`
-	Sf       *hexutil.Big    `json:"sf,omitempty"`
+	FV       *hexutil.Big    `json:"fv,omitempty"`
+	FR       *hexutil.Big    `json:"fr,omitempty"`
+	FS       *hexutil.Big    `json:"fs,omitempty"`
 }
 
 // yParityValue returns the YParity value from JSON. For backwards-compatibility reasons,
@@ -179,9 +179,9 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		enc.S = (*hexutil.Big)(itx.SenderTx.S)
 
 		enc.FeePayer = itx.FeePayer
-		enc.Vf = (*hexutil.Big)(itx.Vf)
-		enc.Rf = (*hexutil.Big)(itx.Rf)
-		enc.Sf = (*hexutil.Big)(itx.Sf)
+		enc.FV = (*hexutil.Big)(itx.FV)
+		enc.FR = (*hexutil.Big)(itx.FR)
+		enc.FS = (*hexutil.Big)(itx.FS)
 	}
 	return json.Marshal(&enc)
 }
@@ -498,21 +498,21 @@ func (tx *Transaction) UnmarshalJSON(input []byte) error {
 			return errors.New("missing required field 'feePayer' in transaction")
 		}
 		itx.FeePayer = dec.FeePayer
-		if dec.Vf == nil {
+		if dec.FV == nil {
 			return errors.New("missing required field 'fv' in transaction")
 		}
-		itx.Vf = (*big.Int)(dec.Vf)
-		if dec.Rf == nil {
+		itx.FV = (*big.Int)(dec.FV)
+		if dec.FR == nil {
 			return errors.New("missing required field 'fr' in transaction")
 		}
-		itx.Rf = (*big.Int)(dec.Rf)
-		if dec.Sf == nil {
+		itx.FR = (*big.Int)(dec.FR)
+		if dec.FS == nil {
 			return errors.New("missing required field 'fs' in transaction")
 		}
-		itx.Sf = (*big.Int)(dec.Sf)
-		withSignature = itx.Vf.Sign() != 0 || itx.Rf.Sign() != 0 || itx.Sf.Sign() != 0
+		itx.FS = (*big.Int)(dec.FS)
+		withSignature = itx.FV.Sign() != 0 || itx.FR.Sign() != 0 || itx.FS.Sign() != 0
 		if withSignature {
-			if err := sanityCheckSignature(itx.Vf, itx.Rf, itx.Sf, false); err != nil {
+			if err := sanityCheckSignature(itx.FV, itx.FR, itx.FS, false); err != nil {
 				return err
 			}
 		}

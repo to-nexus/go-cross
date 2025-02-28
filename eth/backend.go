@@ -544,6 +544,8 @@ func (s *Ethereum) Start() error {
 	}
 	// Start the networking layer and the light server if requested
 	s.handler.Start(maxPeers)
+
+	log.Info("Ethereum downloader", "syncmode", s.SyncMode())
 	return nil
 }
 

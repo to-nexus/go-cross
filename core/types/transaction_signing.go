@@ -310,26 +310,7 @@ func (s feeDelegationSigner) SignatureValues(tx *Transaction, sig []byte) (R, S,
 // Hash returns the hash to be signed by the sender.
 // It does not uniquely identify the transaction.
 func (s feeDelegationSigner) Hash(tx *Transaction) common.Hash {
-	senderV, senderR, senderS := tx.RawSignatureValues()
-	return prefixedRlpHash(
-		tx.Type(),
-		[]interface{}{
-			[]interface{}{
-				s.chainId,
-				tx.Nonce(),
-				tx.GasTipCap(),
-				tx.GasFeeCap(),
-				tx.Gas(),
-				tx.To(),
-				tx.Value(),
-				tx.Data(),
-				tx.AccessList(),
-				senderV,
-				senderR,
-				senderS,
-			},
-			tx.FeePayer(),
-		})
+	return s.londonSigner.Hash(tx)
 }
 
 type londonSigner struct{ eip2930Signer }

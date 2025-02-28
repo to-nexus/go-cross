@@ -73,11 +73,11 @@ func (c *Core) broadcastPrepare() {
 func (c *Core) handlePrepare(prepare *protocols.Prepare) error {
 	logger := c.currentLogger(true, prepare).New()
 
-	logger.Info("Istanbul: handle PREPARE message", "prepares.count", c.current.Prepares.Size(), "quorum", c.QuorumSize())
+	logger.Info("Istanbul: handle PREPARE message", "prepares.count", c.current.Prepares.Size(), "quorum", c.QuorumSize(), "prepare.digest", prepare.Digest.Hex())
 
 	// Check digest
 	if prepare.Digest != c.current.Proposal().Hash() {
-		logger.Error("Istanbul: invalid PREPARE message digest")
+		logger.Error("Istanbul: invalid PREPARE message digest", "prepare", prepare.Digest.Hex(), "current", c.current.Proposal().Hash())
 		return errInvalidMessage
 	}
 

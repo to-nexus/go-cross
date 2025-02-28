@@ -18,12 +18,11 @@ package types
 
 import (
 	"bytes"
-	"crypto/rand"
 	"errors"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
 	"io"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 var (
@@ -47,13 +46,9 @@ func IsIstanbulDigest(digest common.Hash) bool {
 	return bytes.Equal(digest[:16], IstanbulDigest[:16])
 }
 
-func MakeIstanbulDigest() common.Hash {
+func MakeIstanbulDigest(secret common.Hash) common.Hash {
 	digest := IstanbulDigest
-
-	_, err := rand.Read(digest[16:])
-	if err != nil {
-		log.Crit("Failed to generate random istanbul hash", "err", err)
-	}
+	copy(digest[16:], secret[:16])
 	return digest
 }
 
@@ -159,6 +154,6 @@ func IstanbulFilteredHeaderWithRound(h *Header, round uint32) *Header {
 	}
 
 	newHeader.Extra = payload
-
+	newHeader.MixDigest = IstanbulDigest
 	return newHeader
 }
