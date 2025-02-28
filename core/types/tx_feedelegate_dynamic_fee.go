@@ -29,7 +29,7 @@ type FeeDelegatedDynamicFeeTx struct { // ##CROSS: fee delegation
 	FeePayer *common.Address `rlp:"nil"`
 	// Signature values
 	FV *big.Int `json:"fv" gencodec:"required"` // feePayer V
-	FR *big.Int `json:"fv" gencodec:"required"` // feePayer R
+	FR *big.Int `json:"fr" gencodec:"required"` // feePayer R
 	FS *big.Int `json:"fs" gencodec:"required"` // feePayer S
 }
 
