@@ -85,11 +85,8 @@ func TestFeeDelegationSigning(t *testing.T) {
 	t.Run("Sign fee-delegated transaction", func(t *testing.T) {
 		var err error
 		feepayTx, err = SignTx(NewTx(func() *FeeDelegatedDynamicFeeTx {
-			data := &FeeDelegatedDynamicFeeTx{}
-			data.FeePayer = &payer
 			// Copy the original senderTx's inner DynamicFeeTx
-			data.SetSenderTx(*senderTx.inner.(*DynamicFeeTx))
-			return data
+			return NewFeeDelegatedDynamicFeeTx(&payer, *senderTx.inner.(*DynamicFeeTx))
 		}()), feepaySigner, payerKey)
 		if err != nil {
 			t.Fatal(err)

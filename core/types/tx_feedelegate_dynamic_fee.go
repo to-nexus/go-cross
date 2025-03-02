@@ -33,21 +33,26 @@ type FeeDelegatedDynamicFeeTx struct { // ##CROSS: fee delegation
 	FS *big.Int `json:"fs" gencodec:"required"` // feePayer S
 }
 
-func (tx *FeeDelegatedDynamicFeeTx) SetSenderTx(senderTx DynamicFeeTx) {
-	tx.SenderTx.ChainID = senderTx.ChainID
-	tx.SenderTx.Nonce = senderTx.Nonce
-	tx.SenderTx.GasFeeCap = senderTx.GasFeeCap
-	tx.SenderTx.GasTipCap = senderTx.GasTipCap
-	tx.SenderTx.Gas = senderTx.Gas
-	tx.SenderTx.To = senderTx.To
-	tx.SenderTx.Value = senderTx.Value
-	tx.SenderTx.Data = senderTx.Data
-	copy(tx.SenderTx.AccessList, senderTx.AccessList)
-
+func NewFeeDelegatedDynamicFeeTx(feePayer *common.Address, senderTx DynamicFeeTx) *FeeDelegatedDynamicFeeTx {
 	v, r, s := senderTx.rawSignatureValues()
-	tx.SenderTx.V = v
-	tx.SenderTx.R = r
-	tx.SenderTx.S = s
+	tx := &FeeDelegatedDynamicFeeTx{
+		FeePayer: feePayer,
+		SenderTx: DynamicFeeTx{
+			ChainID:   senderTx.ChainID,
+			Nonce:     senderTx.Nonce,
+			GasFeeCap: senderTx.GasFeeCap,
+			GasTipCap: senderTx.GasTipCap,
+			Gas:       senderTx.Gas,
+			To:        senderTx.To,
+			Value:     senderTx.Value,
+			Data:      senderTx.Data,
+			V:         v,
+			R:         r,
+			S:         s,
+		},
+	}
+	copy(tx.SenderTx.AccessList, senderTx.AccessList)
+	return tx
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.

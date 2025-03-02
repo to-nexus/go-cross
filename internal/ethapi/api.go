@@ -667,13 +667,7 @@ func (s *PersonalAccountAPI) SignRawFeeDelegationTransaction(ctx context.Context
 			S:          S,
 		}
 
-		feePayerTx := &types.FeeDelegatedDynamicFeeTx{
-			FeePayer: args.FeePayer,
-		}
-
-		feePayerTx.SetSenderTx(senderTx)
-		tx := types.NewTx(feePayerTx)
-
+		tx := types.NewTx(types.NewFeeDelegatedDynamicFeeTx(args.FeePayer, senderTx))
 		signed, err := wallet.SignTxWithPassphrase(account, passwd, tx, s.b.ChainConfig().ChainID)
 
 		if err != nil {
@@ -2179,13 +2173,7 @@ func (s *TransactionAPI) SignRawFeeDelegationTransaction(ctx context.Context, ar
 			S:          S,
 		}
 
-		feePayerTx := &types.FeeDelegatedDynamicFeeTx{
-			FeePayer: args.FeePayer,
-		}
-
-		feePayerTx.SetSenderTx(senderTx)
-		tx := types.NewTx(feePayerTx)
-
+		tx := types.NewTx(types.NewFeeDelegatedDynamicFeeTx(args.FeePayer, senderTx))
 		signed, err := s.sign(*args.FeePayer, tx)
 		if err != nil {
 			return nil, err
