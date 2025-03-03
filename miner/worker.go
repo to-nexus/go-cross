@@ -287,7 +287,9 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	recommit := worker.config.Recommit
 	if recommit < minRecommitInterval {
 		log.Warn("Sanitizing miner recommit interval", "provided", recommit, "updated", minRecommitInterval)
-		recommit = minRecommitInterval
+		if worker.istanbulBackend == nil { // ##CROSS: istanbul
+			recommit = minRecommitInterval
+		}
 	}
 	worker.recommit = recommit
 
@@ -312,6 +314,9 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	if init {
 		worker.startCh <- struct{}{}
 	}
+
+	log.Warn("Worker Config", "recommit", worker.config.Recommit, "gasCeil", worker.config.GasCeil, "gasPrice", worker.config.GasPrice,
+		"newPayloadTimeout", worker.config.NewPayloadTimeout)
 	return worker
 }
 
@@ -1017,8 +1022,10 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	if w.chainConfig.IsLondon(header.Number) {
 		header.BaseFee = eip1559.CalcBaseFee(w.chainConfig, parent)
 		if !w.chainConfig.IsLondon(parent.Number) {
-			parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
+			if !types.IsIstanbulDigest(parent.MixDigest) { // ##CROSS: istanbul
+				parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
+				header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
+			}
 		}
 	}
 	// Apply EIP-4844, EIP-4788.
