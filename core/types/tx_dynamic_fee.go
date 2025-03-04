@@ -97,12 +97,6 @@ func (tx *DynamicFeeTx) value() *big.Int        { return tx.Value }
 func (tx *DynamicFeeTx) nonce() uint64          { return tx.Nonce }
 func (tx *DynamicFeeTx) to() *common.Address    { return tx.To }
 
-// ##CROSS: fee delegation
-func (tx *DynamicFeeTx) feePayer() *common.Address { return nil }
-func (tx *DynamicFeeTx) rawFeePayerSignatureValues() (v, r, s *big.Int) {
-	return nil, nil, nil
-}
-
 func (tx *DynamicFeeTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
 	if baseFee == nil {
 		return dst.Set(tx.GasFeeCap)

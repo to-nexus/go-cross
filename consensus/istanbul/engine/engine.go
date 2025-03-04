@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"golang.org/x/crypto/sha3"
@@ -313,7 +314,13 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
-	header.MixDigest = types.MakeIstanbulDigest() // ##CROSS: istanbul digest
+
+	// make mixdigest
+	if signed, err := e.sign(crypto.Keccak256(header.Number.Bytes(), chain.Config().ChainID.Bytes())); err != nil {
+		return err
+	} else {
+		header.MixDigest = types.MakeIstanbulDigest(crypto.Keccak256Hash(signed)) // ##CROSS: istanbul digest
+	}
 
 	// copy the parent extra data as the header extra data
 	number := header.Number.Uint64()

@@ -509,25 +509,10 @@ func (args *TransactionArgs) toTransaction() *types.Transaction {
 		}
 		// ##CROSS: fee delegation
 		if args.FeePayer != nil && args.V != nil && args.R != nil && args.S != nil {
-			senderTx := types.DynamicFeeTx{
-				To:         args.To,
-				ChainID:    (*big.Int)(args.ChainID),
-				Nonce:      uint64(*args.Nonce),
-				Gas:        uint64(*args.Gas),
-				GasFeeCap:  (*big.Int)(args.MaxFeePerGas),
-				GasTipCap:  (*big.Int)(args.MaxPriorityFeePerGas),
-				Value:      (*big.Int)(args.Value),
-				Data:       args.data(),
-				AccessList: al,
-				V:          (*big.Int)(args.V),
-				R:          (*big.Int)(args.R),
-				S:          (*big.Int)(args.S),
-			}
-			feePayerTx := &types.FeeDelegatedDynamicFeeTx{
-				FeePayer: args.FeePayer,
-			}
-			feePayerTx.SetSenderTx(senderTx)
-			return types.NewTx(feePayerTx)
+			data.(*types.DynamicFeeTx).V = (*big.Int)(args.V)
+			data.(*types.DynamicFeeTx).R = (*big.Int)(args.R)
+			data.(*types.DynamicFeeTx).S = (*big.Int)(args.S)
+			return types.NewTx(types.NewFeeDelegatedDynamicFeeTx(args.FeePayer, *data.(*types.DynamicFeeTx)))
 		}
 
 	case args.AccessList != nil:

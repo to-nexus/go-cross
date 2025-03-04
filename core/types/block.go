@@ -114,7 +114,7 @@ type headerMarshaling struct {
 func (h *Header) Hash() common.Hash {
 	// ##CROSS: istanbul
 	// If the mix digest is equivalent to the predefined Istanbul digest, use Istanbul specific hash calculation.
-	if IsIstanbulDigest(h.MixDigest) {
+	if h != nil && IsIstanbulDigest(h.MixDigest) {
 		// Seal is reserved in extra-data. To prove block is signed by the proposer.
 		if istanbulHeader := IstanbulFilteredHeader(h); istanbulHeader != nil {
 			return rlpHash(istanbulHeader)

@@ -165,7 +165,6 @@ func FeePayer(signer Signer, tx *Transaction) (common.Address, error) {
 	}
 
 	addr, err := signer.Sender(tx)
-
 	if err != nil {
 		return common.Address{}, err
 	}

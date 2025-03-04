@@ -139,7 +139,7 @@ type Config struct {
 
 // DefaultConfig contains the default configurations for the transaction pool.
 var DefaultConfig = Config{
-	NoLocals:  true, // ##CROSS: istanbul
+	NoLocals:  false,
 	Journal:   "transactions.rlp",
 	Rejournal: time.Hour,
 

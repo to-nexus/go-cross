@@ -236,9 +236,3 @@ func (tx *BlobTx) decode(input []byte) error {
 	}
 	return nil
 }
-
-// ##CROSS: fee delegation
-func (tx *BlobTx) feePayer() *common.Address { return nil }
-func (tx *BlobTx) rawFeePayerSignatureValues() (v, r, s *big.Int) {
-	return nil, nil, nil
-}

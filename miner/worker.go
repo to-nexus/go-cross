@@ -1017,8 +1017,10 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	if w.chainConfig.IsLondon(header.Number) {
 		header.BaseFee = eip1559.CalcBaseFee(w.chainConfig, parent)
 		if !w.chainConfig.IsLondon(parent.Number) {
-			parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
+			if !types.IsIstanbulDigest(parent.MixDigest) { // ##CROSS: istanbul
+				parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
+				header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
+			}
 		}
 	}
 	// Apply EIP-4844, EIP-4788.
