@@ -154,6 +154,5 @@ func IstanbulFilteredHeaderWithRound(h *Header, round uint32) *Header {
 	}
 
 	newHeader.Extra = payload
-	newHeader.MixDigest = IstanbulDigest
 	return newHeader
 }
