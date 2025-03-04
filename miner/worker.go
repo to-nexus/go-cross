@@ -287,9 +287,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	recommit := worker.config.Recommit
 	if recommit < minRecommitInterval {
 		log.Warn("Sanitizing miner recommit interval", "provided", recommit, "updated", minRecommitInterval)
-		if worker.istanbulBackend == nil { // ##CROSS: istanbul
-			recommit = minRecommitInterval
-		}
+		recommit = minRecommitInterval
 	}
 	worker.recommit = recommit
 
@@ -314,9 +312,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	if init {
 		worker.startCh <- struct{}{}
 	}
-
-	log.Warn("Worker Config", "recommit", worker.config.Recommit, "gasCeil", worker.config.GasCeil, "gasPrice", worker.config.GasPrice,
-		"newPayloadTimeout", worker.config.NewPayloadTimeout)
 	return worker
 }
 
