@@ -34,22 +34,9 @@ type FeeDelegatedDynamicFeeTx struct { // ##CROSS: fee delegation
 }
 
 func NewFeeDelegatedDynamicFeeTx(feePayer *common.Address, senderTx DynamicFeeTx) *FeeDelegatedDynamicFeeTx {
-	v, r, s := senderTx.rawSignatureValues()
 	tx := &FeeDelegatedDynamicFeeTx{
 		FeePayer: feePayer,
-		SenderTx: DynamicFeeTx{
-			ChainID:   senderTx.ChainID,
-			Nonce:     senderTx.Nonce,
-			GasFeeCap: senderTx.GasFeeCap,
-			GasTipCap: senderTx.GasTipCap,
-			Gas:       senderTx.Gas,
-			To:        senderTx.To,
-			Value:     senderTx.Value,
-			Data:      senderTx.Data,
-			V:         v,
-			R:         r,
-			S:         s,
-		},
+		SenderTx: senderTx,
 	}
 	copy(tx.SenderTx.AccessList, senderTx.AccessList)
 	return tx
