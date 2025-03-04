@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -333,6 +332,15 @@ func ReadHeaderRange(db ethdb.Reader, number uint64, count uint64) []rlp.RawValu
 	return rlpHeaders
 }
 
+func decodeHeaderRLP(data rlp.RawValue) *types.Header {
+	header := new(types.Header)
+	if err := rlp.DecodeBytes(data, header); err != nil {
+		log.Error("Invalid block header RLP", "err", err)
+		return nil
+	}
+	return header
+}
+
 // ReadHeaderRLP retrieves a block header in its raw RLP database encoding.
 func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
 	var data []byte
@@ -341,9 +349,17 @@ func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValu
 		// comparison is necessary since ancient database only maintains
 		// the canonical data.
 		data, _ = reader.Ancient(ChainFreezerHeaderTable, number)
-		if len(data) > 0 && crypto.Keccak256Hash(data) == hash {
-			return nil
+
+		// ##CROSS: istanbul
+		// Came from Quorum: parse header to make sure we compare using the right hash (IBFT hash is based on a filtered header)
+		if len(data) > 0 {
+			header := decodeHeaderRLP(data)
+			if header.Hash() == hash {
+				return nil
+			}
 		}
+		// ##
+
 		// If not, try reading from leveldb
 		data, _ = db.Get(headerKey(number, hash))
 		return nil
