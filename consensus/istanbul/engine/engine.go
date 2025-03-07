@@ -241,7 +241,7 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 		return err
 	} else {
 		signature := extra.RandomReveal
-		if pub, err := crypto.SigToPub(crypto.Keccak256(append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...)), signature); err != nil {
+		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes(), chain.Config().ChainID.Bytes()), signature); err != nil {
 			return err
 		} else if crypto.PubkeyToAddress(*pub) != signer {
 			return istanbul.ErrMismatchedRandomSignature

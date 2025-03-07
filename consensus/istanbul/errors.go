@@ -25,7 +25,7 @@ var (
 
 	// ErrMismatchedRandomSignature is returned when the signature used
 	// for random value generation does not match the block proposer's address.
-	ErrMismatchedRandomSignature = errors.New("mismatched random signatures")
+	ErrMismatchedRandomSignature = errors.New("mismatched random signature")
 
 	// ErrUnknownBlock is returned when the list of validators is requested for a block
 	// that is not part of the local blockchain.
