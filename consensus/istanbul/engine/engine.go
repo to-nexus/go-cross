@@ -244,7 +244,7 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 		if pub, err := crypto.SigToPub(crypto.Keccak256(append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...)), signature); err != nil {
 			return err
 		} else if crypto.PubkeyToAddress(*pub) != signer {
-			return istanbul.ErrUnauthorized
+			return istanbul.ErrMismatchedRandomSignature
 		} else if header.MixDigest != types.MakeIstanbulDigest(crypto.Keccak256Hash(signature)) {
 			return istanbul.ErrInvalidMixDigest
 		}

@@ -23,6 +23,10 @@ var (
 	// address.
 	ErrInvalidSignature = errors.New("invalid signature")
 
+	// ErrMismatchedRandomSignature is returned when the signature used
+	// for random value generation does not match the block proposer's address.
+	ErrMismatchedRandomSignature = errors.New("mismatched random signatures")
+
 	// ErrUnknownBlock is returned when the list of validators is requested for a block
 	// that is not part of the local blockchain.
 	ErrUnknownBlock = errors.New("unknown block")
