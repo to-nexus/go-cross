@@ -61,6 +61,7 @@ type IstanbulExtra struct {
 	Vote          *ValidatorVote
 	Round         uint32
 	CommittedSeal [][]byte
+	RandomReveal  []byte
 }
 
 // EncodeRLP serializes qist into the Ethereum RLP format.
@@ -71,6 +72,7 @@ func (qst *IstanbulExtra) EncodeRLP(w io.Writer) error {
 		qst.Vote,
 		qst.Round,
 		qst.CommittedSeal,
+		qst.RandomReveal,
 	})
 }
 
@@ -82,11 +84,12 @@ func (qst *IstanbulExtra) DecodeRLP(s *rlp.Stream) error {
 		Vote          *ValidatorVote `rlp:"nil"`
 		Round         uint32
 		CommittedSeal [][]byte
+		RandomReveal  []byte
 	}
 	if err := s.Decode(&extra); err != nil {
 		return err
 	}
-	qst.VanityData, qst.Validators, qst.Vote, qst.Round, qst.CommittedSeal = extra.VanityData, extra.Validators, extra.Vote, extra.Round, extra.CommittedSeal
+	qst.VanityData, qst.Validators, qst.Vote, qst.Round, qst.CommittedSeal, qst.RandomReveal = extra.VanityData, extra.Validators, extra.Vote, extra.Round, extra.CommittedSeal, extra.RandomReveal
 
 	return nil
 }
