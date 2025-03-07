@@ -94,6 +94,14 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			wantConfig: params.CrossTestChainConfig,
 		},
 		{
+			name: "cross dev3 block in DB, genesis == nil",
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), DefaultCrossDev3GenesisBlock())
+			},
+			wantHash:   params.CrossDev3GenesisHash,
+			wantConfig: params.CrossDev3ChainConfig,
+		},
+		{
 			name: "cross dev block in DB, genesis == nil",
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
 				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), DefaultCrossDevGenesisBlock())

@@ -219,7 +219,7 @@ func (e *Engine) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	return e.verifyCommittedSeals(chain, header, parents, validators)
 }
 
-func (e *Engine) verifySigner(_ consensus.ChainHeaderReader, header *types.Header, _ []*types.Header, validators istanbul.ValidatorSet) error {
+func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.Header, _ []*types.Header, validators istanbul.ValidatorSet) error {
 	// Verifying the genesis block is not supported
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -235,6 +235,19 @@ func (e *Engine) verifySigner(_ consensus.ChainHeaderReader, header *types.Heade
 	// Signer should be in the validator set of previous block's extraData.
 	if _, v := validators.GetByAddress(signer); v == nil {
 		return istanbul.ErrUnauthorized
+	}
+
+	if extra, err := types.ExtractIstanbulExtra(header); err != nil {
+		return err
+	} else {
+		signature := extra.RandomReveal
+		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes(), chain.Config().ChainID.Bytes()), signature); err != nil {
+			return err
+		} else if crypto.PubkeyToAddress(*pub) != signer {
+			return istanbul.ErrMismatchedRandomSignature
+		} else if header.MixDigest != types.MakeIstanbulDigest(crypto.Keccak256Hash(signature)) {
+			return istanbul.ErrInvalidMixDigest
+		}
 	}
 
 	return nil
@@ -316,7 +329,8 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	header.Nonce = istanbul.EmptyBlockNonce
 
 	// make mixdigest
-	if signed, err := e.sign(crypto.Keccak256(header.Number.Bytes(), chain.Config().ChainID.Bytes())); err != nil {
+	signed, err := e.sign(append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...))
+	if err != nil {
 		return err
 	} else {
 		header.MixDigest = types.MakeIstanbulDigest(crypto.Keccak256Hash(signed)) // ##CROSS: istanbul digest
@@ -359,12 +373,23 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	return ApplyHeaderIstanbulExtra(
 		header,
 		WriteValidators(validatorsList),
+		WriteRandomReveal(signed),
 	)
 }
 
 func WriteValidators(validators []common.Address) ApplyExtra {
 	return func(extra *types.IstanbulExtra) error {
 		extra.Validators = validators
+		return nil
+	}
+}
+
+func WriteRandomReveal(signature []byte) ApplyExtra {
+	return func(extra *types.IstanbulExtra) error {
+		if len(signature) != 65 {
+			return istanbul.ErrInvalidSignature
+		}
+		extra.RandomReveal = signature
 		return nil
 	}
 }
