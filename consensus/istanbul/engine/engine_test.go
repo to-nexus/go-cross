@@ -19,7 +19,7 @@ func TestPrepareExtra(t *testing.T) {
 	validators[2] = common.BytesToAddress(hexutil.MustDecode("0x6beaaed781d2d2ab6350f5c4566a2c6eaac407a6"))
 	validators[3] = common.BytesToAddress(hexutil.MustDecode("0x8be76812f765c24641ec63dc2852b378aba2b440"))
 
-	expectedResult := hexutil.MustDecode("0xf87aa00000000000000000000000000000000000000000000000000000000000000000f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080c0")
+	expectedResult := hexutil.MustDecode("0xf87ba00000000000000000000000000000000000000000000000000000000000000000f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080c080")
 
 	h := &types.Header{}
 	err := ApplyHeaderIstanbulExtra(
@@ -30,12 +30,12 @@ func TestPrepareExtra(t *testing.T) {
 		t.Errorf("error mismatch: have %v, want: nil", err)
 	}
 	if !reflect.DeepEqual(h.Extra, expectedResult) {
-		t.Errorf("payload mismatch: have %v, want %v", h.Extra, expectedResult)
+		t.Errorf("payload mismatch: have %s, want %s", hexutil.Encode(h.Extra), hexutil.Encode(expectedResult))
 	}
 }
 
 func TestWriteCommittedSeals(t *testing.T) {
-	istRawData := hexutil.MustDecode("0xf85a80f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080c0")
+	istRawData := hexutil.MustDecode("0xf89f80f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080f843b841010203000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080")
 	expectedCommittedSeal := append([]byte{1, 2, 3}, bytes.Repeat([]byte{0x00}, types.IstanbulExtraSeal-3)...)
 	expectedIstExtra := &types.IstanbulExtra{
 		VanityData: []byte{},
@@ -48,6 +48,7 @@ func TestWriteCommittedSeals(t *testing.T) {
 		CommittedSeal: [][]byte{expectedCommittedSeal},
 		Round:         0,
 		Vote:          nil,
+		RandomReveal:  []byte{},
 	}
 
 	h := &types.Header{
@@ -84,7 +85,7 @@ func TestWriteCommittedSeals(t *testing.T) {
 }
 
 func TestWriteRoundNumber(t *testing.T) {
-	istRawData := hexutil.MustDecode("0xf85a80f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c005c0")
+	istRawData := hexutil.MustDecode("0xf85b80f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c005c080")
 	expectedIstExtra := &types.IstanbulExtra{
 		VanityData: []byte{},
 		Validators: []common.Address{
@@ -96,6 +97,7 @@ func TestWriteRoundNumber(t *testing.T) {
 		CommittedSeal: [][]byte{},
 		Round:         5,
 		Vote:          nil,
+		RandomReveal:  []byte{},
 	}
 
 	var expectedErr error
@@ -125,7 +127,7 @@ func TestWriteRoundNumber(t *testing.T) {
 
 func TestWriteValidatorVote(t *testing.T) {
 	vanity := bytes.Repeat([]byte{0x00}, types.IstanbulExtraVanity)
-	istRawData := hexutil.MustDecode("0xf85a80f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c005c0")
+	istRawData := hexutil.MustDecode("0xf83da00000000000000000000000000000000000000000000000000000000000000000c0d79444add0ec310f115a0e603b2d7db9f0677712345681ff80c080")
 	vote := &types.ValidatorVote{RecipientAddress: common.BytesToAddress(hexutil.MustDecode("0x44add0ec310f115a0e603b2d7db9f06777123456")), VoteType: types.IstanbulAuthVote}
 	expectedIstExtra := &types.IstanbulExtra{
 		VanityData:    vanity,
