@@ -1161,10 +1161,7 @@ func doCall(ctx context.Context, b Backend, args TransactionArgs, state *state.S
 
 	// Get a new instance of the EVM.
 
-	// ##CROSS: fee log
-	//blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
-	blockCtx := core.NewEVMBlockContextWithConfig(header, NewChainContext(ctx, b), nil, b.ChainConfig())
-	// ##
+	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil, b.ChainConfig())
 	if blockOverrides != nil {
 		blockOverrides.Apply(&blockCtx)
 	}

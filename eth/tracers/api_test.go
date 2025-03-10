@@ -172,10 +172,7 @@ func (b *testBackend) StateAtTransaction(ctx context.Context, block *types.Block
 	for idx, tx := range block.Transactions() {
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		txContext := core.NewEVMTxContext(msg)
-		// ##CROSS: fee log
-		//context := core.NewEVMBlockContext(block.Header(), b.chain, nil)
-		context := core.NewEVMBlockContextWithConfig(block.Header(), b.chain, nil, b.chainConfig)
-		// ##
+		context := core.NewEVMBlockContext(block.Header(), b.chain, nil, b.chainConfig)
 		if idx == txIndex {
 			return msg, context, statedb, release, nil
 		}

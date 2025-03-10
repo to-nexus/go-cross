@@ -208,10 +208,7 @@ func run(ctx context.Context, call *core.Message, opts *Options) (*core.Executio
 	// Assemble the call and the call context
 	var (
 		msgContext = core.NewEVMTxContext(call)
-		// ##CROSS: fee log
-		//evmContext = core.NewEVMBlockContext(opts.Header, opts.Chain, nil)
-		evmContext = core.NewEVMBlockContextWithConfig(opts.Header, opts.Chain, nil, opts.Config)
-		// ##
+		evmContext = core.NewEVMBlockContext(opts.Header, opts.Chain, nil, opts.Config)
 
 		dirtyState = opts.State.Copy()
 		evm        = vm.NewEVM(evmContext, msgContext, dirtyState, opts.Config, vm.Config{NoBaseFee: true})

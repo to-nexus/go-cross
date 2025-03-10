@@ -41,7 +41,7 @@ type ChainContext interface {
 }
 
 // NewEVMBlockContext creates a new context for use in the EVM.
-func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address) vm.BlockContext {
+func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address, config *params.ChainConfig) vm.BlockContext {
 	var (
 		beneficiary common.Address
 		baseFee     *big.Int
@@ -67,9 +67,16 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		hash := crypto.Keccak256Hash(header.MixDigest[:])
 		random = &hash
 	}
+	// ##CROSS: fee log
+	transfer := Transfer
+	// update Transfer function for Crossway fork.
+	if config != nil && config.IsCrossway(header.Number, header.Time) {
+		transfer = CrossTransfer
+	}
+	// ##
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
-		Transfer:    Transfer,
+		Transfer:    transfer,
 		GetHash:     GetHashFn(header, chain),
 		Coinbase:    beneficiary,
 		BlockNumber: new(big.Int).Set(header.Number),
@@ -81,20 +88,6 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		Random:      random,
 	}
 }
-
-// ##CROSS: fee log
-
-// NewEVMBlockContextWithConfig creates a new context for use in the EVM.
-func NewEVMBlockContextWithConfig(header *types.Header, chain ChainContext, author *common.Address, config *params.ChainConfig) vm.BlockContext {
-	ctx := NewEVMBlockContext(header, chain, author)
-	// update Transfer function for Crossway fork.
-	if config != nil && config.IsCrossway(header.Number, header.Time) {
-		ctx.Transfer = CrossTransfer
-	}
-	return ctx
-}
-
-// ##
 
 // NewEVMTxContext creates a new transaction context for a single transaction.
 func NewEVMTxContext(msg *Message) vm.TxContext {
@@ -165,18 +158,14 @@ func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.I
 // CrossTransfer subtracts amount from sender and adds amount to recipient using the given Db.
 // It also adds a transfer log to the Db.
 func CrossTransfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
-	// get balances before
-	beforeFrom := db.GetBalance(sender)
-	beforeTo := db.GetBalance(recipient)
-
 	Transfer(db, sender, recipient, amount)
 
 	// get balances after
-	afterFrom := db.GetBalance(sender)
-	afterTo := db.GetBalance(recipient)
+	balFrom := db.GetBalance(sender)
+	balTo := db.GetBalance(recipient)
 
 	// add transfer log
-	AddTransferLog(db, sender, recipient, amount.ToBig(), beforeFrom.ToBig(), beforeTo.ToBig(), afterFrom.ToBig(), afterTo.ToBig())
+	AddTransferLog(db, sender, recipient, amount.ToBig(), balFrom.ToBig(), balTo.ToBig())
 }
 
 // ##

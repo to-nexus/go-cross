@@ -242,10 +242,7 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		// Assemble the transaction call message and return if the requested offset
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		txContext := core.NewEVMTxContext(msg)
-		// ##CROSS: fee log
-		//context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil)
-		context := core.NewEVMBlockContextWithConfig(block.Header(), eth.blockchain, nil, eth.blockchain.Config())
-		// ##
+		context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil, eth.blockchain.Config())
 		if idx == txIndex {
 			return msg, context, statedb, release, nil
 		}

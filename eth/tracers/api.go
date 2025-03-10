@@ -265,11 +265,8 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 			// Fetch and execute the block trace taskCh
 			for task := range taskCh {
 				var (
-					signer = types.MakeSigner(api.backend.ChainConfig(), task.block.Number(), task.block.Time())
-					// ##CROSS: fee log
-					//blockCtx = core.NewEVMBlockContext(task.block.Header(), api.chainContext(ctx), nil)
-					blockCtx = core.NewEVMBlockContextWithConfig(task.block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
-					// ##
+					signer   = types.MakeSigner(api.backend.ChainConfig(), task.block.Number(), task.block.Time())
+					blockCtx = core.NewEVMBlockContext(task.block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
 				)
 				// Trace all the transactions contained within
 				for i, tx := range task.block.Transactions() {
@@ -523,13 +520,10 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	defer release()
 
 	var (
-		roots       []common.Hash
-		signer      = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		chainConfig = api.backend.ChainConfig()
-		// ##CROSS: fee log
-		//vmctx              = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		vmctx = core.NewEVMBlockContextWithConfig(block.Header(), api.chainContext(ctx), nil, chainConfig)
-		// ##
+		roots              []common.Hash
+		signer             = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		chainConfig        = api.backend.ChainConfig()
+		vmctx              = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil, chainConfig)
 		deleteEmptyObjects = chainConfig.IsEIP158(block.Number())
 	)
 	for i, tx := range block.Transactions() {
@@ -605,12 +599,9 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 		txs       = block.Transactions()
 		blockHash = block.Hash()
 		is158     = api.backend.ChainConfig().IsEIP158(block.Number())
-		// ##CROSS: fee log
-		//blockCtx = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		blockCtx = core.NewEVMBlockContextWithConfig(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
-		// ##
-		signer  = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		results = make([]*txTraceResult, len(txs))
+		blockCtx  = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
+		signer    = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		results   = make([]*txTraceResult, len(txs))
 	)
 	for i, tx := range txs {
 		// Generate the next state snapshot fast without tracing
@@ -641,13 +632,10 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 	var (
 		txs       = block.Transactions()
 		blockHash = block.Hash()
-		// ##CROSS: fee log
-		//blockCtx  = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		blockCtx = core.NewEVMBlockContextWithConfig(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
-		// ##
-		signer  = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		results = make([]*txTraceResult, len(txs))
-		pend    sync.WaitGroup
+		blockCtx  = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
+		signer    = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		results   = make([]*txTraceResult, len(txs))
+		pend      sync.WaitGroup
 	)
 	threads := runtime.NumCPU()
 	if threads > len(txs) {
@@ -756,11 +744,8 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		dumps       []string
 		signer      = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
 		chainConfig = api.backend.ChainConfig()
-		// ##CROSS: fee log
-		//vmctx       = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		vmctx = core.NewEVMBlockContextWithConfig(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
-		// ##
-		canon = true
+		vmctx       = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
+		canon       = true
 	)
 	// Check if there are any overrides: the caller may wish to enable a future
 	// fork when executing this block. Note, such overrides are only applicable to the
@@ -925,10 +910,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	}
 	defer release()
 
-	// ##CROSS: fee log
-	//vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-	vmctx := core.NewEVMBlockContextWithConfig(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
-	// ##
+	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil, api.backend.ChainConfig())
 	// Apply the customization rules if required.
 	if config != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {

@@ -511,7 +511,7 @@ func DefaultCrossGenesisBlock() *Genesis {
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
 			crosstokenAddress: types.Account{
-				Code: crosstokenCode(),
+				Code: crosstokenCode,
 			},
 			common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd"): types.Account{
 				Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
@@ -535,7 +535,7 @@ func DefaultCrossTestGenesisBlock() *Genesis {
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
 			crosstokenAddress: types.Account{
-				Code: crosstokenCode(),
+				Code: crosstokenCode,
 			},
 			common.HexToAddress("0xe5dfec1e7ca7aa90acfbbc09a23b57b8e0d2e61c"): types.Account{
 				Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
@@ -559,7 +559,7 @@ func DefaultCrossDev3GenesisBlock() *Genesis {
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
 			crosstokenAddress: types.Account{
-				Code: crosstokenCode(),
+				Code: crosstokenCode,
 			},
 			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
 				Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
@@ -583,7 +583,7 @@ func DefaultCrossDevGenesisBlock() *Genesis {
 		Coinbase:   common.HexToAddress("0x00"),
 		Alloc: types.GenesisAlloc{
 			crosstokenAddress: types.Account{
-				Code: crosstokenCode(),
+				Code: crosstokenCode,
 			},
 			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
 				Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
