@@ -98,8 +98,11 @@ func (b *BlockGen) Difficulty() *big.Int {
 func (b *BlockGen) SetParentBeaconRoot(root common.Hash) {
 	b.header.ParentBeaconRoot = &root
 	var (
-		blockContext = NewEVMBlockContext(b.header, b.cm, &b.header.Coinbase)
-		vmenv        = vm.NewEVM(blockContext, vm.TxContext{}, b.statedb, b.cm.config, vm.Config{})
+		// ##CROSS: fee log
+		//blockContext = NewEVMBlockContext(b.header, b.cm, &b.header.Coinbase)
+		blockContext = NewEVMBlockContextWithConfig(b.header, b.cm, &b.header.Coinbase, b.cm.config)
+		// ##
+		vmenv = vm.NewEVM(blockContext, vm.TxContext{}, b.statedb, b.cm.config, vm.Config{})
 	)
 	ProcessBeaconBlockRoot(root, vmenv, b.statedb)
 }

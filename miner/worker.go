@@ -1050,7 +1050,10 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		return nil, err
 	}
 	if header.ParentBeaconRoot != nil {
-		context := core.NewEVMBlockContext(header, w.chain, nil)
+		// ##CROSS: fee log
+		//context := core.NewEVMBlockContext(header, w.chain, nil)
+		context := core.NewEVMBlockContextWithConfig(header, w.chain, nil, w.chainConfig)
+		// ##
 		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
 		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
 	}

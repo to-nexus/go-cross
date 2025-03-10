@@ -41,6 +41,11 @@ func NewEnv(cfg *Config) *vm.EVM {
 		BlobBaseFee: cfg.BlobBaseFee,
 		Random:      cfg.Random,
 	}
+	// ##CROSS: fee log
+	if cfg.ChainConfig.IsCrossway(cfg.BlockNumber, cfg.Time) {
+		blockContext.Transfer = core.CrossTransfer
+	}
+	// ##
 
 	return vm.NewEVM(blockContext, txContext, cfg.State, cfg.ChainConfig, cfg.EVMConfig)
 }

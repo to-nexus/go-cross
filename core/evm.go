@@ -17,15 +17,16 @@
 package core
 
 import (
-	"github.com/ethereum/go-ethereum/consensus/istanbul"
-	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -80,6 +81,20 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		Random:      random,
 	}
 }
+
+// ##CROSS: fee log
+
+// NewEVMBlockContextWithConfig creates a new context for use in the EVM.
+func NewEVMBlockContextWithConfig(header *types.Header, chain ChainContext, author *common.Address, config *params.ChainConfig) vm.BlockContext {
+	ctx := NewEVMBlockContext(header, chain, author)
+	// update Transfer function for Crossway fork.
+	if config != nil && config.IsCrossway(header.Number, header.Time) {
+		ctx.Transfer = CrossTransfer
+	}
+	return ctx
+}
+
+// ##
 
 // NewEVMTxContext creates a new transaction context for a single transaction.
 func NewEVMTxContext(msg *Message) vm.TxContext {
@@ -144,3 +159,24 @@ func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.I
 	db.SubBalance(sender, amount)
 	db.AddBalance(recipient, amount)
 }
+
+// ##CROSS: fee log
+
+// CrossTransfer subtracts amount from sender and adds amount to recipient using the given Db.
+// It also adds a transfer log to the Db.
+func CrossTransfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
+	// get balances before
+	beforeFrom := db.GetBalance(sender)
+	beforeTo := db.GetBalance(recipient)
+
+	Transfer(db, sender, recipient, amount)
+
+	// get balances after
+	afterFrom := db.GetBalance(sender)
+	afterTo := db.GetBalance(recipient)
+
+	// add transfer log
+	AddTransferLog(db, sender, recipient, amount.ToBig(), beforeFrom.ToBig(), beforeTo.ToBig(), afterFrom.ToBig(), afterTo.ToBig())
+}
+
+// ##

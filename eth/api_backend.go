@@ -258,7 +258,10 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, msg *core.Message, state *st
 	if blockCtx != nil {
 		context = *blockCtx
 	} else {
-		context = core.NewEVMBlockContext(header, b.eth.BlockChain(), nil)
+		// ##CROSS: fee log
+		//context = core.NewEVMBlockContext(header, b.eth.BlockChain(), nil)
+		context = core.NewEVMBlockContextWithConfig(header, b.eth.BlockChain(), nil, b.ChainConfig())
+		// ##
 	}
 	return vm.NewEVM(context, txContext, state, b.ChainConfig(), *vmConfig)
 }
