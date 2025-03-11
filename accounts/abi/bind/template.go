@@ -28,18 +28,19 @@ type tmplData struct {
 
 // tmplContract contains the data needed to generate an individual contract binding.
 type tmplContract struct {
-	Type        string                 // Type name of the main contract binding
-	InputABI    string                 // JSON ABI used as the input to generate the binding from
-	InputBin    string                 // Optional EVM bytecode used to generate deploy code from
-	FuncSigs    map[string]string      // Optional map: string signature -> 4-byte signature
-	Constructor abi.Method             // Contract constructor for deploy parametrization
-	Calls       map[string]*tmplMethod // Contract calls that only read state data
-	Transacts   map[string]*tmplMethod // Contract calls that write state data
-	Fallback    *tmplMethod            // Additional special fallback function
-	Receive     *tmplMethod            // Additional special receive function
-	Events      map[string]*tmplEvent  // Contract events accessors
-	Libraries   map[string]string      // Same as tmplData, but filtered to only keep what the contract needs
-	Library     bool                   // Indicator whether the contract is a library
+	Type            string                 // Type name of the main contract binding
+	InputABI        string                 // JSON ABI used as the input to generate the binding from
+	InputBin        string                 // Optional EVM bytecode used to generate deploy code from
+	InputBinRuntime string                 // Optional EVM-Runtime bytecode used to add genesis block
+	FuncSigs        map[string]string      // Optional map: string signature -> 4-byte signature
+	Constructor     abi.Method             // Contract constructor for deploy parametrization
+	Calls           map[string]*tmplMethod // Contract calls that only read state data
+	Transacts       map[string]*tmplMethod // Contract calls that write state data
+	Fallback        *tmplMethod            // Additional special fallback function
+	Receive         *tmplMethod            // Additional special receive function
+	Events          map[string]*tmplEvent  // Contract events accessors
+	Libraries       map[string]string      // Same as tmplData, but filtered to only keep what the contract needs
+	Library         bool                   // Indicator whether the contract is a library
 }
 
 // tmplMethod is a wrapper around an abi.Method that contains a few preprocessed
@@ -138,6 +139,9 @@ var (
 	// {{.Type}}ABI is the input ABI used to generate the binding from.
 	// Deprecated: Use {{.Type}}MetaData.ABI instead.
 	var {{.Type}}ABI = {{.Type}}MetaData.ABI
+
+	// {{.Type}}BinRuntime is the compiled bytecode used for adding genesis block without deploying code.
+	const {{.Type}}BinRuntime = "{{.InputBinRuntime}}"
 
 	{{if $contract.FuncSigs}}
 		// Deprecated: Use {{.Type}}MetaData.Sigs instead.

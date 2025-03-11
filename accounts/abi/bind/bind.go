@@ -81,7 +81,7 @@ func isKeyWord(arg string) bool {
 // to be used as is in client code, but rather as an intermediate struct which
 // enforces compile time type safety and naming convention as opposed to having to
 // manually maintain hard coded strings that break on runtime.
-func Bind(types []string, abis []string, bytecodes []string, fsigs []map[string]string, pkg string, lang Lang, libs map[string]string, aliases map[string]string) (string, error) {
+func Bind(types []string, abis []string, bytecodes []string, runtimebytecodes []string, fsigs []map[string]string, pkg string, lang Lang, libs map[string]string, aliases map[string]string) (string, error) {
 	var (
 		// contracts is the map of each individual contract requested binding
 		contracts = make(map[string]*tmplContract)
@@ -234,16 +234,17 @@ func Bind(types []string, abis []string, bytecodes []string, fsigs []map[string]
 			receive = &tmplMethod{Original: evmABI.Receive}
 		}
 		contracts[types[i]] = &tmplContract{
-			Type:        capitalise(types[i]),
-			InputABI:    strings.ReplaceAll(strippedABI, "\"", "\\\""),
-			InputBin:    strings.TrimPrefix(strings.TrimSpace(bytecodes[i]), "0x"),
-			Constructor: evmABI.Constructor,
-			Calls:       calls,
-			Transacts:   transacts,
-			Fallback:    fallback,
-			Receive:     receive,
-			Events:      events,
-			Libraries:   make(map[string]string),
+			Type:            capitalise(types[i]),
+			InputABI:        strings.ReplaceAll(strippedABI, "\"", "\\\""),
+			InputBin:        strings.TrimPrefix(strings.TrimSpace(bytecodes[i]), "0x"),
+			InputBinRuntime: strings.TrimPrefix(strings.TrimSpace(runtimebytecodes[i]), "0x"),
+			Constructor:     evmABI.Constructor,
+			Calls:           calls,
+			Transacts:       transacts,
+			Fallback:        fallback,
+			Receive:         receive,
+			Events:          events,
+			Libraries:       make(map[string]string),
 		}
 		// Function 4-byte signatures are stored in the same sequence
 		// as types, if available.

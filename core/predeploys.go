@@ -5,6 +5,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/predeploys"
 )
 
 var (
@@ -26,13 +27,13 @@ var (
 func init() {
 	Predeploys[BridgeAddr] = types.Account{
 		Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
-		Code:    ERC1967ProxyCode,
+		Code:    common.Hex2Bytes(predeploys.ERC1967ProxyBinRuntime),
 		Storage: map[common.Hash]common.Hash{
 			ERC1967ProxyImplementationSlot: common.BytesToHash(BridgeImplAddr.Bytes()),
 		},
 	}
 
 	Predeploys[BridgeImplAddr] = types.Account{
-		Code: BridgeCode,
+		Code: common.Hex2Bytes(predeploys.CrossBridgeBinRuntime),
 	}
 }
