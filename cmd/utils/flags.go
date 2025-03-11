@@ -390,7 +390,7 @@ var (
 	// Performance tuning settings
 	CacheFlag = &cli.IntFlag{
 		Name:     "cache",
-		Usage:    "Megabytes of memory allocated to internal caching (default = 4096 mainnet full node, 128 light mode)",
+		Usage:    "Megabytes of memory allocated to internal caching (default = 8192 cross full node, 4096 mainnet full node, 128 light mode)",
 		Value:    8192, // ##CROSS: performance
 		Category: flags.PerfCategory,
 	}
