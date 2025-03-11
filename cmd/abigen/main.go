@@ -43,6 +43,10 @@ var (
 		Name:  "bin",
 		Usage: "Path to the Ethereum contract bytecode (generate deploy method)",
 	}
+	binruntimeFlag = &cli.StringFlag{
+		Name:  "binruntime",
+		Usage: "Path to the Ethereum contract runtime-bytecode",
+	}
 	typeFlag = &cli.StringFlag{
 		Name:  "type",
 		Usage: "Struct name for the binding (default = package name)",
@@ -81,6 +85,7 @@ func init() {
 	app.Flags = []cli.Flag{
 		abiFlag,
 		binFlag,
+		binruntimeFlag,
 		typeFlag,
 		jsonFlag,
 		excFlag,
@@ -107,12 +112,13 @@ func abigen(c *cli.Context) error {
 	}
 	// If the entire solidity code was specified, build and bind based on that
 	var (
-		abis    []string
-		bins    []string
-		types   []string
-		sigs    []map[string]string
-		libs    = make(map[string]string)
-		aliases = make(map[string]string)
+		abis        []string
+		bins        []string
+		binruntimes []string
+		types       []string
+		sigs        []map[string]string
+		libs        = make(map[string]string)
+		aliases     = make(map[string]string)
 	)
 	if c.String(abiFlag.Name) != "" {
 		// Load up the ABI, optional bytecode and type name from the parameters
@@ -141,6 +147,16 @@ func abigen(c *cli.Context) error {
 			}
 		}
 		bins = append(bins, string(bin))
+		var binruntime []byte
+		if binruntimeFile := c.String(binruntimeFlag.Name); binruntimeFile != "" {
+			if binruntime, err = os.ReadFile(binruntimeFile); err != nil {
+				utils.Fatalf("Failed to read input runtime-bytecode: %v", err)
+			}
+			if strings.Contains(string(binruntime), "//") {
+				utils.Fatalf("Contract has additional library references, please use other ")
+			}
+		}
+		binruntimes = append(binruntimes, string(binruntime))
 
 		kind := c.String(typeFlag.Name)
 		if kind == "" {
@@ -192,6 +208,7 @@ func abigen(c *cli.Context) error {
 			}
 			abis = append(abis, string(abi))
 			bins = append(bins, contract.Code)
+			binruntimes = append(binruntimes, contract.RuntimeCode)
 			sigs = append(sigs, contract.Hashes)
 			types = append(types, typeName)
 
@@ -216,7 +233,7 @@ func abigen(c *cli.Context) error {
 		}
 	}
 	// Generate the contract binding
-	code, err := bind.Bind(types, abis, bins, sigs, c.String(pkgFlag.Name), lang, libs, aliases)
+	code, err := bind.Bind(types, abis, bins, binruntimes, sigs, c.String(pkgFlag.Name), lang, libs, aliases)
 	if err != nil {
 		utils.Fatalf("Failed to generate ABI binding: %v", err)
 	}

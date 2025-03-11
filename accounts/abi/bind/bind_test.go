@@ -2096,7 +2096,7 @@ func TestGolangBindings(t *testing.T) {
 				types = []string{tt.name}
 			}
 			// Generate the binding and create a Go source file in the workspace
-			bind, err := Bind(types, tt.abi, tt.bytecode, tt.fsigs, "bindtest", LangGo, tt.libs, tt.aliases)
+			bind, err := Bind(types, tt.abi, tt.bytecode, tt.bytecode, tt.fsigs, "bindtest", LangGo, tt.libs, tt.aliases)
 			if err != nil {
 				t.Fatalf("test %d: failed to generate binding: %v", i, err)
 			}
