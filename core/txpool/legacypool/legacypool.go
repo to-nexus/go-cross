@@ -146,12 +146,13 @@ var DefaultConfig = Config{
 	PriceLimit: 1,
 	PriceBump:  10,
 
-	AccountSlots: 16,
-	GlobalSlots:  4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
-	AccountQueue: 64,
-	GlobalQueue:  1024,
-
-	Lifetime: 3 * time.Hour,
+	// ##CROSS: performance
+	AccountSlots: 128,
+	GlobalSlots:  8192 + 2048, // urgent + floating queue capacity with 4:1 ratio
+	AccountQueue: 256,
+	GlobalQueue:  32768,
+	Lifetime:     30 * time.Second,
+	// ##
 }
 
 // sanitize checks the provided user configurations and changes anything that's
