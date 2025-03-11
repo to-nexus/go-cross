@@ -8,32 +8,38 @@ import (
 	"github.com/ethereum/go-ethereum/predeploys"
 )
 
+// ##CROSS: predeploys
+
 var (
 	ERC1967ProxyImplementationSlot = common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
 )
 
 const (
+	CrossEx    = "0x000000000000000000000000000000000000c100"
 	Bridge     = "0xB81D6E000000000000000000000000000000FACE"
 	BridgeImpl = "0xB81D6E000000000000000000000000000000C0DE"
 )
 
 var (
+	// addresses
+	CrossExAddr    = common.HexToAddress(CrossEx)
 	BridgeAddr     = common.HexToAddress(Bridge)
 	BridgeImplAddr = common.HexToAddress(BridgeImpl)
 
-	Predeploys = map[common.Address]types.Account{}
-)
-
-func init() {
-	Predeploys[BridgeAddr] = types.Account{
-		Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
-		Code:    common.Hex2Bytes(predeploys.ERC1967ProxyBinRuntime),
-		Storage: map[common.Hash]common.Hash{
-			ERC1967ProxyImplementationSlot: common.BytesToHash(BridgeImplAddr.Bytes()),
+	// predeploys
+	Predeploys = map[common.Address]types.Account{
+		CrossExAddr: {
+			Code: common.Hex2Bytes(predeploys.CrossExBinRuntime),
+		},
+		BridgeAddr: {
+			Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
+			Code:    common.Hex2Bytes(predeploys.ERC1967ProxyBinRuntime),
+			Storage: map[common.Hash]common.Hash{
+				ERC1967ProxyImplementationSlot: common.BytesToHash(BridgeImplAddr.Bytes()),
+			},
+		},
+		BridgeImplAddr: {
+			Code: common.Hex2Bytes(predeploys.CrossBridgeBinRuntime),
 		},
 	}
-
-	Predeploys[BridgeImplAddr] = types.Account{
-		Code: common.Hex2Bytes(predeploys.CrossBridgeBinRuntime),
-	}
-}
+)
