@@ -17,15 +17,16 @@
 package core
 
 import (
-	"github.com/ethereum/go-ethereum/consensus/istanbul"
-	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -40,7 +41,10 @@ type ChainContext interface {
 }
 
 // NewEVMBlockContext creates a new context for use in the EVM.
-func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address) vm.BlockContext {
+func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address, config *params.ChainConfig) vm.BlockContext {
+	// ##CROSS: transfer log
+	// Parameter config is added to check if the Crossway fork is enabled
+
 	var (
 		beneficiary common.Address
 		baseFee     *big.Int
@@ -66,9 +70,16 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		hash := crypto.Keccak256Hash(header.MixDigest[:])
 		random = &hash
 	}
+	// ##CROSS: transfer log
+	transfer := Transfer
+	// Update Transfer function for Crossway fork
+	if config != nil && config.IsCrossway(header.Number, header.Time) {
+		transfer = CrossTransfer
+	}
+	// ##
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
-		Transfer:    Transfer,
+		Transfer:    transfer, // ##CROSS: transfer log
 		GetHash:     GetHashFn(header, chain),
 		Coinbase:    beneficiary,
 		BlockNumber: new(big.Int).Set(header.Number),
@@ -144,3 +155,24 @@ func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.I
 	db.SubBalance(sender, amount)
 	db.AddBalance(recipient, amount)
 }
+
+// ##CROSS: transfer log
+
+// CrossTransfer subtracts amount from sender and adds amount to recipient using the given Db.
+// It also adds a transfer log to the Db.
+func CrossTransfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
+	// get inputs before
+	input1 := db.GetBalance(sender)
+	input2 := db.GetBalance(recipient)
+
+	Transfer(db, sender, recipient, amount)
+
+	// get outputs after
+	output1 := db.GetBalance(sender)
+	output2 := db.GetBalance(recipient)
+
+	// add transfer log
+	AddTransferLog(db, sender, recipient, amount, input1, input2, output1, output2)
+}
+
+// ##

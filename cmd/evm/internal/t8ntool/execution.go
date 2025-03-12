@@ -157,6 +157,12 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		GasLimit:    pre.Env.GasLimit,
 		GetHash:     getHash,
 	}
+	// ##CROSS: transfer log
+	// update Transfer function for Crossway fork.
+	if chainConfig.IsCrossway(new(big.Int).SetUint64(pre.Env.Number), pre.Env.Timestamp) {
+		vmContext.Transfer = core.CrossTransfer
+	}
+	// ##
 	// If currentBaseFee is defined, add it to the vmContext.
 	if pre.Env.BaseFee != nil {
 		vmContext.BaseFee = new(big.Int).Set(pre.Env.BaseFee)
