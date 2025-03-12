@@ -1,5 +1,7 @@
 package core
 
+// ##CROSS: transfer log
+
 import (
 	"math/big"
 
@@ -9,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/predeploys"
 )
 
-// ##CROSS: transfer log
 var (
 	transferLogSig  common.Hash
 	transferLogAddr = common.BytesToHash(CrossExAddr.Bytes())

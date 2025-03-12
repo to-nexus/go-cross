@@ -1,5 +1,7 @@
 package core
 
+// ##CROSS: transfer log
+
 import (
 	"crypto/ecdsa"
 	"encoding/json"
