@@ -158,14 +158,18 @@ func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.I
 // CrossTransfer subtracts amount from sender and adds amount to recipient using the given Db.
 // It also adds a transfer log to the Db.
 func CrossTransfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
+	// get inputs before
+	input1 := db.GetBalance(sender)
+	input2 := db.GetBalance(recipient)
+
 	Transfer(db, sender, recipient, amount)
 
-	// get balances after
-	balFrom := db.GetBalance(sender)
-	balTo := db.GetBalance(recipient)
+	// get outputs after
+	output1 := db.GetBalance(sender)
+	output2 := db.GetBalance(recipient)
 
 	// add transfer log
-	AddTransferLog(db, sender, recipient, amount.ToBig(), balFrom.ToBig(), balTo.ToBig())
+	AddTransferLog(db, sender, recipient, amount.ToBig(), input1.ToBig(), input2.ToBig(), output1.ToBig(), output2.ToBig())
 }
 
 // ##
