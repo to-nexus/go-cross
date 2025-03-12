@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/predeploys"
 )
 
-// ##CROSS: fee log
+// ##CROSS: transfer log
 var (
 	transferLogSig  common.Hash
 	transferLogAddr = common.BytesToHash(CrossExAddr.Bytes())

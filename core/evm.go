@@ -42,6 +42,9 @@ type ChainContext interface {
 
 // NewEVMBlockContext creates a new context for use in the EVM.
 func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address, config *params.ChainConfig) vm.BlockContext {
+	// ##CROSS: transfer log
+	// Parameter config is added to check if the Crossway fork is enabled
+
 	var (
 		beneficiary common.Address
 		baseFee     *big.Int
@@ -67,16 +70,16 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		hash := crypto.Keccak256Hash(header.MixDigest[:])
 		random = &hash
 	}
-	// ##CROSS: fee log
+	// ##CROSS: transfer log
 	transfer := Transfer
-	// update Transfer function for Crossway fork.
+	// Update Transfer function for Crossway fork
 	if config != nil && config.IsCrossway(header.Number, header.Time) {
 		transfer = CrossTransfer
 	}
 	// ##
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
-		Transfer:    transfer,
+		Transfer:    transfer, // ##CROSS: transfer log
 		GetHash:     GetHashFn(header, chain),
 		Coinbase:    beneficiary,
 		BlockNumber: new(big.Int).Set(header.Number),
@@ -153,7 +156,7 @@ func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.I
 	db.AddBalance(recipient, amount)
 }
 
-// ##CROSS: fee log
+// ##CROSS: transfer log
 
 // CrossTransfer subtracts amount from sender and adds amount to recipient using the given Db.
 // It also adds a transfer log to the Db.
