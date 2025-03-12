@@ -1,5 +1,7 @@
 package core
 
+// ##CROSS: predeploys
+
 import (
 	"math/big"
 
@@ -8,14 +10,12 @@ import (
 	"github.com/ethereum/go-ethereum/predeploys"
 )
 
-// ##CROSS: predeploys
-
 var (
 	ERC1967ProxyImplementationSlot = common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
 )
 
 const (
-	CrossEx    = "0x000000000000000000000000000000000000c100"
+	CrossEx    = "0x0000000000000000000000000000000FEEDADDED"
 	Bridge     = "0xB81D6E000000000000000000000000000000FACE"
 	BridgeImpl = "0xB81D6E000000000000000000000000000000C0DE"
 )
@@ -32,7 +32,7 @@ var (
 			Code: common.Hex2Bytes(predeploys.CrossExBinRuntime),
 		},
 		BridgeAddr: {
-			Balance: new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(1e18)),
+			Balance: new(big.Int).Mul(big.NewInt(99_900_000_000), big.NewInt(1e18)),
 			Code:    common.Hex2Bytes(predeploys.ERC1967ProxyBinRuntime),
 			Storage: map[common.Hash]common.Hash{
 				ERC1967ProxyImplementationSlot: common.BytesToHash(BridgeImplAddr.Bytes()),

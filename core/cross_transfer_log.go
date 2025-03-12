@@ -3,12 +3,11 @@ package core
 // ##CROSS: transfer log
 
 import (
-	"math/big"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/predeploys"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -27,14 +26,14 @@ func AddTransferLog(
 	sender, recipient common.Address,
 	amount,
 	input1, input2,
-	output1, output2 *big.Int,
+	output1, output2 *uint256.Int,
 ) {
 	// ignore if amount is 0
-	if amount.Cmp(common.Big0) <= 0 {
+	if amount.Sign() <= 0 {
 		return
 	}
 
-	dataInputs := []*big.Int{
+	dataInputs := []*uint256.Int{
 		amount,
 		input1,
 		input2,

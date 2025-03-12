@@ -172,7 +172,7 @@ func CrossTransfer(db vm.StateDB, sender, recipient common.Address, amount *uint
 	output2 := db.GetBalance(recipient)
 
 	// add transfer log
-	AddTransferLog(db, sender, recipient, amount.ToBig(), input1.ToBig(), input2.ToBig(), output1.ToBig(), output2.ToBig())
+	AddTransferLog(db, sender, recipient, amount, input1, input2, output1, output2)
 }
 
 // ##
