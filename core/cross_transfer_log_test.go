@@ -53,8 +53,8 @@ var (
 )
 
 func TestLogTransferSig(t *testing.T) {
-	if transferLogAddr.String() != "0x000000000000000000000000000000000000000000000000000000000000c100" {
-		t.Fatalf("transferLogAddr: got %s, want %s", transferLogAddr.String(), "0x000000000000000000000000000000000000000000000000000000000000c100")
+	if transferLogAddr.String() != "0x0000000000000000000000000000000000000000000000000000000feedadded" {
+		t.Fatalf("transferLogAddr: got %s, want %s", transferLogAddr.String(), "0x0000000000000000000000000000000000000000000000000000000feedadded")
 	}
 	if transferLogSig.String() != "0xe6497e3ee548a3372136af2fcb0696db31fc6cf20260707645068bd3fe97f3c4" {
 		t.Fatalf("transferLogSig: got %s, want %s", transferLogSig.String(), "0xe6497e3ee548a3372136af2fcb0696db31fc6cf20260707645068bd3fe97f3c4")
@@ -348,7 +348,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 					},
 				},
 				{
-					// in contract1: Received(addr1, 1 ether)
+					// in contract2: Received(addr1, 1 ether)
 					Address: contract2,
 					Topics: []common.Hash{
 						receivedSig,
