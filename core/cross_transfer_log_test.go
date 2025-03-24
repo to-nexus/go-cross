@@ -52,12 +52,12 @@ var (
 	}
 )
 
-func TestLogTransferSig(t *testing.T) {
-	if transferLogAddr.String() != "0x0000000000000000000000000000000000000000000000000000000feedadded" {
-		t.Fatalf("transferLogAddr: got %s, want %s", transferLogAddr.String(), "0x0000000000000000000000000000000000000000000000000000000feedadded")
+func TestCrossTransferSig(t *testing.T) {
+	if CrossExAddr.String() != "0x0000000000000000000000000000000FeedAdDEd" {
+		t.Fatalf("CrossExAddr: got %s, want %s", CrossExAddr.String(), "0x0000000000000000000000000000000FeedAdDEd")
 	}
-	if transferLogSig.String() != "0xe6497e3ee548a3372136af2fcb0696db31fc6cf20260707645068bd3fe97f3c4" {
-		t.Fatalf("transferLogSig: got %s, want %s", transferLogSig.String(), "0xe6497e3ee548a3372136af2fcb0696db31fc6cf20260707645068bd3fe97f3c4")
+	if transferLogSig.String() != "0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b" {
+		t.Fatalf("transferLogSig: got %s, want %s", transferLogSig.String(), "0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b")
 	}
 }
 
@@ -187,13 +187,12 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 					Status: types.ReceiptStatusSuccessful,
 				}
 				if !tt.noLog {
-					// check LogTransfer event
+					// check CrossTransfer event
 					want.Logs = []*types.Log{
 						{
 							Address: CrossExAddr,
 							Topics: []common.Hash{
 								transferLogSig,
-								transferLogAddr,
 								common.BytesToHash(testAddr1.Bytes()),
 								common.BytesToHash(testAddr2.Bytes()),
 							},
@@ -210,12 +209,17 @@ func TestAddTransferLog_callContract(t *testing.T) {
 	var (
 		contract1 = common.HexToAddress("0x000000000000000000000000000000000000c002")
 		contract2 = common.HexToAddress("0x000000000000000000000000000000000000C003")
-		abi1      = `[{"type":"function","name":"deposit","inputs":[{"name":"value","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"transfer","inputs":[{"name":"to","type":"address","internalType":"address"},{"name":"value","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"payable"}]`
-		// contract1: NativeTransfer(address indexed from, address indexed to, uint256 amount)
+
+		// function deposit(uint256 value) external payable
+		// function transfer(address to, uint256 value) external payable
+		abi1 = `[{"type":"function","name":"deposit","inputs":[{"name":"value","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"transfer","inputs":[{"name":"to","type":"address","internalType":"address"},{"name":"value","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"payable"}]`
+
+		// contract1: event NativeTransfer(address indexed from, address indexed to, uint256 amount)
 		nativeTransferSig = common.HexToHash("0xce8688f853ffa65c042b72302433c25d7a230c322caba0901587534b6551091d")
-		// contract2: Received(address indexed from, uint256 amount)
+		// contract2: event Received(address indexed from, uint256 amount)
 		receivedSig = common.HexToHash("0x88a5966d370b9919b20f3e2c13ff65706f196a4e32cc2c12bf57088f88525874")
-		gspec       = &Genesis{
+
+		gspec = &Genesis{
 			Config: testCrosswayConfig,
 			Alloc: types.GenesisAlloc{
 				CrossExAddr: types.Account{
@@ -289,21 +293,19 @@ func TestAddTransferLog_callContract(t *testing.T) {
 			Status: types.ReceiptStatusSuccessful,
 			Logs: []*types.Log{
 				{
-					// transfer(addr2, 1 ether): LogTransfer(CrossEx, addr1, contract1, ...)
+					// transfer(addr2, 1 ether): CrossTransfer(CrossEx, addr1, contract1, ...)
 					Address: CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
-						transferLogAddr,
 						common.BytesToHash(testAddr1.Bytes()),
 						common.BytesToHash(contract1.Bytes()),
 					},
 				},
 				{
-					// contract1 -> addr2: LogTransfer(CrossEx, contract1, addr2, ...)
+					// contract1 -> addr2: CrossTransfer(CrossEx, contract1, addr2, ...)
 					Address: CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
-						transferLogAddr,
 						common.BytesToHash(contract1.Bytes()),
 						common.BytesToHash(testAddr2.Bytes()),
 					},
@@ -328,21 +330,19 @@ func TestAddTransferLog_callContract(t *testing.T) {
 			Status: types.ReceiptStatusSuccessful,
 			Logs: []*types.Log{
 				{
-					// deposit(1 ether): LogTransfer(CrossEx, addr1, contract1, ...)
+					// deposit(1 ether): CrossTransfer(CrossEx, addr1, contract1, ...)
 					Address: CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
-						transferLogAddr,
 						common.BytesToHash(testAddr1.Bytes()),
 						common.BytesToHash(contract1.Bytes()),
 					},
 				},
 				{
-					// contract2.deposit(addr1, 1 ether): LogTransfer(CrossEx, contract1, contract2, ...)
+					// contract2.deposit(addr1, 1 ether): CrossTransfer(CrossEx, contract1, contract2, ...)
 					Address: CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
-						transferLogAddr,
 						common.BytesToHash(contract1.Bytes()),
 						common.BytesToHash(contract2.Bytes()),
 					},
