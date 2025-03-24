@@ -623,12 +623,6 @@ web3._extend({
 			call: 'eth_getBlockReceipts',
 			params: 1,
 		}),
-		// ##CROSS: fee delegation
-		new web3._extend.Method({
-			name: 'signRawFeeDelegationTransaction',
-			call: 'eth_signRawFeeDelegationTransaction',
-			params: 2,
-		}),
 		// ##CROSS: fee collection
 		new web3._extend.Method({
 			name: 'foundation',
@@ -765,12 +759,6 @@ web3._extend({
 			name: 'initializeWallet',
 			call: 'personal_initializeWallet',
 			params: 1
-		}),
-		// ##CROSS: fee delegation
-		new web3._extend.Method({
-			name: 'signRawFeeDelegationTransaction',
-			call: 'eth_signRawFeeDelegationTransaction',
-			params: 2,
 		})
 	],
 	properties: [

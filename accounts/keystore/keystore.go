@@ -283,8 +283,9 @@ func (ks *KeyStore) SignTx(a accounts.Account, tx *types.Transaction, chainID *b
 	if !found {
 		return nil, ErrLocked
 	}
-	// ##CROSS: fee delegation
-	return types.SignTx(tx, Signer(tx, chainID), unlockedKey.PrivateKey)
+	// Depending on the presence of the chain ID, sign with 2718 or homestead
+	signer := types.LatestSignerForChainID(chainID)
+	return types.SignTx(tx, signer, unlockedKey.PrivateKey)
 }
 
 // SignHashWithPassphrase signs hash if the private key matching the given address
@@ -307,8 +308,9 @@ func (ks *KeyStore) SignTxWithPassphrase(a accounts.Account, passphrase string, 
 		return nil, err
 	}
 	defer zeroKey(key.PrivateKey)
-	// ##CROSS: fee delegation
-	return types.SignTx(tx, Signer(tx, chainID), key.PrivateKey)
+	// Depending on the presence of the chain ID, sign with or without replay protection.
+	signer := types.LatestSignerForChainID(chainID)
+	return types.SignTx(tx, signer, key.PrivateKey)
 }
 
 // Unlock unlocks the given account indefinitely.
@@ -510,15 +512,4 @@ func zeroKey(k *ecdsa.PrivateKey) {
 	for i := range b {
 		b[i] = 0
 	}
-}
-
-// ##CROSS: fee delegation
-func Signer(tx *types.Transaction, chainID *big.Int) (signer types.Signer) {
-	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-		signer = types.NewFeeDelegationSigner(chainID)
-	} else {
-		// Depending on the presence of the chain ID, sign with or without replay protection.
-		signer = types.LatestSignerForChainID(chainID)
-	}
-	return
 }
