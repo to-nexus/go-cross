@@ -63,12 +63,6 @@ type TransactionArgs struct {
 	AccessList *types.AccessList `json:"accessList,omitempty"`
 	ChainID    *hexutil.Big      `json:"chainId,omitempty"`
 
-	// ##CROSS: fee delegation
-	FeePayer *common.Address `json:"feePayer"`
-	V        *hexutil.Big    `json:"v"`
-	R        *hexutil.Big    `json:"r"`
-	S        *hexutil.Big    `json:"s"`
-
 	// For BlobTxType
 	BlobFeeCap *hexutil.Big  `json:"maxFeePerBlobGas"`
 	BlobHashes []common.Hash `json:"blobVersionedHashes,omitempty"`
@@ -506,13 +500,6 @@ func (args *TransactionArgs) toTransaction() *types.Transaction {
 			Value:      (*big.Int)(args.Value),
 			Data:       args.data(),
 			AccessList: al,
-		}
-		// ##CROSS: fee delegation
-		if args.FeePayer != nil && args.V != nil && args.R != nil && args.S != nil {
-			data.(*types.DynamicFeeTx).V = (*big.Int)(args.V)
-			data.(*types.DynamicFeeTx).R = (*big.Int)(args.R)
-			data.(*types.DynamicFeeTx).S = (*big.Int)(args.S)
-			return types.NewTx(types.NewFeeDelegatedDynamicFeeTx(args.FeePayer, *data.(*types.DynamicFeeTx)))
 		}
 
 	case args.AccessList != nil:

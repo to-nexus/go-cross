@@ -226,19 +226,22 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 	}
 
 	// ##CROSS: fee delegation
+	// If the transaction is a Fee Delegated Dynamic Fee transaction, perform the following checks:
+	// 1. Verify that a FeePayer is specified; if not, return an error.
+	// 2. Confirm that the fee payer's signature, as recovered from the transaction using a FeeDelegationSigner,
+	//    matches the provided FeePayer address.
+	// 3. Ensure that the FeePayer has a sufficient balance to cover the fee payer cost.
+	// These validations ensure that fee delegation is applied correctly and that the fee payer is both authorized and funded.
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
 		// Make sure the transaction is signed properly.
 		if tx.FeePayer() == nil {
 			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-		}
-		feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(signer.ChainID()), tx)
-		if err != nil {
+		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(signer.ChainID()), tx); err != nil {
 			return err
-		}
-		if *tx.FeePayer() != feePayer {
+		} else if *tx.FeePayer() != feePayer {
 			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), feePayer)
 		}
-		if opts.State.GetBalance(feePayer).ToBig().Cmp(tx.FeePayerCost()) < 0 {
+		if opts.State.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
 			return core.ErrFeePayerInsufficientFunds
 		}
 	}

@@ -453,11 +453,6 @@ func (s *PersonalAccountAPI) signTransaction(ctx context.Context, args *Transact
 	// Look up the wallet containing the requested signer
 	account := accounts.Account{Address: args.from()}
 
-	// ##CROSS: fee delegation
-	if args.FeePayer != nil {
-		account = accounts.Account{Address: *args.FeePayer}
-	}
-
 	wallet, err := s.am.Find(account)
 	if err != nil {
 		return nil, err
@@ -1442,10 +1437,10 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 			result.GasPrice = (*hexutil.Big)(tx.GasFeeCap())
 		}
 		result.FeePayer = tx.FeePayer()
-		v, r, s := tx.RawFeePayerSignatureValues()
-		result.FV = (*hexutil.Big)(v)
-		result.FR = (*hexutil.Big)(r)
-		result.FS = (*hexutil.Big)(s)
+		fv, fr, fs := tx.RawFeePayerSignatureValues()
+		result.FV = (*hexutil.Big)(fv)
+		result.FR = (*hexutil.Big)(fr)
+		result.FS = (*hexutil.Big)(fs)
 	}
 	return result
 }
@@ -1586,7 +1581,7 @@ type TransactionAPI struct {
 	b               Backend
 	nonceLock       *AddrLocker
 	signer          types.Signer
-	gasAbs          *gasabs.Client // ##CROSS: fee delegation
+	gasAbs          *gasabs.Client // ##CROSS: gas abs
 	approvedAddress *sync.Map
 }
 
@@ -1606,7 +1601,7 @@ func NewTransactionAPI(b Backend, nonceLock *AddrLocker, cfg *node.GasAbstractio
 
 	s := &TransactionAPI{b, nonceLock, signer, gasAbs, &sync.Map{}}
 
-	// ##CROSS: fee delegation
+	// ##CROSS: gas abs
 	if gasAbs != nil {
 		for _, addr := range gasAbs.Config.ApprovedAddresses {
 			s.approvedAddress.Store(addr, struct{}{})
@@ -1816,11 +1811,15 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	}
 
 	// ##CROSS: fee delegation
+	// For fee-delegated dynamic fee transactions, perform the following checks:
+	// 1. Ensure that a fee payer address is provided (non-nil).
+	// 2. Recover the fee payer address from the transaction signature using a fee delegation signer.
+	// 3. Verify that the recovered fee payer matches the provided fee payer.
+	// If any of these checks fail, the transaction submission is aborted.
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
 		if tx.FeePayer() == nil {
 			return common.Hash{}, errors.New("feepayer's address is nil")
-		}
-		if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(b.ChainConfig().ChainID), tx); err != nil {
+		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(b.ChainConfig().ChainID), tx); err != nil {
 			return common.Hash{}, err
 		} else if feePayer != *tx.FeePayer() {
 			return common.Hash{}, fmt.Errorf("feepayer's signature mismatch. recoverd: %v want: %v", feePayer, *tx.FeePayer())
@@ -1983,20 +1982,6 @@ func (s *TransactionAPI) SignTransaction(ctx context.Context, args TransactionAr
 	tx := args.toTransaction()
 	if err := checkTxFee(tx.GasPrice(), tx.Gas(), s.b.RPCTxFeeCap()); err != nil {
 		return nil, err
-	}
-
-	// ##CROSS: fee delegation
-	if args.FeePayer != nil {
-		log.Info("SignTransaction", "FeePayer", args.FeePayer)
-		signed, err := s.sign(*args.FeePayer, tx)
-		if err != nil {
-			return nil, err
-		}
-		if data, err := signed.MarshalBinary(); err != nil {
-			return nil, err
-		} else {
-			return &SignTransactionResult{data, signed}, nil
-		}
 	}
 
 	signed, err := s.sign(args.from(), tx)

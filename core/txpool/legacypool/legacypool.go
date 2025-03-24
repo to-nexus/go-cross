@@ -374,13 +374,17 @@ func (pool *LegacyPool) loop() {
 			pool.mu.Lock()
 			for addr := range pool.queue {
 				// ##CROSS: fee delegation
+				// For each transaction in the account's flattened queue, if the transaction is a fee-delegated
+				// dynamic fee transaction, verify that a FeePayer is specified and has sufficient balance to cover
+				// the fee payer cost. If either condition is not met, remove the transaction from the pool and
+				// record the eviction.
 				list := pool.queue[addr].Flatten()
 				for _, tx := range list {
-					if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
-						// check feePayer's balance
-						if pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
+					if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+						if tx.FeePayer() == nil || pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
 							pool.removeTx(tx.Hash(), true, true)
 							queuedEvictionMeter.Mark(int64(1))
+							log.Trace("Evicted fee-delegated tx due to insufficient fee payer balance", "hash", tx.Hash().String())
 						}
 					}
 				}
@@ -1478,11 +1482,11 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 
 		// ##CROSS: fee delegation
 		for _, tx := range list.Flatten() {
-			if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
-				if pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
-					log.Trace("promoteExecutables", "hash", tx.Hash().String())
+			if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+				if tx.FeePayer() == nil || pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
 					list.Remove(tx)
 					drops = append(drops, tx)
+					log.Trace("Dropping fee-delegated tx due to insufficient fee payer balance", "method", "promote", "hash", tx.Hash().String())
 				}
 			}
 		}
@@ -1691,11 +1695,11 @@ func (pool *LegacyPool) demoteUnexecutables() {
 
 		// ##CROSS: fee delegation
 		for _, tx := range list.Flatten() {
-			if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
-				if pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
-					log.Trace("demoteUnexecutables", "hash", tx.Hash().String())
+			if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+				if tx.FeePayer() == nil || pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
 					list.Remove(tx)
 					drops = append(drops, tx)
+					log.Trace("Dropping fee-delegated tx due to insufficient fee payer balance", "method", "demote", "hash", tx.Hash().String())
 				}
 			}
 		}

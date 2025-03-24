@@ -16,6 +16,8 @@
 
 package types
 
+// ##CROSS: fee delegation
+
 import (
 	"bytes"
 	"math/big"
@@ -24,7 +26,11 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-type FeeDelegatedDynamicFeeTx struct { // ##CROSS: fee delegation
+// FeeDelegatedDynamicFeeTx is a dynamic fee transaction structure that supports fee delegation.
+// It embeds the sender's DynamicFeeTx data and allows specifying a separate fee payer.
+// Additionally, it includes the fee payer's signature values (FV, FR, FS), which are used for
+// verifying the fee payer's signature and handling fee delegation logic.
+type FeeDelegatedDynamicFeeTx struct {
 	SenderTx DynamicFeeTx
 	FeePayer *common.Address `rlp:"nil"`
 	// Signature values
