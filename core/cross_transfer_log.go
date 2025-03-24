@@ -11,22 +11,19 @@ import (
 )
 
 var (
-	transferLogSig  common.Hash
-	transferLogAddr = common.BytesToHash(CrossExAddr.Bytes())
+	transferLogSig common.Hash
 )
 
 func init() {
 	ab, _ := predeploys.CrossExMetaData.GetAbi()
-	transferLogSig = ab.Events["LogTransfer"].ID
+	transferLogSig = ab.Events["CrossTransfer"].ID
 }
 
 // AddTransferLog adds transfer log into state
 func AddTransferLog(
 	state vm.StateDB,
 	sender, recipient common.Address,
-	amount,
-	input1, input2,
-	output1, output2 *uint256.Int,
+	amount, senderBalance, recipientBalance *uint256.Int,
 ) {
 	// ignore if amount is 0
 	if amount.Sign() <= 0 {
@@ -35,10 +32,8 @@ func AddTransferLog(
 
 	dataInputs := []*uint256.Int{
 		amount,
-		input1,
-		input2,
-		output1,
-		output2,
+		senderBalance,
+		recipientBalance,
 	}
 
 	var data []byte
@@ -51,7 +46,6 @@ func AddTransferLog(
 		Address: CrossExAddr,
 		Topics: []common.Hash{
 			transferLogSig,
-			transferLogAddr,
 			common.BytesToHash(sender.Bytes()),
 			common.BytesToHash(recipient.Bytes()),
 		},

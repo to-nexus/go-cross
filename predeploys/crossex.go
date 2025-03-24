@@ -31,7 +31,7 @@ var (
 
 // CrossExMetaData contains all meta data concerning the CrossEx contract.
 var CrossExMetaData = &bind.MetaData{
-	ABI: "[{\"type\":\"constructor\",\"inputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"balanceOf\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"decimals\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint8\",\"internalType\":\"uint8\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"name\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"symbol\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"totalSupply\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"pure\"},{\"type\":\"event\",\"name\":\"LogTransfer\",\"inputs\":[{\"name\":\"token\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"from\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"to\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"input1\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"input2\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"output1\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"output2\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false}]",
+	ABI: "[{\"type\":\"constructor\",\"inputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"balanceOf\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"decimals\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint8\",\"internalType\":\"uint8\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"name\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"symbol\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"totalSupply\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"pure\"},{\"type\":\"event\",\"name\":\"CrossTransfer\",\"inputs\":[{\"name\":\"from\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"to\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"fromBalance\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"toBalance\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false}]",
 }
 
 // CrossExABI is the input ABI used to generate the binding from.
@@ -39,7 +39,7 @@ var CrossExMetaData = &bind.MetaData{
 var CrossExABI = CrossExMetaData.ABI
 
 // CrossExBinRuntime is the compiled bytecode used for adding genesis block without deploying code.
-const CrossExBinRuntime = "608060405234801561000f575f80fd5b5060043610610055575f3560e01c806306fdde031461005957806318160ddd14610099578063313ce567146100af57806370a08231146100be57806395d89b41146100d9575b5f80fd5b60408051808201909152601281527121b937b9b9902730ba34bb32902a37b5b2b760711b60208201525b604051610090919061011c565b60405180910390f35b6100a16100fb565b604051908152602001610090565b60405160128152602001610090565b6100a16100cc366004610168565b6001600160a01b03163190565b604080518082019091526006815265086a49ea6a6f60d31b6020820152610083565b5f6101086012600a61028b565b6101179064174876e800610296565b905090565b5f602080835283518060208501525f5b818110156101485785810183015185820160400152820161012c565b505f604082860101526040601f19601f8301168501019250505092915050565b5f60208284031215610178575f80fd5b81356001600160a01b038116811461018e575f80fd5b9392505050565b634e487b7160e01b5f52601160045260245ffd5b600181815b808511156101e357815f19048211156101c9576101c9610195565b808516156101d657918102915b93841c93908002906101ae565b509250929050565b5f826101f957506001610285565b8161020557505f610285565b816001811461021b576002811461022557610241565b6001915050610285565b60ff84111561023657610236610195565b50506001821b610285565b5060208310610133831016604e8410600b8410161715610264575081810a610285565b61026e83836101a9565b805f190482111561028157610281610195565b0290505b92915050565b5f61018e83836101eb565b80820281158282048414176102855761028561019556fea2646970667358221220ecee7b036878642a44dcf001cf156f84d6054cd98d9bb1223f4b90c2817180f864736f6c63430008180033"
+const CrossExBinRuntime = "608060405234801561000f575f80fd5b5060043610610055575f3560e01c806306fdde031461005957806318160ddd14610099578063313ce567146100af57806370a08231146100be57806395d89b41146100d9575b5f80fd5b60408051808201909152601281527121a927a9a9902730ba34bb32902a37b5b2b760711b60208201525b604051610090919061011b565b60405180910390f35b6100a16100fa565b604051908152602001610090565b60405160128152602001610090565b6100a16100cc366004610167565b6001600160a01b03163190565b60408051808201909152600581526443524f535360d81b6020820152610083565b5f6101076012600a61028a565b6101169064174876e800610295565b905090565b5f602080835283518060208501525f5b818110156101475785810183015185820160400152820161012b565b505f604082860101526040601f19601f8301168501019250505092915050565b5f60208284031215610177575f80fd5b81356001600160a01b038116811461018d575f80fd5b9392505050565b634e487b7160e01b5f52601160045260245ffd5b600181815b808511156101e257815f19048211156101c8576101c8610194565b808516156101d557918102915b93841c93908002906101ad565b509250929050565b5f826101f857506001610284565b8161020457505f610284565b816001811461021a576002811461022457610240565b6001915050610284565b60ff84111561023557610235610194565b50506001821b610284565b5060208310610133831016604e8410600b8410161715610263575081810a610284565b61026d83836101a8565b805f190482111561028057610280610194565b0290505b92915050565b5f61018d83836101ea565b80820281158282048414176102845761028461019456fea26469706673582212201b295b0f32ecfeb35ff03c71b8900b1c94c31ec3deb6950e82519f7ca12cc32964736f6c63430008180033"
 
 // CrossEx is an auto generated Go binding around an Ethereum contract.
 type CrossEx struct {
@@ -338,9 +338,9 @@ func (_CrossEx *CrossExCallerSession) TotalSupply() (*big.Int, error) {
 	return _CrossEx.Contract.TotalSupply(&_CrossEx.CallOpts)
 }
 
-// CrossExLogTransferIterator is returned from FilterLogTransfer and is used to iterate over the raw logs and unpacked data for LogTransfer events raised by the CrossEx contract.
-type CrossExLogTransferIterator struct {
-	Event *CrossExLogTransfer // Event containing the contract specifics and raw log
+// CrossExCrossTransferIterator is returned from FilterCrossTransfer and is used to iterate over the raw logs and unpacked data for CrossTransfer events raised by the CrossEx contract.
+type CrossExCrossTransferIterator struct {
+	Event *CrossExCrossTransfer // Event containing the contract specifics and raw log
 
 	contract *bind.BoundContract // Generic contract to use for unpacking event data
 	event    string              // Event name to use for unpacking event data
@@ -354,7 +354,7 @@ type CrossExLogTransferIterator struct {
 // Next advances the iterator to the subsequent event, returning whether there
 // are any more events found. In case of a retrieval or parsing error, false is
 // returned and Error() can be queried for the exact failure.
-func (it *CrossExLogTransferIterator) Next() bool {
+func (it *CrossExCrossTransferIterator) Next() bool {
 	// If the iterator failed, stop iterating
 	if it.fail != nil {
 		return false
@@ -363,7 +363,7 @@ func (it *CrossExLogTransferIterator) Next() bool {
 	if it.done {
 		select {
 		case log := <-it.logs:
-			it.Event = new(CrossExLogTransfer)
+			it.Event = new(CrossExCrossTransfer)
 			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 				it.fail = err
 				return false
@@ -378,7 +378,7 @@ func (it *CrossExLogTransferIterator) Next() bool {
 	// Iterator still in progress, wait for either a data or an error event
 	select {
 	case log := <-it.logs:
-		it.Event = new(CrossExLogTransfer)
+		it.Event = new(CrossExCrossTransfer)
 		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 			it.fail = err
 			return false
@@ -394,39 +394,32 @@ func (it *CrossExLogTransferIterator) Next() bool {
 }
 
 // Error returns any retrieval or parsing error occurred during filtering.
-func (it *CrossExLogTransferIterator) Error() error {
+func (it *CrossExCrossTransferIterator) Error() error {
 	return it.fail
 }
 
 // Close terminates the iteration process, releasing any pending underlying
 // resources.
-func (it *CrossExLogTransferIterator) Close() error {
+func (it *CrossExCrossTransferIterator) Close() error {
 	it.sub.Unsubscribe()
 	return nil
 }
 
-// CrossExLogTransfer represents a LogTransfer event raised by the CrossEx contract.
-type CrossExLogTransfer struct {
-	Token   common.Address
-	From    common.Address
-	To      common.Address
-	Amount  *big.Int
-	Input1  *big.Int
-	Input2  *big.Int
-	Output1 *big.Int
-	Output2 *big.Int
-	Raw     types.Log // Blockchain specific contextual infos
+// CrossExCrossTransfer represents a CrossTransfer event raised by the CrossEx contract.
+type CrossExCrossTransfer struct {
+	From        common.Address
+	To          common.Address
+	Amount      *big.Int
+	FromBalance *big.Int
+	ToBalance   *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
 }
 
-// FilterLogTransfer is a free log retrieval operation binding the contract event 0xe6497e3ee548a3372136af2fcb0696db31fc6cf20260707645068bd3fe97f3c4.
+// FilterCrossTransfer is a free log retrieval operation binding the contract event 0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b.
 //
-// Solidity: event LogTransfer(address indexed token, address indexed from, address indexed to, uint256 amount, uint256 input1, uint256 input2, uint256 output1, uint256 output2)
-func (_CrossEx *CrossExFilterer) FilterLogTransfer(opts *bind.FilterOpts, token []common.Address, from []common.Address, to []common.Address) (*CrossExLogTransferIterator, error) {
+// Solidity: event CrossTransfer(address indexed from, address indexed to, uint256 amount, uint256 fromBalance, uint256 toBalance)
+func (_CrossEx *CrossExFilterer) FilterCrossTransfer(opts *bind.FilterOpts, from []common.Address, to []common.Address) (*CrossExCrossTransferIterator, error) {
 
-	var tokenRule []interface{}
-	for _, tokenItem := range token {
-		tokenRule = append(tokenRule, tokenItem)
-	}
 	var fromRule []interface{}
 	for _, fromItem := range from {
 		fromRule = append(fromRule, fromItem)
@@ -436,22 +429,18 @@ func (_CrossEx *CrossExFilterer) FilterLogTransfer(opts *bind.FilterOpts, token 
 		toRule = append(toRule, toItem)
 	}
 
-	logs, sub, err := _CrossEx.contract.FilterLogs(opts, "LogTransfer", tokenRule, fromRule, toRule)
+	logs, sub, err := _CrossEx.contract.FilterLogs(opts, "CrossTransfer", fromRule, toRule)
 	if err != nil {
 		return nil, err
 	}
-	return &CrossExLogTransferIterator{contract: _CrossEx.contract, event: "LogTransfer", logs: logs, sub: sub}, nil
+	return &CrossExCrossTransferIterator{contract: _CrossEx.contract, event: "CrossTransfer", logs: logs, sub: sub}, nil
 }
 
-// WatchLogTransfer is a free log subscription operation binding the contract event 0xe6497e3ee548a3372136af2fcb0696db31fc6cf20260707645068bd3fe97f3c4.
+// WatchCrossTransfer is a free log subscription operation binding the contract event 0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b.
 //
-// Solidity: event LogTransfer(address indexed token, address indexed from, address indexed to, uint256 amount, uint256 input1, uint256 input2, uint256 output1, uint256 output2)
-func (_CrossEx *CrossExFilterer) WatchLogTransfer(opts *bind.WatchOpts, sink chan<- *CrossExLogTransfer, token []common.Address, from []common.Address, to []common.Address) (event.Subscription, error) {
+// Solidity: event CrossTransfer(address indexed from, address indexed to, uint256 amount, uint256 fromBalance, uint256 toBalance)
+func (_CrossEx *CrossExFilterer) WatchCrossTransfer(opts *bind.WatchOpts, sink chan<- *CrossExCrossTransfer, from []common.Address, to []common.Address) (event.Subscription, error) {
 
-	var tokenRule []interface{}
-	for _, tokenItem := range token {
-		tokenRule = append(tokenRule, tokenItem)
-	}
 	var fromRule []interface{}
 	for _, fromItem := range from {
 		fromRule = append(fromRule, fromItem)
@@ -461,7 +450,7 @@ func (_CrossEx *CrossExFilterer) WatchLogTransfer(opts *bind.WatchOpts, sink cha
 		toRule = append(toRule, toItem)
 	}
 
-	logs, sub, err := _CrossEx.contract.WatchLogs(opts, "LogTransfer", tokenRule, fromRule, toRule)
+	logs, sub, err := _CrossEx.contract.WatchLogs(opts, "CrossTransfer", fromRule, toRule)
 	if err != nil {
 		return nil, err
 	}
@@ -471,8 +460,8 @@ func (_CrossEx *CrossExFilterer) WatchLogTransfer(opts *bind.WatchOpts, sink cha
 			select {
 			case log := <-logs:
 				// New log arrived, parse the event and forward to the user
-				event := new(CrossExLogTransfer)
-				if err := _CrossEx.contract.UnpackLog(event, "LogTransfer", log); err != nil {
+				event := new(CrossExCrossTransfer)
+				if err := _CrossEx.contract.UnpackLog(event, "CrossTransfer", log); err != nil {
 					return err
 				}
 				event.Raw = log
@@ -493,12 +482,12 @@ func (_CrossEx *CrossExFilterer) WatchLogTransfer(opts *bind.WatchOpts, sink cha
 	}), nil
 }
 
-// ParseLogTransfer is a log parse operation binding the contract event 0xe6497e3ee548a3372136af2fcb0696db31fc6cf20260707645068bd3fe97f3c4.
+// ParseCrossTransfer is a log parse operation binding the contract event 0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b.
 //
-// Solidity: event LogTransfer(address indexed token, address indexed from, address indexed to, uint256 amount, uint256 input1, uint256 input2, uint256 output1, uint256 output2)
-func (_CrossEx *CrossExFilterer) ParseLogTransfer(log types.Log) (*CrossExLogTransfer, error) {
-	event := new(CrossExLogTransfer)
-	if err := _CrossEx.contract.UnpackLog(event, "LogTransfer", log); err != nil {
+// Solidity: event CrossTransfer(address indexed from, address indexed to, uint256 amount, uint256 fromBalance, uint256 toBalance)
+func (_CrossEx *CrossExFilterer) ParseCrossTransfer(log types.Log) (*CrossExCrossTransfer, error) {
+	event := new(CrossExCrossTransfer)
+	if err := _CrossEx.contract.UnpackLog(event, "CrossTransfer", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
