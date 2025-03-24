@@ -147,6 +147,9 @@ type Message struct {
 	// This field will be set to true for operations like RPC eth_call.
 	SkipAccountChecks bool
 
+	// FeePayer is an optional field used for fee delegation. If it is set, the specified
+	// address pays the transaction fees instead of the sender. If FeePayer is nil,
+	// the sender is responsible for the fees by default.
 	FeePayer *common.Address // ##CROSS: fee delegation
 }
 
@@ -267,14 +270,16 @@ func (st *StateTransition) buyGas() error {
 	}
 
 	// ##CROSS: fee delegation
-	feePayer := func() common.Address {
+	// Determine who actually pays for the transaction. If FeePayer is set,
+	// that address covers the costs; otherwise, the sender (From) is responsible.
+	payer := func() common.Address {
 		if st.msg.FeePayer != nil {
 			return *st.msg.FeePayer
 		}
 		return st.msg.From
 	}()
 
-	if feePayer == st.msg.From {
+	if payer == st.msg.From {
 		if have, want := st.state.GetBalance(st.msg.From), balanceCheckU256; have.Cmp(want) < 0 {
 			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
 		}
@@ -291,7 +296,7 @@ func (st *StateTransition) buyGas() error {
 
 	st.initialGas = st.msg.GasLimit
 	mgvalU256, _ := uint256.FromBig(mgval)
-	st.state.SubBalance(feePayer, mgvalU256)
+	st.state.SubBalance(payer, mgvalU256)
 	return nil
 }
 
@@ -514,6 +519,9 @@ func (st *StateTransition) refundGas(refundQuotient uint64) uint64 {
 	remaining = remaining.Mul(remaining, uint256.MustFromBig(st.msg.GasPrice))
 
 	// ##CROSS: fee delegation
+	// If FeePayer is set, the fee payer gets the remaining gas refund; otherwise,
+	// the sender (From) receives it. This aligns with fee delegation logic where
+	// the entity paying the gas costs is entitled to any remaining refund.
 	if st.msg.FeePayer != nil {
 		st.state.AddBalance(*st.msg.FeePayer, remaining)
 	} else {

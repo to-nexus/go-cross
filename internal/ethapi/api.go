@@ -453,11 +453,6 @@ func (s *PersonalAccountAPI) signTransaction(ctx context.Context, args *Transact
 	// Look up the wallet containing the requested signer
 	account := accounts.Account{Address: args.from()}
 
-	// ##CROSS: fee delegation
-	if args.FeePayer != nil {
-		account = accounts.Account{Address: *args.FeePayer}
-	}
-
 	wallet, err := s.am.Find(account)
 	if err != nil {
 		return nil, err
@@ -625,63 +620,6 @@ func (s *PersonalAccountAPI) Unpair(ctx context.Context, url string, pin string)
 	default:
 		return errors.New("specified wallet does not support pairing")
 	}
-}
-
-// ##CROSS: fee delegation
-// SignRawFeeDelegationTransaction will create a transaction from the given arguments and
-// tries to sign it with the key associated with args.feePayer. If the given passwd isn't
-// able to decrypt the key it fails. The transaction is returned in RLP-form, not broadcast
-// to other nodes
-func (s *PersonalAccountAPI) SignRawFeeDelegationTransaction(ctx context.Context, args TransactionArgs, input hexutil.Bytes, passwd string) (*SignTransactionResult, error) {
-	if args.FeePayer == nil {
-		return nil, fmt.Errorf("missing FeePayer")
-	}
-
-	// Look up the wallet containing the requested signer
-	account := accounts.Account{Address: *args.FeePayer}
-
-	wallet, err := s.am.Find(account)
-	if err != nil {
-		return nil, err
-	}
-
-	rawTx := new(types.Transaction)
-	if err := rawTx.UnmarshalBinary(input); err != nil {
-		return nil, err
-	}
-
-	V, R, S := rawTx.RawSignatureValues()
-	if rawTx.Type() == types.DynamicFeeTxType {
-		senderTx := types.DynamicFeeTx{
-			To:         rawTx.To(),
-			ChainID:    rawTx.ChainId(),
-			Nonce:      rawTx.Nonce(),
-			Gas:        rawTx.Gas(),
-			GasFeeCap:  rawTx.GasFeeCap(),
-			GasTipCap:  rawTx.GasTipCap(),
-			Value:      rawTx.Value(),
-			Data:       rawTx.Data(),
-			AccessList: rawTx.AccessList(),
-			V:          V,
-			R:          R,
-			S:          S,
-		}
-
-		tx := types.NewTx(types.NewFeeDelegatedDynamicFeeTx(args.FeePayer, senderTx))
-		signed, err := wallet.SignTxWithPassphrase(account, passwd, tx, s.b.ChainConfig().ChainID)
-
-		if err != nil {
-			return nil, err
-		}
-		data, err := signed.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-
-		return &SignTransactionResult{data, signed}, nil
-	}
-
-	return nil, fmt.Errorf("senderTx type error")
 }
 
 // BlockChainAPI provides an API to access Ethereum blockchain data.
@@ -1499,10 +1437,10 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 			result.GasPrice = (*hexutil.Big)(tx.GasFeeCap())
 		}
 		result.FeePayer = tx.FeePayer()
-		v, r, s := tx.RawFeePayerSignatureValues()
-		result.FV = (*hexutil.Big)(v)
-		result.FR = (*hexutil.Big)(r)
-		result.FS = (*hexutil.Big)(s)
+		fv, fr, fs := tx.RawFeePayerSignatureValues()
+		result.FV = (*hexutil.Big)(fv)
+		result.FR = (*hexutil.Big)(fr)
+		result.FS = (*hexutil.Big)(fs)
 	}
 	return result
 }
@@ -1643,7 +1581,7 @@ type TransactionAPI struct {
 	b               Backend
 	nonceLock       *AddrLocker
 	signer          types.Signer
-	gasAbs          *gasabs.Client // ##CROSS: fee delegation
+	gasAbs          *gasabs.Client // ##CROSS: gas abs
 	approvedAddress *sync.Map
 }
 
@@ -1663,7 +1601,7 @@ func NewTransactionAPI(b Backend, nonceLock *AddrLocker, cfg *node.GasAbstractio
 
 	s := &TransactionAPI{b, nonceLock, signer, gasAbs, &sync.Map{}}
 
-	// ##CROSS: fee delegation
+	// ##CROSS: gas abs
 	if gasAbs != nil {
 		for _, addr := range gasAbs.Config.ApprovedAddresses {
 			s.approvedAddress.Store(addr, struct{}{})
@@ -1873,11 +1811,15 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	}
 
 	// ##CROSS: fee delegation
+	// For fee-delegated dynamic fee transactions, perform the following checks:
+	// 1. Ensure that a fee payer address is provided (non-nil).
+	// 2. Recover the fee payer address from the transaction signature using a fee delegation signer.
+	// 3. Verify that the recovered fee payer matches the provided fee payer.
+	// If any of these checks fail, the transaction submission is aborted.
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
 		if tx.FeePayer() == nil {
 			return common.Hash{}, errors.New("feepayer's address is nil")
-		}
-		if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(b.ChainConfig().ChainID), tx); err != nil {
+		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(b.ChainConfig().ChainID), tx); err != nil {
 			return common.Hash{}, err
 		} else if feePayer != *tx.FeePayer() {
 			return common.Hash{}, fmt.Errorf("feepayer's signature mismatch. recoverd: %v want: %v", feePayer, *tx.FeePayer())
@@ -2042,20 +1984,6 @@ func (s *TransactionAPI) SignTransaction(ctx context.Context, args TransactionAr
 		return nil, err
 	}
 
-	// ##CROSS: fee delegation
-	if args.FeePayer != nil {
-		log.Info("SignTransaction", "FeePayer", args.FeePayer)
-		signed, err := s.sign(*args.FeePayer, tx)
-		if err != nil {
-			return nil, err
-		}
-		if data, err := signed.MarshalBinary(); err != nil {
-			return nil, err
-		} else {
-			return &SignTransactionResult{data, signed}, nil
-		}
-	}
-
 	signed, err := s.sign(args.from(), tx)
 	if err != nil {
 		return nil, err
@@ -2141,52 +2069,6 @@ func (s *TransactionAPI) Resend(ctx context.Context, sendArgs TransactionArgs, g
 		}
 	}
 	return common.Hash{}, fmt.Errorf("transaction %#x not found", matchTx.Hash())
-}
-
-// ##CROSS: fee delegation
-// SignRawFeeDelegationTransaction will sign the given feeDelegation transaction with the feePayer account.
-// The node needs to have the private key of the account corresponding with
-// the given from address and it needs to be unlocked.
-func (s *TransactionAPI) SignRawFeeDelegationTransaction(ctx context.Context, args TransactionArgs, input hexutil.Bytes) (*SignTransactionResult, error) {
-	if args.FeePayer == nil {
-		return nil, fmt.Errorf("missing FeePayer")
-	}
-
-	rawTx := new(types.Transaction)
-	if err := rawTx.UnmarshalBinary(input); err != nil {
-		return nil, err
-	}
-
-	V, R, S := rawTx.RawSignatureValues()
-	if rawTx.Type() == types.DynamicFeeTxType {
-		senderTx := types.DynamicFeeTx{
-			To:         rawTx.To(),
-			ChainID:    rawTx.ChainId(),
-			Nonce:      rawTx.Nonce(),
-			Gas:        rawTx.Gas(),
-			GasFeeCap:  rawTx.GasFeeCap(),
-			GasTipCap:  rawTx.GasTipCap(),
-			Value:      rawTx.Value(),
-			Data:       rawTx.Data(),
-			AccessList: rawTx.AccessList(),
-			V:          V,
-			R:          R,
-			S:          S,
-		}
-
-		tx := types.NewTx(types.NewFeeDelegatedDynamicFeeTx(args.FeePayer, senderTx))
-		signed, err := s.sign(*args.FeePayer, tx)
-		if err != nil {
-			return nil, err
-		}
-		data, err := signed.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-
-		return &SignTransactionResult{data, signed}, nil
-	}
-	return nil, fmt.Errorf("senderTx type error")
 }
 
 // DebugAPI is the collection of Ethereum APIs exposed over the debugging

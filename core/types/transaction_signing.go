@@ -153,6 +153,9 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 }
 
 // ##CROSS: fee delegation
+// FeePayer returns the fee payer address for a fee-delegated transaction.
+// If a cached address exists and matches the current signer, it is returned;
+// otherwise, the address is recalculated and cached.
 func FeePayer(signer Signer, tx *Transaction) (common.Address, error) {
 	if sc := tx.feePayer.Load(); sc != nil {
 		sigCache := sc.(sigCache)
@@ -265,7 +268,10 @@ func (s cancunSigner) Hash(tx *Transaction) common.Hash {
 }
 
 // ##CROSS: fee delegation
-type feeDelegationSigner struct{ londonSigner } // ##CROSS: fee delegation
+// feeDelegationSigner is a signer that supports fee delegation.
+// It embeds londonSigner to extend the signature recovery and verification logic
+// required for fee-delegated dynamic fee transactions.
+type feeDelegationSigner struct{ londonSigner }
 
 func NewFeeDelegationSigner(chainId *big.Int) Signer {
 	return feeDelegationSigner{londonSigner{eip2930Signer{NewEIP155Signer(chainId)}}}
@@ -309,7 +315,7 @@ func (s feeDelegationSigner) SignatureValues(tx *Transaction, sig []byte) (R, S,
 // Hash returns the hash to be signed by the sender.
 // It does not uniquely identify the transaction.
 func (s feeDelegationSigner) Hash(tx *Transaction) common.Hash {
-	senderV, senderR, senderS := tx.RawSignatureValues()
+	V, R, S := tx.RawSignatureValues()
 	return prefixedRlpHash(
 		tx.Type(),
 		[]interface{}{
@@ -323,13 +329,13 @@ func (s feeDelegationSigner) Hash(tx *Transaction) common.Hash {
 				tx.Value(),
 				tx.Data(),
 				tx.AccessList(),
-				senderV,
-				senderR,
-				senderS,
+				V, R, S,
 			},
 			tx.FeePayer(),
 		})
 }
+
+// ##
 
 type londonSigner struct{ eip2930Signer }
 

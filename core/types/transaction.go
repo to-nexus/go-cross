@@ -335,7 +335,12 @@ func (tx *Transaction) To() *common.Address {
 	return copyAddressPtr(tx.inner.to())
 }
 
-// Cost returns (gas * gasPrice) + (blobGas * blobGasPrice) + value.
+// Cost computes the total cost of a transaction. For standard transactions, it calculates:
+//
+//	(gas limit * gas price) + (blob gas * blob gas fee cap, if applicable) + transaction value.
+//
+// For fee-delegated dynamic fee transactions, if the fee payer is not the sender,
+// only the transaction value is considered since the fee payer covers the gas fees.
 func (tx *Transaction) Cost() *big.Int {
 	// ##CROSS: fee delegation
 	if tx.Type() == FeeDelegatedDynamicFeeTxType {
@@ -353,7 +358,10 @@ func (tx *Transaction) Cost() *big.Int {
 }
 
 // ##CROSS: fee delegation
-// FeePayerCost returns feePayer's gas * gasPrice + value.
+// FeePayerCost calculates the cost for the fee payer.
+// It multiplies the gas limit by the gas price, and if the fee payer is the same as the sender,
+// it also adds the transaction value. This ensures that when the fee payer is not delegated,
+// they cover the full cost (gas cost plus value), while a separate fee payer only pays for gas.
 func (tx *Transaction) FeePayerCost() *big.Int {
 	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
 	from, _ := Sender(LatestSignerForChainID(tx.ChainId()), tx)
@@ -514,12 +522,16 @@ func (tx *Transaction) Hash() common.Hash {
 		h = rlpHash(tx.inner)
 	} else {
 		// ##CROSS: fee delegation
-		txTyp, inner := tx.Type(), tx.inner
-		if txTyp == FeeDelegatedDynamicFeeTxType {
-			txTyp = DynamicFeeTxType
-			inner = &tx.inner.(*FeeDelegatedDynamicFeeTx).SenderTx
+		// For fee-delegated transactions, the hash should be computed based on the underlying sender transaction.
+		// If the transaction type is FeeDelegatedDynamicFeeTxType, adjust the prefix to DynamicFeeTxType
+		// and set x to the SenderTx field from the fee-delegated transaction.
+		// This ensures that the hash is calculated consistently with standard dynamic fee transactions.
+		prefix, x := tx.Type(), tx.inner
+		if prefix == FeeDelegatedDynamicFeeTxType {
+			prefix = DynamicFeeTxType
+			x = &tx.inner.(*FeeDelegatedDynamicFeeTx).SenderTx
 		}
-		h = prefixedRlpHash(txTyp, inner)
+		h = prefixedRlpHash(prefix, x)
 		// ##
 	}
 	tx.hash.Store(h)
