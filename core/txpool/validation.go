@@ -200,7 +200,7 @@ type ValidationOptionsWithState struct {
 // rules without duplicating code and running the risk of missed updates.
 func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, opts *ValidationOptionsWithState) error {
 	// Ensure the transaction adheres to nonce ordering
-	from, err := signer.Sender(tx) // already validated (and cached), but cleaner to check
+	from, err := types.Sender(signer, tx) // already validated (and cached), but cleaner to check. ##CROSS: UPSTREAM PR-30208
 	if err != nil {
 		log.Error("Transaction sender recovery failed", "err", err)
 		return err
