@@ -353,8 +353,9 @@ func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValu
 		// ##CROSS: istanbul
 		// Came from Quorum: parse header to make sure we compare using the right hash (IBFT hash is based on a filtered header)
 		if len(data) > 0 {
-			header := decodeHeaderRLP(data)
-			if header.Hash() == hash {
+			if header := decodeHeaderRLP(data); header == nil {
+				return nil
+			} else if header.Hash() == hash {
 				return nil
 			}
 		}

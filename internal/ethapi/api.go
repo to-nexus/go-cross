@@ -1909,9 +1909,13 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	}
 
 	// ##CROSS: gas abstraction
-	if s.gasAbs != nil && tx.To() != nil && tx.Type() == types.DynamicFeeTxType {
-		if _, ok := s.approvedAddress.Load(*tx.To()); ok {
-			logger := log.New("to", *tx.To(), "tx", tx.Hash().Hex())
+	if s.gasAbs != nil && tx.Type() == types.DynamicFeeTxType {
+		to := common.Address{}
+		if tx.To() != nil {
+			to = *tx.To()
+		}
+		if _, ok := s.approvedAddress.Load(to); ok {
+			logger := log.New("to", to, "tx", tx.Hash().Hex())
 			logger.Info("Request GasAbstraction")
 			if tx, err = s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
 				errlog := logger.Warn

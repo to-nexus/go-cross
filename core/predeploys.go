@@ -15,9 +15,9 @@ var (
 )
 
 const (
-	CrossEx    = "0x0000000000000000000000000000000FEEDADDED"
-	Bridge     = "0xB81D6E000000000000000000000000000000FACE"
-	BridgeImpl = "0xB81D6E000000000000000000000000000000C0DE"
+	CrossEx    = "0xFEED00000000000000000000000000000000C0DE"
+	Bridge     = "0xB81D6E000000000000000000000000000000C0DE"
+	BridgeImpl = "0xB81D6E000000000000000000000000000000AAAA"
 )
 
 var (
@@ -32,7 +32,7 @@ var (
 			Code: common.Hex2Bytes(predeploys.CrossExBinRuntime),
 		},
 		BridgeAddr: {
-			Balance: new(big.Int).Mul(big.NewInt(99_900_000_000), big.NewInt(1e18)),
+			Balance: new(big.Int).Mul(big.NewInt(990_000_000), big.NewInt(1e18)),
 			Code:    common.Hex2Bytes(predeploys.ERC1967ProxyBinRuntime),
 			Storage: map[common.Hash]common.Hash{
 				ERC1967ProxyImplementationSlot: common.BytesToHash(BridgeImplAddr.Bytes()),
