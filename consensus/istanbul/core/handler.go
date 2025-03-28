@@ -191,7 +191,7 @@ func (c *Core) handleEncodedMsg(code uint64, data []byte) error {
 func (c *Core) handleDecodedMessage(m protocols.Message) error {
 	view := m.View()
 	if err := c.checkMessage(m.Code(), &view); err != nil {
-		// Store in the backlog it it's a future message
+		// Store in the backlog if it's a future message
 		if err == errFutureMessage {
 			c.addToBacklog(m)
 		}

@@ -16,7 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/predeploys"
+	"github.com/ethereum/go-ethereum/params/predeploy"
 	"github.com/kylelemons/godebug/diff"
 )
 
@@ -53,8 +53,9 @@ var (
 )
 
 func TestCrossTransferSig(t *testing.T) {
-	if CrossExAddr.String() != "0x0000000000000000000000000000000FeedAdDEd" {
-		t.Fatalf("CrossExAddr: got %s, want %s", CrossExAddr.String(), "0x0000000000000000000000000000000FeedAdDEd")
+	if predeploy.CrossExAddr.String() != "0xfeed00000000000000000000000000000000C0DE" {
+		t.Fatalf("CrossExAddr: got %s, want %s", predeploy.CrossExAddr.String(), "0xfeed00000000000000000000000000000000C0DE")
+		t.Fatalf("CrossExAddr: got %s, want %s", predeploy.CrossExAddr.String(), "0xfeed00000000000000000000000000000000C0DE")
 	}
 	if transferLogSig.String() != "0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b" {
 		t.Fatalf("transferLogSig: got %s, want %s", transferLogSig.String(), "0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b")
@@ -75,8 +76,8 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 		gspecWithCrossEx = &Genesis{
 			Config: testCrosswayConfig,
 			Alloc: types.GenesisAlloc{
-				CrossExAddr: types.Account{
-					Code: common.Hex2Bytes(predeploys.CrossExBinRuntime),
+				predeploy.CrossExAddr: types.Account{
+					Code: common.Hex2Bytes(predeploy.CrossExBinRuntime),
 				},
 				testAddr1: types.Account{
 					Balance: big.NewInt(2 * testUnit),
@@ -190,7 +191,7 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 					// check CrossTransfer event
 					want.Logs = []*types.Log{
 						{
-							Address: CrossExAddr,
+							Address: predeploy.CrossExAddr,
 							Topics: []common.Hash{
 								transferLogSig,
 								common.BytesToHash(testAddr1.Bytes()),
@@ -222,8 +223,8 @@ func TestAddTransferLog_callContract(t *testing.T) {
 		gspec = &Genesis{
 			Config: testCrosswayConfig,
 			Alloc: types.GenesisAlloc{
-				CrossExAddr: types.Account{
-					Code: common.Hex2Bytes(predeploys.CrossExBinRuntime),
+				predeploy.CrossExAddr: types.Account{
+					Code: common.Hex2Bytes(predeploy.CrossExBinRuntime),
 				},
 				contract1: types.Account{
 					Code: common.Hex2Bytes("608060405260043610610028575f3560e01c8063a9059cbb1461002c578063b6b55f2514610041575b5f80fd5b61003f61003a36600461024c565b610054565b005b61003f61004f366004610281565b61018b565b8034146100995760405162461bcd60e51b815260206004820152600e60248201526d0ecc2d8eaca40dad2e6dac2e8c6d60931b60448201526064015b60405180910390fd5b306001600160a01b038316036100e45760405162461bcd60e51b815260206004820152601060248201526f63616e27742073656e6420746f206d6560801b6044820152606401610090565b5f80836001600160a01b0316836040515f6040518083038185875af1925050503d805f811461012e576040519150601f19603f3d011682016040523d82523d5f602084013e610133565b606091505b50915091508161014557805160208201fd5b6040518381526001600160a01b0385169033907fce8688f853ffa65c042b72302433c25d7a230c322caba0901587534b6551091d9060200160405180910390a350505050565b8034146101cb5760405162461bcd60e51b815260206004820152600e60248201526d0ecc2d8eaca40dad2e6dac2e8c6d60931b6044820152606401610090565b6040516311f9fbc960e21b8152336004820152602481018290527f000000000000000000000000000000000000000000000000000000000000c0036001600160a01b0316906347e7ef249083906044015f604051808303818588803b158015610232575f80fd5b505af1158015610244573d5f803e3d5ffd5b505050505050565b5f806040838503121561025d575f80fd5b82356001600160a01b0381168114610273575f80fd5b946020939093013593505050565b5f60208284031215610291575f80fd5b503591905056fea26469706673582212208c7371b1cae9f00af71d95e8e4ad01ea51e74047cfaecfbc9f41d1b8b526e37164736f6c63430008180033"),
@@ -294,7 +295,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 			Logs: []*types.Log{
 				{
 					// transfer(addr2, 1 ether): CrossTransfer(CrossEx, addr1, contract1, ...)
-					Address: CrossExAddr,
+					Address: predeploy.CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
 						common.BytesToHash(testAddr1.Bytes()),
@@ -303,7 +304,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 				},
 				{
 					// contract1 -> addr2: CrossTransfer(CrossEx, contract1, addr2, ...)
-					Address: CrossExAddr,
+					Address: predeploy.CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
 						common.BytesToHash(contract1.Bytes()),
@@ -331,7 +332,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 			Logs: []*types.Log{
 				{
 					// deposit(1 ether): CrossTransfer(CrossEx, addr1, contract1, ...)
-					Address: CrossExAddr,
+					Address: predeploy.CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
 						common.BytesToHash(testAddr1.Bytes()),
@@ -340,7 +341,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 				},
 				{
 					// contract2.deposit(addr1, 1 ether): CrossTransfer(CrossEx, contract1, contract2, ...)
-					Address: CrossExAddr,
+					Address: predeploy.CrossExAddr,
 					Topics: []common.Hash{
 						transferLogSig,
 						common.BytesToHash(contract1.Bytes()),
