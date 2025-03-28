@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/params/predeploy"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -509,14 +510,7 @@ func DefaultCrossGenesisBlock() *Genesis {
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   common.HexToAddress("0x00"),
-		Alloc: types.GenesisAlloc{
-			common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd"): types.Account{
-				Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
-			},
-			CrossExAddr:    Predeploys[CrossExAddr],
-			BridgeImplAddr: Predeploys[BridgeImplAddr],
-			BridgeAddr:     Predeploys[BridgeAddr],
-		},
+		Alloc:      predeploy.GenesisAllocCross,
 	}
 }
 
@@ -531,14 +525,7 @@ func DefaultCrossTestGenesisBlock() *Genesis {
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   common.HexToAddress("0x00"),
-		Alloc: types.GenesisAlloc{
-			common.HexToAddress("0xe5dfec1e7ca7aa90acfbbc09a23b57b8e0d2e61c"): types.Account{
-				Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
-			},
-			CrossExAddr:    Predeploys[CrossExAddr],
-			BridgeImplAddr: Predeploys[BridgeImplAddr],
-			BridgeAddr:     Predeploys[BridgeAddr],
-		},
+		Alloc:      predeploy.GenesisAllocCrossTest,
 	}
 }
 
@@ -553,14 +540,7 @@ func DefaultCrossDev3GenesisBlock() *Genesis {
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   common.HexToAddress("0x00"),
-		Alloc: types.GenesisAlloc{
-			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
-				Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
-			},
-			CrossExAddr:    Predeploys[CrossExAddr],
-			BridgeImplAddr: Predeploys[BridgeImplAddr],
-			BridgeAddr:     Predeploys[BridgeAddr],
-		},
+		Alloc:      predeploy.GenesisAllocCrossDev3,
 	}
 }
 
@@ -575,14 +555,7 @@ func DefaultCrossDevGenesisBlock() *Genesis {
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   common.HexToAddress("0x00"),
-		Alloc: types.GenesisAlloc{
-			common.HexToAddress("0xb9032595ec0465f43de9cf68c1e230888a5d16b6"): types.Account{
-				Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
-			},
-			CrossExAddr:    Predeploys[CrossExAddr],
-			BridgeImplAddr: Predeploys[BridgeImplAddr],
-			BridgeAddr:     Predeploys[BridgeAddr],
-		},
+		Alloc:      predeploy.GenesisAllocCrossDev,
 	}
 }
 

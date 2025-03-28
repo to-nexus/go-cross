@@ -111,6 +111,8 @@ func (p *ProposerPolicy) RegisterValidatorSet(valSet ValidatorSet) {
 		p.registry = []ValidatorSet{valSet}
 	} else {
 		p.registry = append(p.registry, valSet)
+
+		// ##CROSS: UPSTREAM PR-1687
 		// Non-validators don't ever call ClearRegistry
 		// Validators cap the registry to MaxValidatorSetInRegistry length to prevent unexpected leaks
 		if len(p.registry) > MaxValidatorSetInRegistry {
@@ -120,16 +122,18 @@ func (p *ProposerPolicy) RegisterValidatorSet(valSet ValidatorSet) {
 	log.Debug("Validator Policy Registry", "length", p.GetRegistrySize())
 }
 
+func (p *ProposerPolicy) GetRegistrySize() int {
+	return len(p.registry)
+}
+
+// ##
+
 // ClearRegistry removes any ValidatorSet from the ProposerPolicy registry
 func (p *ProposerPolicy) ClearRegistry() {
 	p.registryMU.Lock()
 	defer p.registryMU.Unlock()
 
 	p.registry = nil
-}
-
-func (p *ProposerPolicy) GetRegistrySize() int {
-	return len(p.registry)
 }
 
 type Config struct {

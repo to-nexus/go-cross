@@ -27,11 +27,18 @@ import (
 
 // Genesis hashes to enforce below configs on.
 var (
+	FoundationAddr = map[string]common.Address{
+		"cross":     common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd"),
+		"crosstest": common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E"),
+		"crossdev3": common.HexToAddress("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
+		"crossdev":  common.HexToAddress("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
+	}
+
 	// ##CROSS: config
-	CrossGenesisHash     = common.HexToHash("0x950c8d830b3919459073693709606280159566daedf6c9c6409776e71397ae3e")
-	CrossTestGenesisHash = common.HexToHash("0x92b0156976fad4ab49601b4f72fcc5fd8eee31f1a27fdcc8b72c1b8285688dea")
-	CrossDev3GenesisHash = common.HexToHash("0xefbeae558344a35b912c1d42d7dbe41394dcd7c9b787dd073063757bb776fb11")
-	CrossDevGenesisHash  = common.HexToHash("0xedee489850c7362e4ec7376bcae55fe3bbfe08d36ddb283b28dbd7d742db8bf9")
+	CrossGenesisHash     = common.HexToHash("0xc73e21bcfd5cb9d1a77d5a699b0f0bd7b0d7f9d23c8575811039e0125db0bcdc")
+	CrossTestGenesisHash = common.HexToHash("0xc0ba3d65abb77d0d793bc63c19205e3959a6d43a8f10adce21008ebbaf38f026")
+	CrossDev3GenesisHash = common.HexToHash("0x9fe1b62f29067bfdcd6b561046a99d2406b6b6b7d705781f2e9c87aad4cadfb0")
+	CrossDevGenesisHash  = common.HexToHash("0xab25e74f4c5081d8c01f87cf464498fd1fcd9e3065ac40b3c51242afcc4ae7e7")
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
 	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
@@ -43,6 +50,13 @@ func newUint64(val uint64) *uint64 { return &val }
 func newAddressPtr(address string) *common.Address {
 	addr := common.HexToAddress(address)
 	return &addr
+}
+
+func getFoundationAddr(network string) *common.Address {
+	if addr, ok := FoundationAddr[network]; ok {
+		return &addr
+	}
+	return nil
 }
 
 var (
@@ -99,7 +113,7 @@ var (
 				common.HexToAddress("0x873Ca913204B391ad086759C658C24618b7b05cf"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               newAddressPtr("0x373656713952c8c60d0c34b4aececaee2f5b4eb8"),
+			Foundation:               getFoundationAddr("cross"),
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -160,7 +174,7 @@ var (
 				common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               newAddressPtr("0xd6a1404782809ae52c8ce0019a408affb5e7e500"),
+			Foundation:               getFoundationAddr("crosstest"),
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -204,7 +218,7 @@ var (
 				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
 			},
 			MaxRequestTimeoutSeconds: nil,
-			Foundation:               newAddressPtr("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
+			Foundation:               getFoundationAddr("crossdev3"),
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
@@ -246,7 +260,7 @@ var (
 				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               newAddressPtr("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
+			Foundation:               getFoundationAddr("crossdev"),
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
