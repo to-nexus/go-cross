@@ -35,10 +35,10 @@ var (
 	}
 
 	// ##CROSS: config
-	CrossGenesisHash     = common.HexToHash("0xc73e21bcfd5cb9d1a77d5a699b0f0bd7b0d7f9d23c8575811039e0125db0bcdc")
-	CrossTestGenesisHash = common.HexToHash("0xc0ba3d65abb77d0d793bc63c19205e3959a6d43a8f10adce21008ebbaf38f026")
-	CrossDev3GenesisHash = common.HexToHash("0x9fe1b62f29067bfdcd6b561046a99d2406b6b6b7d705781f2e9c87aad4cadfb0")
-	CrossDevGenesisHash  = common.HexToHash("0xab25e74f4c5081d8c01f87cf464498fd1fcd9e3065ac40b3c51242afcc4ae7e7")
+	CrossGenesisHash     = common.HexToHash("0xfcc9288f473eee53ed5aca95a3cbd5cade8123cbc8871977651b6b03145852f9")
+	CrossTestGenesisHash = common.HexToHash("0x96be1301eddfcf98ef21c3db6d457107402dfc0fda6297329eea87b2646782dc")
+	CrossDev3GenesisHash = common.HexToHash("0xee055bbd10c851617b7d2f80c542e70249f4c3d5b880135effa2b2bc76d71cc4")
+	CrossDevGenesisHash  = common.HexToHash("0x04f05678475b5af8c493c0194670d8c0ad52897adf6788c59e7228745f79ce53")
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
 	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
