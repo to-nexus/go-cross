@@ -22,14 +22,14 @@ import "github.com/ethereum/go-ethereum/common"
 // CrossBootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the cross network.
 var CrossBootnodes = []string{
-	"enode://b34844a46a17e168b65e956e99f45e39c241aaacf68e61d504185f8a13e6cef6990f8ddff97c018b2738a0e22d093c6dddd1e7b4ae6fec18eb81d14235ad2358@3.38.222.123:30303",
-	"enode://2f077ca6d44e602535250cfe4e40e63ce8132cf071ae7db6862b2c14aef984c0ef4dc21485ef8ecb19bc67f42dcc5c4dbe0f1f8281c863ca5d4f54acfea7f7cb@13.124.137.19:30303",
+	"enode://34f27463761e467b1e3382a141e2500c799c240f189ff5b0882a742641bc5da711545d8b233d4f68627f32741846997e8d3019f418a7a03826a1dc266e76a2b4@127.0.0.1:0?discport=30301",
 }
 
 // CrossTestBootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the cross test network.
 var CrossTestBootnodes = []string{
-	"enode://34f27463761e467b1e3382a141e2500c799c240f189ff5b0882a742641bc5da711545d8b233d4f68627f32741846997e8d3019f418a7a03826a1dc266e76a2b4@127.0.0.1:0?discport=30301",
+	"enode://b34844a46a17e168b65e956e99f45e39c241aaacf68e61d504185f8a13e6cef6990f8ddff97c018b2738a0e22d093c6dddd1e7b4ae6fec18eb81d14235ad2358@3.38.222.123:30303",
+	"enode://2f077ca6d44e602535250cfe4e40e63ce8132cf071ae7db6862b2c14aef984c0ef4dc21485ef8ecb19bc67f42dcc5c4dbe0f1f8281c863ca5d4f54acfea7f7cb@13.124.137.19:30303",
 }
 
 // CrossDev3Bootnodes are the enode URLs of the P2P bootstrap nodes running on
