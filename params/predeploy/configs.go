@@ -20,7 +20,7 @@ var (
 
 var (
 	GenesisAllocCross = types.GenesisAlloc{
-		params.FoundationAddr["cross"]: {
+		params.FoundationCross: {
 			Balance: new(big.Int).Mul(big.NewInt(50_000_000), big.NewInt(1e18)),
 		},
 		CrossExAddr: {
@@ -39,7 +39,7 @@ var (
 	}
 
 	GenesisAllocCrossTest = types.GenesisAlloc{
-		params.FoundationAddr["crosstest"]: {
+		params.FoundationCrossTest: {
 			Balance: new(big.Int).Mul(big.NewInt(1_000_000_000_000), big.NewInt(1e18)),
 		},
 		CrossExAddr:    GenesisAllocCross[CrossExAddr],
@@ -48,7 +48,7 @@ var (
 	}
 
 	GenesisAllocCrossDev3 = types.GenesisAlloc{
-		params.FoundationAddr["crossdev3"]: {
+		params.FoundationCrossDev3: {
 			Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
 		},
 		CrossExAddr:    GenesisAllocCross[CrossExAddr],
@@ -57,7 +57,7 @@ var (
 	}
 
 	GenesisAllocCrossDev = types.GenesisAlloc{
-		params.FoundationAddr["crossdev"]: {
+		params.FoundationCrossDev: {
 			Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
 		},
 		CrossExAddr:    GenesisAllocCross[CrossExAddr],

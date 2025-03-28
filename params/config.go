@@ -27,18 +27,17 @@ import (
 
 // Genesis hashes to enforce below configs on.
 var (
-	FoundationAddr = map[string]common.Address{
-		"cross":     common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd"),
-		"crosstest": common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E"),
-		"crossdev3": common.HexToAddress("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
-		"crossdev":  common.HexToAddress("0xb3ab92114033b8c91ec546e80e572d03ffc3e50b"),
-	}
-
 	// ##CROSS: config
-	CrossGenesisHash     = common.HexToHash("0xfcc9288f473eee53ed5aca95a3cbd5cade8123cbc8871977651b6b03145852f9")
-	CrossTestGenesisHash = common.HexToHash("0x96be1301eddfcf98ef21c3db6d457107402dfc0fda6297329eea87b2646782dc")
-	CrossDev3GenesisHash = common.HexToHash("0xee055bbd10c851617b7d2f80c542e70249f4c3d5b880135effa2b2bc76d71cc4")
-	CrossDevGenesisHash  = common.HexToHash("0x04f05678475b5af8c493c0194670d8c0ad52897adf6788c59e7228745f79ce53")
+	CrossGenesisHash     = common.HexToHash("0xb9960c43eae1e416aed17098563e8978bc34f3f8a8e26a655c7df086cb14a683")
+	CrossTestGenesisHash = common.HexToHash("0x8cc65e4bec6b438f923f6e7fe9e11f05dc63ad171f4a92184be86476c869042e")
+	CrossDev3GenesisHash = common.HexToHash("0xff92deb576580bedbbafe06edb6b977d22194a18551e0e85666d516640174231")
+	CrossDevGenesisHash  = common.HexToHash("0xf861467463f5f08782690f18bfd9f129949a865565f57b4f834d35ca2508672a")
+
+	FoundationCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
+	FoundationCrossTest = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
+	FoundationCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
+	FoundationCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
+
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
 	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
@@ -47,17 +46,6 @@ var (
 )
 
 func newUint64(val uint64) *uint64 { return &val }
-func newAddressPtr(address string) *common.Address {
-	addr := common.HexToAddress(address)
-	return &addr
-}
-
-func getFoundationAddr(network string) *common.Address {
-	if addr, ok := FoundationAddr[network]; ok {
-		return &addr
-	}
-	return nil
-}
 
 var (
 	// ##CROSS: config
@@ -113,7 +101,7 @@ var (
 				common.HexToAddress("0x873Ca913204B391ad086759C658C24618b7b05cf"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               getFoundationAddr("cross"),
+			Foundation:               &FoundationCross,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -174,7 +162,7 @@ var (
 				common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               getFoundationAddr("crosstest"),
+			Foundation:               &FoundationCrossTest,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -218,7 +206,7 @@ var (
 				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
 			},
 			MaxRequestTimeoutSeconds: nil,
-			Foundation:               getFoundationAddr("crossdev3"),
+			Foundation:               &FoundationCrossDev3,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
@@ -260,7 +248,7 @@ var (
 				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               getFoundationAddr("crossdev"),
+			Foundation:               &FoundationCrossDev,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether

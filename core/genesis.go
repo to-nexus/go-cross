@@ -503,13 +503,13 @@ func (g *Genesis) MustCommit(db ethdb.Database, triedb *triedb.Database) *types.
 func DefaultCrossGenesisBlock() *Genesis {
 	return &Genesis{
 		Config:     params.CrossChainConfig,
-		Nonce:      4540,
+		Nonce:      0xAAAA,
 		Timestamp:  0x67ae9b37,
 		ExtraData:  hexutil.MustDecode("0xc680c0c080c080"),
 		GasLimit:   105000000,
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
-		Coinbase:   common.HexToAddress("0x00"),
+		Coinbase:   params.FoundationCross,
 		Alloc:      predeploy.GenesisAllocCross,
 	}
 }
@@ -524,7 +524,7 @@ func DefaultCrossTestGenesisBlock() *Genesis {
 		GasLimit:   105000000,
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
-		Coinbase:   common.HexToAddress("0x00"),
+		Coinbase:   params.FoundationCrossTest,
 		Alloc:      predeploy.GenesisAllocCrossTest,
 	}
 }
@@ -533,13 +533,13 @@ func DefaultCrossTestGenesisBlock() *Genesis {
 func DefaultCrossDev3GenesisBlock() *Genesis {
 	return &Genesis{
 		Config:     params.CrossDev3ChainConfig,
-		Nonce:      0x3333,
+		Nonce:      0x90aa,
 		Timestamp:  0x5f1663fc,
 		ExtraData:  hexutil.MustDecode("0xc680c0c080c080"),
 		GasLimit:   105000000,
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
-		Coinbase:   common.HexToAddress("0x00"),
+		Coinbase:   params.FoundationCrossDev3,
 		Alloc:      predeploy.GenesisAllocCrossDev3,
 	}
 }
@@ -554,7 +554,7 @@ func DefaultCrossDevGenesisBlock() *Genesis {
 		GasLimit:   105000000,
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
-		Coinbase:   common.HexToAddress("0x00"),
+		Coinbase:   params.FoundationCrossDev,
 		Alloc:      predeploy.GenesisAllocCrossDev,
 	}
 }
