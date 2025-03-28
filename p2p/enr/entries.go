@@ -223,6 +223,8 @@ func (v *IPv6Addr) DecodeRLP(s *rlp.Stream) error {
 	return nil
 }
 
+// ##
+
 // KeyError is an error related to a key.
 type KeyError struct {
 	Key string

@@ -83,13 +83,11 @@ func newNodeWithID(r *enr.Record, id ID) *Node {
 	return n
 }
 
-// ##CROSS: UPSTREAM PR-29801
 // validIP reports whether 'ip' is a valid node endpoint IP address.
 func validIP(ip netip.Addr) bool {
 	return ip.IsValid() && !ip.IsMulticast()
 }
 
-// ##CROSS: UPSTREAM PR-29801
 func localityScore(ip netip.Addr) int {
 	switch {
 	case ip.IsUnspecified():
@@ -105,14 +103,12 @@ func localityScore(ip netip.Addr) int {
 	}
 }
 
-// ##CROSS: UPSTREAM PR-29801
 func (n *Node) setIP4(ip netip.Addr) {
 	n.ip = ip
 	n.Load((*enr.UDP)(&n.udp))
 	n.Load((*enr.TCP)(&n.tcp))
 }
 
-// ##CROSS: UPSTREAM PR-29801
 func (n *Node) setIP6(ip netip.Addr) {
 	if ip.Is4In6() {
 		n.setIP4(ip)
@@ -126,6 +122,8 @@ func (n *Node) setIP6(ip netip.Addr) {
 		n.Load((*enr.TCP)(&n.tcp))
 	}
 }
+
+// ##
 
 // MustParse parses a node record or enode:// URL. It panics if the input is invalid.
 func MustParse(rawurl string) *Node {

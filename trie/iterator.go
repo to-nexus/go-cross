@@ -571,7 +571,6 @@ func reachedPath(path, target []byte) bool {
 // we jump to this last slot first, then go back iterate the child nodes (and
 // skip the last slot at the end):
 
-// ##CROSS: UPSTREAM PR-27838
 // prevChildIndex returns the index of a child in a full node which precedes
 // the given index when performing a pre-order traversal.
 func prevChildIndex(index int) int {
@@ -587,7 +586,6 @@ func prevChildIndex(index int) int {
 	}
 }
 
-// ##CROSS: UPSTREAM PR-27838
 // nextChildIndex returns the index of a child in a full node which follows
 // the given index when performing a pre-order traversal.
 func nextChildIndex(index int) int {
@@ -602,6 +600,8 @@ func nextChildIndex(index int) int {
 		return index + 1
 	}
 }
+
+// ##
 
 func compareNodes(a, b NodeIterator) int {
 	if cmp := bytes.Compare(a.Path(), b.Path()); cmp != 0 {
