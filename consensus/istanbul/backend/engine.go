@@ -405,11 +405,11 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
 	}
 
-	snapapplied, err := sb.snapApply(snap, headers)
+	snap, err := sb.snapApply(snap, headers)
 	if err != nil {
 		return nil, err
 	}
-	sb.recents.Add(snapapplied.Hash, snapapplied)
+	sb.recents.Add(snap.Hash, snap)
 
 	targetBlockHeight := new(big.Int).SetUint64(number)
 	if validatorsFromTransitions := sb.config.GetValidatorsAt(targetBlockHeight); len(validatorsFromTransitions) > 0 {
@@ -420,7 +420,14 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 		snap.ValSet = valSet
 	}
 
-	return snapapplied, err
+	// If we've generated a new checkpoint snapshot, save to disk
+	if snap.Number%checkpointInterval == 0 && len(headers) > 0 {
+		if err = sb.storeSnap(snap); err != nil {
+			return nil, err
+		}
+	}
+
+	return snap, err
 }
 
 // SealHash returns the hash of a block prior to it being sealed.

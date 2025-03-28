@@ -104,7 +104,7 @@ func (c *Core) handleCommitMsg(commit *protocols.Commit) error {
 
 	logger = logger.New("commits.count", c.current.Commits.Size(), "quorum", c.QuorumSize())
 
-	// If we reached thresho
+	// If we reached threshold
 	if c.current.Commits.Size() >= c.QuorumSize() {
 		logger.Info("Istanbul: received quorum of COMMIT messages")
 		c.commit()
