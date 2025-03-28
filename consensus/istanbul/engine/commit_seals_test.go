@@ -60,5 +60,5 @@ func TestVerifyCommittedSeals(t *testing.T) {
 
 	parent := make([]*types.Header, 0)
 	err := engine.verifyCommittedSeals(new(core.BlockChain), header, parent, valSet)
-	assert.NotNil(t, err, "In the 3 validators case, only 1 commit should not passed the verification")
+	assert.NoError(t, err, "In the 3 validators case, only 1 commit can pass this verification")
 }
