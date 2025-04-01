@@ -118,7 +118,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 			pr = roundChange.PreparedRound
 			pb = roundChange.PreparedBlock
 		}
-		err := c.roundChangeSet.Add(view.Round, roundChange, pr, pb, prepareMessages, c.QuorumSize())
+		err := c.roundChangeSet.Add(view.Round, roundChange, pr, pb, prepareMessages, c.valSet.QuorumSize())
 		if err != nil {
 			logger.Warn("Istanbul: failed to add ROUND-CHANGE message", "err", err)
 			return err
@@ -142,7 +142,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 
 		c.startNewRound(newRound)
 		c.broadcastRoundChange(newRound)
-	} else if currentRoundMessages >= c.QuorumSize() && c.IsProposer() && c.current.preprepareSent.Cmp(currentRound) < 0 {
+	} else if currentRoundMessages >= c.valSet.QuorumSize() && c.IsProposer() && c.current.preprepareSent.Cmp(currentRound) < 0 {
 		logger.Info("Istanbul: received quorum of ROUND-CHANGE messages")
 
 		// We received quorum of ROUND-CHANGE for current round and we are proposer
@@ -169,7 +169,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 		}
 
 		prepareMessages := c.roundChangeSet.prepareMessages[currentRound.Uint64()]
-		if err := isJustified(proposal, rcSignedPayloads, prepareMessages, c.QuorumSize()); err != nil {
+		if err := isJustified(proposal, rcSignedPayloads, prepareMessages, c.valSet.QuorumSize()); err != nil {
 			logger.Error("Istanbul: invalid ROUND-CHANGE message justification", "err", err)
 			return nil
 		}

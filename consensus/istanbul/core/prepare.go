@@ -73,7 +73,7 @@ func (c *Core) broadcastPrepare() {
 func (c *Core) handlePrepare(prepare *protocols.Prepare) error {
 	logger := c.currentLogger(true, prepare).New()
 
-	logger.Info("Istanbul: handle PREPARE message", "prepares.count", c.current.Prepares.Size(), "quorum", c.QuorumSize(), "prepare.digest", prepare.Digest.Hex())
+	logger.Info("Istanbul: handle PREPARE message", "prepares.count", c.current.Prepares.Size(), "quorum", c.valSet.QuorumSize(), "prepare.digest", prepare.Digest.Hex())
 
 	// Check digest
 	if prepare.Digest != c.current.Proposal().Hash() {
@@ -87,11 +87,11 @@ func (c *Core) handlePrepare(prepare *protocols.Prepare) error {
 		return err
 	}
 
-	logger = logger.New("prepares.count", c.current.Prepares.Size(), "quorum", c.QuorumSize())
+	logger = logger.New("prepares.count", c.current.Prepares.Size(), "quorum", c.valSet.QuorumSize())
 
 	// Change to "Prepared" state if we've received quorum of PREPARE messages
 	// and we are in earlier state than "Prepared"
-	if (c.current.Prepares.Size() >= c.QuorumSize()) && c.state.Cmp(StatePrepared) < 0 {
+	if (c.current.Prepares.Size() >= c.valSet.QuorumSize()) && c.state.Cmp(StatePrepared) < 0 {
 		logger.Info("Istanbul: received quorum of PREPARE messages")
 
 		// Accumulates PREPARE messages

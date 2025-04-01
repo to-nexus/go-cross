@@ -201,9 +201,6 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 		if config.Istanbul.ProposerPolicy != 0 {
 			istanbulCfg.ProposerPolicy = istanbul.NewProposerPolicy(istanbul.ProposerPolicyId(config.Istanbul.ProposerPolicy))
 		}
-		if config.Istanbul.Ceil2Nby3Block != nil {
-			istanbulCfg.Ceil2Nby3Block = config.Istanbul.Ceil2Nby3Block
-		}
 		istanbulCfg.Validators = config.Istanbul.Validators
 
 		if config.Istanbul.MaxRequestTimeoutSeconds != nil && *config.Istanbul.MaxRequestTimeoutSeconds > 0 {
