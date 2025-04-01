@@ -88,7 +88,7 @@ func (c *Core) broadcastCommit() {
 func (c *Core) handleCommitMsg(commit *protocols.Commit) error {
 	logger := c.currentLogger(true, commit)
 
-	logger.Info("Istanbul: handle COMMIT message", "commits.count", c.current.Commits.Size(), "quorum", c.QuorumSize())
+	logger.Info("Istanbul: handle COMMIT message", "commits.count", c.current.Commits.Size(), "quorum", c.valSet.QuorumSize())
 
 	// Check digest
 	if commit.Digest != c.current.Proposal().Hash() {
@@ -102,10 +102,10 @@ func (c *Core) handleCommitMsg(commit *protocols.Commit) error {
 		return err
 	}
 
-	logger = logger.New("commits.count", c.current.Commits.Size(), "quorum", c.QuorumSize())
+	logger = logger.New("commits.count", c.current.Commits.Size(), "quorum", c.valSet.QuorumSize())
 
 	// If we reached threshold
-	if c.current.Commits.Size() >= c.QuorumSize() {
+	if c.current.Commits.Size() >= c.valSet.QuorumSize() {
 		logger.Info("Istanbul: received quorum of COMMIT messages")
 		c.commit()
 	} else {

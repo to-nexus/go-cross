@@ -290,8 +290,7 @@ func (e *Engine) verifyCommittedSeals(_ consensus.ChainHeaderReader, header *typ
 		return istanbul.ErrInvalidCommittedSeals
 	}
 
-	// The length of validSeal should be larger than number of faulty node + 1
-	if validSeal <= validators.F() {
+	if validSeal < validators.QuorumSize() {
 		return istanbul.ErrInvalidCommittedSeals
 	}
 
@@ -353,21 +352,21 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		header.Time = uint64(time.Now().Unix())
 	}
 
-	currentBlockNumber := big.NewInt(0).SetUint64(number - 1)
-	for _, transition := range e.cfg.Transitions {
-		if transition.Block.Cmp(currentBlockNumber) == 0 && len(transition.Validators) > 0 {
-			toRemove := make([]istanbul.Validator, 0, validators.Size())
-			l := validators.List()
-			toRemove = append(toRemove, l...)
-			for i := range toRemove {
-				validators.RemoveValidator(toRemove[i].Address())
-			}
-			for i := range transition.Validators {
-				validators.AddValidator(transition.Validators[i])
-			}
-			break
-		}
-	}
+	// currentBlockNumber := big.NewInt(0).SetUint64(number - 1)
+	// for _, transition := range e.cfg.Transitions {
+	// 	if transition.Block.Cmp(currentBlockNumber) == 0 && len(transition.Validators) > 0 {
+	// 		toRemove := make([]istanbul.Validator, 0, validators.Size())
+	// 		l := validators.List()
+	// 		toRemove = append(toRemove, l...)
+	// 		for i := range toRemove {
+	// 			validators.RemoveValidator(toRemove[i].Address())
+	// 		}
+	// 		for i := range transition.Validators {
+	// 			validators.AddValidator(transition.Validators[i])
+	// 		}
+	// 		break
+	// 	}
+	// }
 	validatorsList := validator.SortedAddresses(validators.List())
 	// add validators in snapshot to extraData's validators section
 	return ApplyHeaderIstanbulExtra(

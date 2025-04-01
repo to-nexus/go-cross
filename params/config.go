@@ -77,7 +77,6 @@ var (
 			EmptyBlockPeriodSeconds: 0,
 			RequestTimeoutSeconds:   5,
 			ProposerPolicy:          0,
-			Ceil2Nby3Block:          nil,
 			Validators: []common.Address{
 				common.HexToAddress("0x9ba2594Af34F201d9a8f12C52820E2C85dE4d472"),
 				common.HexToAddress("0xBC3205DCe48F56Cfa498E496212BD7368bB3Aff3"),
@@ -138,7 +137,6 @@ var (
 			EmptyBlockPeriodSeconds: 0,
 			RequestTimeoutSeconds:   5,
 			ProposerPolicy:          0,
-			Ceil2Nby3Block:          nil,
 			Validators: []common.Address{
 				common.HexToAddress("0x3AeE6025948c380cD0E4e71cBB041337cc0E2C4E"),
 				common.HexToAddress("0x2bCFC7F77555B585941Ddb04d9B7977f1Ae612CB"),
@@ -199,7 +197,6 @@ var (
 			EmptyBlockPeriodSeconds: 0,
 			RequestTimeoutSeconds:   5,
 			ProposerPolicy:          0,
-			Ceil2Nby3Block:          nil,
 			Validators: []common.Address{
 				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
 				common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
@@ -243,7 +240,6 @@ var (
 			EmptyBlockPeriodSeconds: 0,
 			RequestTimeoutSeconds:   5,
 			ProposerPolicy:          0,
-			Ceil2Nby3Block:          nil,
 			Validators: []common.Address{
 				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
 			},

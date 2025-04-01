@@ -142,7 +142,6 @@ type Config struct {
 	EmptyBlockPeriod         uint64           `toml:",omitempty"` // Default minimum difference between a block and empty block's timestamps in second
 	ProposerPolicy           *ProposerPolicy  `toml:",omitempty"` // The policy for proposer selection
 	Epoch                    uint64           `toml:",omitempty"` // The number of blocks after which to checkpoint and reset the pending votes
-	Ceil2Nby3Block           *big.Int         `toml:",omitempty"` // Number of confirmations required to move from one state to next [2F + 1 to Ceil(2N/3)]
 	AllowedFutureBlockTime   uint64           `toml:",omitempty"` // Max time (in seconds) from current time allowed for blocks, before they're considered future blocks
 	ValidatorContract        common.Address   `toml:",omitempty"`
 	Validators               []common.Address `toml:",omitempty"`
@@ -156,7 +155,6 @@ var DefaultConfig = &Config{
 	EmptyBlockPeriod:       0,
 	ProposerPolicy:         NewRoundRobinProposerPolicy(),
 	Epoch:                  30000,
-	Ceil2Nby3Block:         big.NewInt(0),
 	AllowedFutureBlockTime: 0,
 }
 
@@ -177,9 +175,9 @@ func (c Config) GetConfig(blockNumber *big.Int) Config {
 		if transition.EmptyBlockPeriodSeconds != nil {
 			newConfig.EmptyBlockPeriod = *transition.EmptyBlockPeriodSeconds
 		}
-		if len(transition.Validators) > 0 {
-			newConfig.Validators = transition.Validators
-		}
+		// if len(transition.Validators) > 0 {
+		// 	newConfig.Validators = transition.Validators
+		// }
 		if transition.MaxRequestTimeoutSeconds != nil {
 			newConfig.MaxRequestTimeoutSeconds = *transition.MaxRequestTimeoutSeconds
 		}
@@ -193,11 +191,11 @@ func (c Config) GetValidatorsAt(blockNumber *big.Int) []common.Address {
 		return c.Validators
 	}
 
-	if blockNumber != nil && c.Transitions != nil {
-		for i := 0; i < len(c.Transitions) && c.Transitions[i].Block.Cmp(blockNumber) == 0; i++ {
-			return c.Transitions[i].Validators
-		}
-	}
+	// if blockNumber != nil && c.Transitions != nil {
+	// 	for i := 0; i < len(c.Transitions) && c.Transitions[i].Block.Cmp(blockNumber) == 0; i++ {
+	// 		return c.Transitions[i].Validators
+	// 	}
+	// }
 
 	//Note! empty means we will get the valset from previous block header which contains votes, validators etc
 	return []common.Address{}

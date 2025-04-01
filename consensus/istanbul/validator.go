@@ -98,11 +98,12 @@ type ValidatorSet interface {
 	RemoveValidator(address common.Address) bool
 	// Copy validator set
 	Copy() ValidatorSet
+	// QuorumSize returns the minimum number of validators required to achieve consensus within the current ValidatorSet.
+	QuorumSize() int
 	// Get the maximum number of faulty nodes
 	F() int
 	// Get proposer policy
 	Policy() ProposerPolicy
-
 	// SortValidators sorts the validators based on the configured By function
 	SortValidators()
 }
