@@ -290,7 +290,6 @@ func (e *Engine) verifyCommittedSeals(_ consensus.ChainHeaderReader, header *typ
 		return istanbul.ErrInvalidCommittedSeals
 	}
 
-	// The length of validSeal should be larger than number of faulty node + 1
 	if validSeal < validators.QuorumSize() {
 		return istanbul.ErrInvalidCommittedSeals
 	}
