@@ -189,7 +189,7 @@ func TestCustomBackend(t *testing.T) {
 			initExpect: `Fatal: Invalid choice for db.engine 'mssql', allowed 'leveldb' or 'pebble'`,
 			// Since the init fails, this will return the (default) cross mainnet genesis
 			// block nonce
-			execExpect: `0x00000000000011bc`, // ##CROSS: config
+			execExpect: `0x000000000000aaaa`, // ##CROSS: config
 		},
 	} {
 		if err := testfunc(t, tt); err != nil {
