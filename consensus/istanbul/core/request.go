@@ -17,8 +17,10 @@
 package core
 
 import (
+	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -116,6 +118,9 @@ func (c *Core) checkRequestMsg(request *Request) error {
 	if cmp := c.current.sequence.Cmp(request.Proposal.Number()); cmp > 0 {
 		return errOldMessage
 	} else if cmp < 0 {
+		if new(big.Int).Add(c.current.sequence, common.Big1).Cmp(request.Proposal.Number()) < 0 {
+			return errFarFutureMessage
+		}
 		return errFutureMessage
 	} else {
 		return nil

@@ -17,6 +17,9 @@
 package core
 
 import (
+	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
@@ -40,7 +43,8 @@ var (
 // - message type is expected given our current state
 
 // return errInvalidMessage if the message is invalid
-// return errFutureMessage if the message view is larger than current view
+// return errFutureMessage if the message view is 1 round/sequence larger than current view
+// return errFarFutureMessage if the message view is more than 1+ round/sequence larger than current view
 // return errOldMessage if the message view is smaller than current view
 func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 	if view == nil || view.Sequence == nil || view.Round == nil {
@@ -53,6 +57,9 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 		// - sequence matches our current sequence
 		// - round is in the future
 		if view.Sequence.Cmp(c.currentView().Sequence) > 0 {
+			if view.Sequence.Cmp(new(big.Int).Add(c.currentView().Sequence, common.Big1)) > 0 {
+				return errFarFutureMessage
+			}
 			return errFutureMessage
 		} else if view.Cmp(c.currentView()) < 0 {
 			return errOldMessage
@@ -62,7 +69,10 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 
 	// If not ROUND-CHANGE
 	// check that round and sequence equals our current round and sequence
-	if view.Cmp(c.currentView()) > 0 {
+	if cmp := view.Cmp(c.currentView()); cmp > 0 {
+		if cmp > 1 {
+			return errFarFutureMessage
+		}
 		return errFutureMessage
 	}
 

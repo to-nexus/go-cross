@@ -22,9 +22,12 @@ var (
 	// errNotFromProposer is returned when received message is supposed to be from
 	// proposer.
 	errNotFromProposer = errors.New("message does not come from proposer")
-	// errFutureMessage is returned when current view is earlier than the
+	// errFutureMessage is returned when current view is 1 round/sequence earlier than the
 	// view of the received message.
 	errFutureMessage = errors.New("future message")
+	// errFarFutureMessage is returned when current view is 1+ round/sequence earlier than the
+	// view of the received message.
+	errFarFutureMessage = errors.New("far future message")
 	// errOldMessage is returned when the received message's view is earlier
 	// than current view.
 	errOldMessage = errors.New("old message")
