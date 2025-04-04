@@ -57,7 +57,7 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 		// - sequence matches our current sequence
 		// - round is in the future
 		if view.Sequence.Cmp(c.currentView().Sequence) > 0 {
-			if view.Sequence.Cmp(new(big.Int).Add(c.currentView().Sequence, common.Big1)) > 0 {
+			if new(big.Int).Add(c.currentView().Sequence, common.Big1).Cmp(view.Sequence) < 0 {
 				return errFarFutureMessage
 			}
 			return errFutureMessage
@@ -164,13 +164,12 @@ func (c *Core) processBacklog() {
 		//   1. backlog is empty
 		//   2. The first message in queue is a future message
 		for !(backlog.Empty() || isFuture) {
-			m, prio := backlog.Pop()
+			msg, prio := backlog.Pop()
 
 			var code uint64
 			var view istanbul.View
 			var event backlogEvent
 
-			msg := m.(protocols.Message)
 			code = msg.Code()
 			view = msg.View()
 			event.msg = msg
@@ -180,15 +179,15 @@ func (c *Core) processBacklog() {
 			if err != nil {
 				if err == errFutureMessage {
 					// this is still a future message
-					logger.Trace("Istanbul: stop processing backlog", "msg", m)
-					backlog.Push(m, prio)
+					logger.Trace("Istanbul: stop processing backlog", "msg", msg)
+					backlog.Push(msg, prio)
 					isFuture = true
 					break
 				}
-				logger.Trace("Istanbul: skip backlog message", "msg", m, "err", err)
+				logger.Trace("Istanbul: skip backlog message", "msg", msg, "err", err)
 				continue
 			}
-			logger.Trace("Istanbul: post backlog event", "msg", m)
+			logger.Trace("Istanbul: post backlog event", "msg", msg)
 
 			event.src = src
 			go c.sendEvent(event)
