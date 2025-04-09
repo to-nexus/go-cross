@@ -290,7 +290,7 @@ func (e *Engine) verifyCommittedSeals(_ consensus.ChainHeaderReader, header *typ
 		return istanbul.ErrInvalidCommittedSeals
 	}
 
-	if validSeal < validators.QuorumSize() {
+	if validSeal <= validators.F() {
 		return istanbul.ErrInvalidCommittedSeals
 	}
 
