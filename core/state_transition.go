@@ -284,6 +284,9 @@ func (st *StateTransition) buyGas() error {
 			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
 		}
 	} else {
+		if have, want := st.state.GetBalance(payer).ToBig(), mgval; have.Cmp(want) < 0 {
+			return ErrFeePayerInsufficientFunds
+		}
 		if have, want := st.state.GetBalance(st.msg.From).ToBig(), st.msg.Value; have.Cmp(want) < 0 {
 			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
 		}

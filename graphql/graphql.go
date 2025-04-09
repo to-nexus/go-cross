@@ -324,7 +324,7 @@ func (t *Transaction) MaxPriorityFeePerGas(ctx context.Context) *hexutil.Big {
 		return nil
 	}
 	switch tx.Type() {
-	case types.DynamicFeeTxType, types.BlobTxType:
+	case types.DynamicFeeTxType, types.BlobTxType, types.FeeDelegatedDynamicFeeTxType: // ##CROSS: feedelegation
 		return (*hexutil.Big)(tx.GasTipCap())
 	default:
 		return nil
