@@ -21,7 +21,7 @@ var (
 var (
 	GenesisAllocCross = types.GenesisAlloc{
 		params.FoundationCross: {
-			Balance: new(big.Int).Mul(big.NewInt(50_000_000), big.NewInt(1e18)),
+			Balance: new(big.Int).Mul(big.NewInt(1_000_000_000_000), big.NewInt(1e18)),
 		},
 		CrossExAddr: {
 			Code: common.Hex2Bytes(CrossExBinRuntime),
