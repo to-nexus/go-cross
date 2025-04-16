@@ -13,9 +13,10 @@ import (
 var (
 	ERC1967ProxyImplementationSlot = common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
 
-	CrossExAddr    = common.HexToAddress("0xFEED00000000000000000000000000000000C0DE")
-	BridgeAddr     = common.HexToAddress("0xB81D6E000000000000000000000000000000C0DE")
-	BridgeImplAddr = common.HexToAddress("0xB81D6E000000000000000000000000000000AAAA")
+	CrossExAddr    = common.HexToAddress("0xfeed00000000000000000000000000000000C0DE")
+	BridgeAddr     = common.HexToAddress("0xb81d6e000000000000000000000000000000C0de")
+	BridgeImplAddr = common.HexToAddress("0xB81D6e000000000000000000000000000000AAaA")
+	Multicall3Addr = common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11")
 )
 
 var (
@@ -36,6 +37,9 @@ var (
 		BridgeImplAddr: {
 			Code: common.Hex2Bytes(CrossBridgeBinRuntime),
 		},
+		Multicall3Addr: {
+			Code: common.Hex2Bytes(Multicall3BinRuntime),
+		},
 	}
 
 	GenesisAllocCrossTest = types.GenesisAlloc{
@@ -45,6 +49,7 @@ var (
 		CrossExAddr:    GenesisAllocCross[CrossExAddr],
 		BridgeImplAddr: GenesisAllocCross[BridgeImplAddr],
 		BridgeAddr:     GenesisAllocCross[BridgeAddr],
+		Multicall3Addr: GenesisAllocCross[Multicall3Addr],
 	}
 
 	GenesisAllocCrossDev3 = types.GenesisAlloc{
@@ -54,6 +59,7 @@ var (
 		CrossExAddr:    GenesisAllocCross[CrossExAddr],
 		BridgeImplAddr: GenesisAllocCross[BridgeImplAddr],
 		BridgeAddr:     GenesisAllocCross[BridgeAddr],
+		Multicall3Addr: GenesisAllocCross[Multicall3Addr],
 	}
 
 	GenesisAllocCrossDev = types.GenesisAlloc{
@@ -63,5 +69,6 @@ var (
 		CrossExAddr:    GenesisAllocCross[CrossExAddr],
 		BridgeImplAddr: GenesisAllocCross[BridgeImplAddr],
 		BridgeAddr:     GenesisAllocCross[BridgeAddr],
+		Multicall3Addr: GenesisAllocCross[Multicall3Addr],
 	}
 )
