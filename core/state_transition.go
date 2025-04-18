@@ -481,7 +481,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	effectiveTip := msg.GasPrice
 
 	if rules.IsShanghai && (st.evm.Context.Difficulty != nil && st.evm.Context.Difficulty.Cmp(istanbul.DefaultDifficulty) == 0) { // difficulty is always 1 in the Istanbul consensus
-		if collector := st.evm.ChainConfig().GetFoundationAddress(st.evm.Context.BlockNumber); collector != nil {
+		if collector := st.evm.ChainConfig().GetBeneficiaryAddress(st.evm.Context.BlockNumber); collector != nil {
 			beneficiary = *collector
 		}
 	} else {

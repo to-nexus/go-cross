@@ -1308,13 +1308,13 @@ func (s *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, inc
 }
 
 // ##CROSS: fee collection
-// Foundation returns current gas-fee-collector address.
-func (s *BlockChainAPI) Foundation(ctx context.Context, blockNr rpc.BlockNumber) (*common.Address, error) {
+// Beneficiary returns current gas-fee-collector address.
+func (s *BlockChainAPI) Beneficiary(ctx context.Context, blockNr rpc.BlockNumber) (*common.Address, error) {
 	header, err := s.b.HeaderByNumber(ctx, blockNr)
 	if err != nil {
 		return nil, err
 	}
-	return s.b.ChainConfig().GetFoundationAddress(header.Number), nil
+	return s.b.ChainConfig().GetBeneficiaryAddress(header.Number), nil
 }
 
 // RPCTransaction represents a transaction that will serialize to the RPC representation of a transaction

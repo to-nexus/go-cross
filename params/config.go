@@ -28,15 +28,20 @@ import (
 // Genesis hashes to enforce below configs on.
 var (
 	// ##CROSS: config
-	CrossGenesisHash     = common.HexToHash("0xb9960c43eae1e416aed17098563e8978bc34f3f8a8e26a655c7df086cb14a683")
-	CrossTestGenesisHash = common.HexToHash("0x8cc65e4bec6b438f923f6e7fe9e11f05dc63ad171f4a92184be86476c869042e")
-	CrossDev3GenesisHash = common.HexToHash("0xff92deb576580bedbbafe06edb6b977d22194a18551e0e85666d516640174231")
-	CrossDevGenesisHash  = common.HexToHash("0xf861467463f5f08782690f18bfd9f129949a865565f57b4f834d35ca2508672a")
+	CrossGenesisHash     = common.HexToHash("0x9a48f4d9c0c73b86fd1abb239649223e89fc0797b90f7c7982999900f57c21b0")
+	CrossTestGenesisHash = common.HexToHash("0xa570e4b2e71338415b8b7e51e639511398a93067322cfce5698a870a89813c03")
+	CrossDev3GenesisHash = common.HexToHash("0x1ba8d18d400eae1f2e181bf853edb8c001ab645c57caeb780699608c5cd1ba3c")
+	CrossDevGenesisHash  = common.HexToHash("0xfe493d82314ce8a829cce13681cd9d5886bf7e78665d392edaac4f6e9c14ce77")
 
 	FoundationCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
-	FoundationCrossTest = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
+	FoundationCrossTest = common.HexToAddress("0x06Dc63E28d18172A689213071884c66c5281b493")
 	FoundationCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	FoundationCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
+
+	BeneficiaryCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
+	BeneficiaryCrossTest = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
+	BeneficiaryCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
+	BeneficiaryCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
@@ -78,29 +83,29 @@ var (
 			RequestTimeoutSeconds:   5,
 			ProposerPolicy:          0,
 			Validators: []common.Address{
-				common.HexToAddress("0x9ba2594Af34F201d9a8f12C52820E2C85dE4d472"),
-				common.HexToAddress("0xBC3205DCe48F56Cfa498E496212BD7368bB3Aff3"),
-				common.HexToAddress("0x516d6936688beAeF49422943425f7F1FeB676Cd7"),
-				common.HexToAddress("0x530FBB44AcEFEe754F8A8839E8eb5E39cCB495ed"),
-				common.HexToAddress("0xc19C3CA6d2d34910156559a6Ddc8ef09c71C83d3"),
-				common.HexToAddress("0xad77eBb3b403ED653871F6E289FcCCe1006F7964"),
-				common.HexToAddress("0x5f74848A3090F0758A92a8c6f0b7d7662AF67ceF"),
-				common.HexToAddress("0x8fA0a643B3e65f51430C38836eA5657b000d7630"),
-				common.HexToAddress("0x66a7d85c7187761cF9E9e26fBa6E808B0802068A"),
-				common.HexToAddress("0x2bAa3B2D599691Af78bB6297A5f0F0b2395F8676"),
-				common.HexToAddress("0x52ad3cE29354915ae574cfdb4dd46eAbB96dbAe0"),
-				common.HexToAddress("0x8Ef8572c026c665abA45bC652b5608a4fA526FbF"),
-				common.HexToAddress("0x1Df0A53Fa3ED952114c45169c520b004c5022F32"),
-				common.HexToAddress("0xa6Ede5E37121B1B5f09C456465AF6b5b66C3EA27"),
-				common.HexToAddress("0xc220806aC7aF26FC98b5d30329D5e89e3E582f9e"),
-				common.HexToAddress("0x0f1b5a9dcC80a4cb0240394B2D111264e1Fb9322"),
-				common.HexToAddress("0x172fB48178fCB139e52045b8406f4B74cc28C4b0"),
-				common.HexToAddress("0x31005705a7a9F205fEFfB0B3a1Eed1507a6C3795"),
-				common.HexToAddress("0x578F993512Ef11FAE8bAe5e8f98CFc3790b298CC"),
-				common.HexToAddress("0x873Ca913204B391ad086759C658C24618b7b05cf"),
+				common.HexToAddress("0x02f5F938B40A60B2345Ac0C9Fd9D909bD1F012eE"),
+				common.HexToAddress("0x091E0be1D78511dE3b6D7022C99539671d235D73"),
+				common.HexToAddress("0x0A62e6a8553A10B2031fD956df6bc28852F4d91d"),
+				common.HexToAddress("0x49bcC861395C42cA60d773FB053F25DDaACbeA50"),
+				common.HexToAddress("0x60Eef089B72da83eC98330296b1E1Ff37C118588"),
+				common.HexToAddress("0x6C79321D421E9a37041e1477929d478492a04608"),
+				common.HexToAddress("0x7De4fa95e742D34f0979875c060f7e1886948f03"),
+				common.HexToAddress("0x87EB0d108594FFC6DeB4dcBdB43E3B0899B7a863"),
+				common.HexToAddress("0x884DCf7bE65a5287cFb9648283B90C70D0D59c8A"),
+				common.HexToAddress("0x88B9B24C441f8775c01443F6Ce244cEF5dA0364A"),
+				common.HexToAddress("0x90e456Fe1f07A56e891BA11C8dE045091363527D"),
+				common.HexToAddress("0x95fa026C756874f12a499ef0f95531f0b93629F5"),
+				common.HexToAddress("0xAB128537bBC770C8f9E9225c854a2170B708E88A"),
+				common.HexToAddress("0xBb2182CE952F3501325cd77A7327f8De091b394c"),
+				common.HexToAddress("0xbCb02c35e753b25c450727C3cb61F6Aa4D2D545F"),
+				common.HexToAddress("0xc193C8F676aF724B1d2cCF1236200044E8c6C4a6"),
+				common.HexToAddress("0xD6EE737Ff9EABda5f9E9365AfE7D032e2aEb208C"),
+				common.HexToAddress("0xE6927A1181bf5760fC7e25ABC96f7C025fF73802"),
+				common.HexToAddress("0xF405a387AA84e58c1A5D2150305AD1b1788646Cf"),
+				common.HexToAddress("0xfa884b0C778Fa24D015481a262F3efe924dc0D61"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               &FoundationCross,
+			Beneficiary:              &BeneficiaryCross,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -160,7 +165,7 @@ var (
 				common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               &FoundationCrossTest,
+			Beneficiary:              &BeneficiaryCrossTest,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -203,7 +208,7 @@ var (
 				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
 			},
 			MaxRequestTimeoutSeconds: nil,
-			Foundation:               &FoundationCrossDev3,
+			Beneficiary:              &BeneficiaryCrossDev3,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
@@ -244,7 +249,7 @@ var (
 				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               &FoundationCrossDev,
+			Beneficiary:              &BeneficiaryCrossDev,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether

@@ -21,7 +21,7 @@ type IstanbulConfig struct {
 	MaxRequestTimeoutSeconds *uint64          `json:"maxRequestTimeoutSeconds"`          // The max round time
 
 	// ##CROSS: fee collection
-	Foundation *common.Address `json:"foundation"` // Cross Foundation address
+	Beneficiary *common.Address `json:"beneficiary"` // Cross Beneficiary address
 	// ##CROSS: basefee
 	ElasticityMultiplier     *uint64               `json:"elasticitymultiplier"`     // Bounds the maximum gas limit an EIP-1559 block may have.
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator"` // Bounds the amount the base fee can change between blocks.
@@ -43,8 +43,8 @@ type Transition struct {
 	MaxRequestTimeoutSeconds *uint64 `json:"maxRequestTimeoutSeconds,omitempty"` // The max a timeout should be for a round change
 
 	// ##CROSS: fee collection
-	Foundation *common.Address `json:"Foundation,omitempty"` // foundation  address
-	GasLimit   *uint64         `json:"gaslimit,omitempty"`   // gas limit
+	Beneficiary *common.Address `json:"Beneficiary,omitempty"` // Cross Beneficiary address
+	GasLimit    *uint64         `json:"gaslimit,omitempty"`    // gas limit
 	// ##CROSS: basefee
 	ElasticityMultiplier     *uint64               `json:"elasticitymultiplier,omitempty"`     // Bounds the maximum gas limit an EIP-1559 block may have.
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator,omitempty"` // Bounds the amount the base fee can change between blocks.
@@ -71,14 +71,14 @@ func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
 }
 
 // ##CROSS: fee collection
-func (c *ChainConfig) GetFoundationAddress(num *big.Int) (foundation *common.Address) {
-	if c.Istanbul != nil && c.Istanbul.Foundation != nil {
-		foundation = c.Istanbul.Foundation
+func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.Address) {
+	if c.Istanbul != nil && c.Istanbul.Beneficiary != nil {
+		beneficiary = c.Istanbul.Beneficiary
 	}
 
 	c.GetTransitionValue(num, func(transition Transition) {
-		if transition.Foundation != nil {
-			foundation = transition.Foundation
+		if transition.Beneficiary != nil {
+			beneficiary = transition.Beneficiary
 		}
 	})
 	return
