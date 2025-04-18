@@ -29,14 +29,19 @@ import (
 var (
 	// ##CROSS: config
 	CrossGenesisHash     = common.HexToHash("0x9a48f4d9c0c73b86fd1abb239649223e89fc0797b90f7c7982999900f57c21b0")
-	CrossTestGenesisHash = common.HexToHash("0x3a7525110037dc28d898739942add1307e37c2e667fc77d00bf2e2717a94a5d2")
+	CrossTestGenesisHash = common.HexToHash("0xa570e4b2e71338415b8b7e51e639511398a93067322cfce5698a870a89813c03")
 	CrossDev3GenesisHash = common.HexToHash("0x1ba8d18d400eae1f2e181bf853edb8c001ab645c57caeb780699608c5cd1ba3c")
 	CrossDevGenesisHash  = common.HexToHash("0xfe493d82314ce8a829cce13681cd9d5886bf7e78665d392edaac4f6e9c14ce77")
 
 	FoundationCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
-	FoundationCrossTest = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
+	FoundationCrossTest = common.HexToAddress("0x06Dc63E28d18172A689213071884c66c5281b493")
 	FoundationCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	FoundationCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
+
+	BeneficiaryCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
+	BeneficiaryCrossTest = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
+	BeneficiaryCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
+	BeneficiaryCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
@@ -100,7 +105,7 @@ var (
 				common.HexToAddress("0xfa884b0C778Fa24D015481a262F3efe924dc0D61"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               &FoundationCross,
+			Beneficiary:              &BeneficiaryCross,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -160,7 +165,7 @@ var (
 				common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               &FoundationCrossTest,
+			Beneficiary:              &BeneficiaryCrossTest,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -203,7 +208,7 @@ var (
 				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
 			},
 			MaxRequestTimeoutSeconds: nil,
-			Foundation:               &FoundationCrossDev3,
+			Beneficiary:              &BeneficiaryCrossDev3,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
@@ -244,7 +249,7 @@ var (
 				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Foundation:               &FoundationCrossDev,
+			Beneficiary:              &BeneficiaryCrossDev,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
