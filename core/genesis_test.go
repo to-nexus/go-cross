@@ -88,10 +88,10 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		{
 			name: "cross testnet block in DB, genesis == nil",
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
-				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), DefaultCrossTestGenesisBlock())
+				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), DefaultZoneZeroGenesisBlock())
 			},
-			wantHash:   params.CrossTestGenesisHash,
-			wantConfig: params.CrossTestChainConfig,
+			wantHash:   params.ZoneZeroGenesisHash,
+			wantConfig: params.ZoneZeroChainConfig,
 		},
 		{
 			name: "cross dev3 block in DB, genesis == nil",

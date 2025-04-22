@@ -21,14 +21,14 @@ import (
 )
 
 var (
-	testUnit           = int64(1_000_000_000_000_000_000)
-	testBigUnit        = big.NewInt(testUnit)
-	testKey1, _        = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-	testKey2, _        = crypto.HexToECDSA("8a1f9a8f95be41cd7ccb6168179afb4504aefe388d1e14474d32c45c72ce7b7a")
-	testAddr1          = crypto.PubkeyToAddress(testKey1.PublicKey)
-	testAddr2          = crypto.PubkeyToAddress(testKey2.PublicKey)
-	testChainID        = big.NewInt(612044)
-	testCrosswayConfig = &params.ChainConfig{ // config with crossway fork
+	testUnit            = int64(1_000_000_000_000_000_000)
+	testBigUnit         = big.NewInt(testUnit)
+	testKey1, _         = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testKey2, _         = crypto.HexToECDSA("8a1f9a8f95be41cd7ccb6168179afb4504aefe388d1e14474d32c45c72ce7b7a")
+	testAddr1           = crypto.PubkeyToAddress(testKey1.PublicKey)
+	testAddr2           = crypto.PubkeyToAddress(testKey2.PublicKey)
+	testChainID         = big.NewInt(612044)
+	testAdventureConfig = &params.ChainConfig{ // config with Adventure fork
 		ChainID:                       testChainID,
 		HomesteadBlock:                big.NewInt(0),
 		DAOForkBlock:                  big.NewInt(0),
@@ -48,7 +48,7 @@ var (
 		TerminalTotalDifficulty:       common.Big0,
 		TerminalTotalDifficultyPassed: true,
 		ShanghaiTime:                  u64(0),
-		CrosswayTime:                  u64(0),
+		AdventureTime:                 u64(0),
 	}
 )
 
@@ -65,7 +65,7 @@ func TestCrossTransferSig(t *testing.T) {
 func TestAddTransferLog_transferTx(t *testing.T) {
 	var (
 		gspec = &Genesis{
-			Config: testCrosswayConfig,
+			Config: testAdventureConfig,
 			Alloc: types.GenesisAlloc{
 				testAddr1: types.Account{
 					Balance: big.NewInt(2 * testUnit),
@@ -74,7 +74,7 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 			},
 		}
 		gspecWithCrossEx = &Genesis{
-			Config: testCrosswayConfig,
+			Config: testAdventureConfig,
 			Alloc: types.GenesisAlloc{
 				predeploy.CrossExAddr: types.Account{
 					Code: common.Hex2Bytes(predeploy.CrossExBinRuntime),
@@ -95,8 +95,8 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 		}
 	)
 
-	configNoCross := *testCrosswayConfig
-	configNoCross.CrosswayTime = nil
+	configNoCross := *testAdventureConfig
+	configNoCross.AdventureTime = nil
 
 	for _, tt := range []struct {
 		name      string
@@ -128,7 +128,7 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 			noReceipt: true,
 		},
 		{
-			name: "no crossway",
+			name: "no Adventure",
 			gspec: &Genesis{
 				Config: &configNoCross,
 				Alloc: types.GenesisAlloc{
@@ -221,7 +221,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 		receivedSig = common.HexToHash("0x88a5966d370b9919b20f3e2c13ff65706f196a4e32cc2c12bf57088f88525874")
 
 		gspec = &Genesis{
-			Config: testCrosswayConfig,
+			Config: testAdventureConfig,
 			Alloc: types.GenesisAlloc{
 				predeploy.CrossExAddr: types.Account{
 					Code: common.Hex2Bytes(predeploy.CrossExBinRuntime),

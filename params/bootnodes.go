@@ -32,9 +32,9 @@ var CrossBootnodes = []string{
 	"enode://386a39b22749ea3ae9d1df537c086a7101b64fd87ea2402ba6eaa9e11bb09ce4c2ef0bda120680a3da34917cf3ceff29a219a2d6f649ad9dbd15029af5728ad5@54.169.215.240:30303",
 }
 
-// CrossTestBootnodes are the enode URLs of the P2P bootstrap nodes running on
+// ZoneZeroBootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the cross test network.
-var CrossTestBootnodes = []string{
+var ZoneZeroBootnodes = []string{
 	"enode://c7d9c0b82ecacd85bf5db814baf630dd19ab82d89180fedcac4e6fb6f4bbd7298e5094b1fefd8b213d7cef56d911c6d15564607d093f140fb3577a2d58011633@3.38.60.4:30303",
 	"enode://8a0f705c2b784c9c97e4d2a6e4f3ef0ea688fe1fae524ba53c0ec6d7fd0670ed952b053d3058785e60f51af7fec50264de61c10508030704768642a8cfafffc1@3.39.185.231:30303",
 }
@@ -133,8 +133,8 @@ func KnownDNSNetwork(genesis common.Hash, protocol string) string {
 	// ##CROSS: config
 	case CrossGenesisHash:
 		net = "cross"
-	case CrossTestGenesisHash:
-		net = "crosstest"
+	case ZoneZeroGenesisHash:
+		net = "zonezero"
 	case CrossDev3GenesisHash:
 		net = "crossdev3"
 	case CrossDevGenesisHash:

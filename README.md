@@ -1,12 +1,12 @@
 # 🚀 Go Cross
 
-Go Cross is a **blockchain client based on Ethereum v1.13.15**, integrating ConsenSys Quorum's latest BFT consensus algorithm. It features **Crossway Fork, a custom fork that incorporates elements from the Shanghai and Cancun forks**.
+Go Cross is a **blockchain client based on Ethereum v1.13.15**, integrating ConsenSys Quorum's latest BFT consensus algorithm. It features **Adventure Fork, a custom fork that incorporates elements from the Shanghai and Cancun forks**.
 
 ## 🔢 Version Information
 
 - **Execution Layer: Ethereum**: v1.13.15
 - **Consensus Layer: ConsenSys Quorum**: Latest BFT-based consensus algorithm
-- **Fork Version**: Crossway Fork (Shanghai + partial Cancun features applied)
+- **Fork Version**: Adventure Fork (Shanghai + partial Cancun features applied)
 
 ## 🛠 Installation and Execution Guide
 

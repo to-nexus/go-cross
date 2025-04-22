@@ -282,8 +282,8 @@ func prepare(ctx *cli.Context) {
 	case ctx.IsSet(utils.CrossFlag.Name):
 		log.Info("Starting Geth on Cross mainnet...")
 
-	case ctx.IsSet(utils.CrossTestFlag.Name):
-		log.Info("Starting Geth on Cross testnet...")
+	case ctx.IsSet(utils.ZoneZeroFlag.Name):
+		log.Info("Starting Geth on Cross ZoneZero testnet...")
 
 	case ctx.IsSet(utils.CrossDev3Flag.Name):
 		log.Info("Starting Geth on Cross dev3net...")
@@ -328,7 +328,7 @@ func prepare(ctx *cli.Context) {
 	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
 		// Make sure we're not on any supported preconfigured testnet either
 		if !ctx.IsSet(utils.CrossFlag.Name) && // ##CROSS: config
-			ctx.IsSet(utils.CrossTestFlag.Name) &&
+			ctx.IsSet(utils.ZoneZeroFlag.Name) &&
 			ctx.IsSet(utils.CrossDev3Flag.Name) &&
 			ctx.IsSet(utils.CrossDevFlag.Name) && // ##
 			!ctx.IsSet(utils.MainnetFlag.Name) &&

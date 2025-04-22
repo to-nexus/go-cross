@@ -42,7 +42,7 @@ func NewEnv(cfg *Config) *vm.EVM {
 		Random:      cfg.Random,
 	}
 	// ##CROSS: transfer log
-	if cfg.ChainConfig.IsCrossway(cfg.BlockNumber, cfg.Time) {
+	if cfg.ChainConfig.IsAdventure(cfg.BlockNumber, cfg.Time) {
 		blockContext.Transfer = core.CrossTransfer
 	}
 	// ##

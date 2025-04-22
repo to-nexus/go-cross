@@ -29,17 +29,17 @@ import (
 var (
 	// ##CROSS: config
 	CrossGenesisHash     = common.HexToHash("0x9a48f4d9c0c73b86fd1abb239649223e89fc0797b90f7c7982999900f57c21b0")
-	CrossTestGenesisHash = common.HexToHash("0xa570e4b2e71338415b8b7e51e639511398a93067322cfce5698a870a89813c03")
+	ZoneZeroGenesisHash  = common.HexToHash("0xa570e4b2e71338415b8b7e51e639511398a93067322cfce5698a870a89813c03")
 	CrossDev3GenesisHash = common.HexToHash("0x1ba8d18d400eae1f2e181bf853edb8c001ab645c57caeb780699608c5cd1ba3c")
 	CrossDevGenesisHash  = common.HexToHash("0xfe493d82314ce8a829cce13681cd9d5886bf7e78665d392edaac4f6e9c14ce77")
 
 	FoundationCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
-	FoundationCrossTest = common.HexToAddress("0x06Dc63E28d18172A689213071884c66c5281b493")
+	FoundationZoneZero  = common.HexToAddress("0x06Dc63E28d18172A689213071884c66c5281b493")
 	FoundationCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	FoundationCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 
 	BeneficiaryCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
-	BeneficiaryCrossTest = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
+	BeneficiaryZoneZero  = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
 	BeneficiaryCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	BeneficiaryCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 
@@ -74,7 +74,7 @@ var (
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
 		ShanghaiTime:                  newUint64(0),
-		CrosswayTime:                  newUint64(0), // ##CROSS: fork
+		AdventureTime:                 newUint64(0), // ##CROSS: fork
 		CancunTime:                    nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -114,7 +114,7 @@ var (
 		Transitions: []Transition{},
 	}
 
-	CrossTestChainConfig = &ChainConfig{
+	ZoneZeroChainConfig = &ChainConfig{
 		ChainID:                       big.NewInt(612044),
 		HomesteadBlock:                big.NewInt(0),
 		DAOForkBlock:                  big.NewInt(0),
@@ -134,7 +134,7 @@ var (
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
 		ShanghaiTime:                  newUint64(0),
-		CrosswayTime:                  newUint64(0), // ##CROSS: fork
+		AdventureTime:                 newUint64(0), // ##CROSS: fork
 		CancunTime:                    nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -165,7 +165,7 @@ var (
 				common.HexToAddress("0x99e64cE38a0042d706E9D0b1c01E3A506Ee80F90"),
 			},
 			MaxRequestTimeoutSeconds: newUint64(60),
-			Beneficiary:              &BeneficiaryCrossTest,
+			Beneficiary:              &BeneficiaryZoneZero,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
 			MaxBaseFee:               (*math.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
@@ -194,7 +194,7 @@ var (
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
 		ShanghaiTime:                  newUint64(0),
-		CrosswayTime:                  newUint64(0), // ##CROSS: fork
+		AdventureTime:                 newUint64(0), // ##CROSS: fork
 		CancunTime:                    nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -237,7 +237,7 @@ var (
 		TerminalTotalDifficulty:       nil,
 		TerminalTotalDifficultyPassed: false,
 		ShanghaiTime:                  newUint64(0),
-		CrosswayTime:                  newUint64(0), // ##CROSS: fork
+		AdventureTime:                 newUint64(0), // ##CROSS: fork
 		CancunTime:                    nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -537,7 +537,7 @@ var (
 var NetworkNames = map[string]string{
 	// ##CROSS: config
 	CrossChainConfig.ChainID.String():     "cross",
-	CrossTestChainConfig.ChainID.String(): "crosstest",
+	ZoneZeroChainConfig.ChainID.String():  "zonezero",
 	CrossDev3ChainConfig.ChainID.String(): "crossdev3",
 	CrossDevChainConfig.ChainID.String():  "crossdev",
 	// ##
@@ -578,11 +578,11 @@ type ChainConfig struct {
 
 	// Fork scheduling was switched from blocks to timestamps here
 
-	ShanghaiTime *uint64 `json:"shanghaiTime,omitempty"` // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	CrosswayTime *uint64 `json:"crosswayTime,omitempty"` // Crossway switch time (nil = no fork, 0 = already on crosswayTime) ##CROSS: fork
-	CancunTime   *uint64 `json:"cancunTime,omitempty"`   // Cancun switch time (nil = no fork, 0 = already on cancun)
-	PragueTime   *uint64 `json:"pragueTime,omitempty"`   // Prague switch time (nil = no fork, 0 = already on prague)
-	VerkleTime   *uint64 `json:"verkleTime,omitempty"`   // Verkle switch time (nil = no fork, 0 = already on verkle)
+	ShanghaiTime  *uint64 `json:"shanghaiTime,omitempty"`  // Shanghai switch time (nil = no fork, 0 = already on shanghai)
+	AdventureTime *uint64 `json:"adventureTime,omitempty"` // Adventure switch time (nil = no fork, 0 = already on AdventureTime) ##CROSS: fork
+	CancunTime    *uint64 `json:"cancunTime,omitempty"`    // Cancun switch time (nil = no fork, 0 = already on cancun)
+	PragueTime    *uint64 `json:"pragueTime,omitempty"`    // Prague switch time (nil = no fork, 0 = already on prague)
+	VerkleTime    *uint64 `json:"verkleTime,omitempty"`    // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
@@ -800,9 +800,9 @@ func (c *ChainConfig) IsShanghai(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.ShanghaiTime, time)
 }
 
-// IsCrossway returns whether time is either equal to the Crossway fork time or greater. ##CROSS: fork
-func (c *ChainConfig) IsCrossway(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.CrosswayTime, time)
+// IsAdventure returns whether time is either equal to the Adventure fork time or greater. ##CROSS: fork
+func (c *ChainConfig) IsAdventure(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.AdventureTime, time)
 }
 
 // IsCancun returns whether num is either equal to the Cancun fork time or greater.
@@ -1012,8 +1012,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.Prague
 	case c.IsCancun(london, time):
 		return forks.Cancun
-	case c.IsCrossway(london, time): // ##CROSS: fork
-		return forks.Crossway
+	case c.IsAdventure(london, time): // ##CROSS: fork
+		return forks.Adventure
 	case c.IsShanghai(london, time):
 		return forks.Shanghai
 	default:
@@ -1153,7 +1153,7 @@ type Rules struct {
 	IsByzantium, IsConstantinople, IsPetersburg, IsIstanbul bool
 	IsBerlin, IsLondon                                      bool
 	IsMerge, IsShanghai                                     bool
-	IsCrossway                                              bool // ##CROSS: fork
+	IsAdventure                                             bool // ##CROSS: fork
 	IsCancun, IsPrague                                      bool
 	IsVerkle                                                bool
 }
@@ -1180,7 +1180,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsLondon:         c.IsLondon(num),
 		IsMerge:          isMerge,
 		IsShanghai:       isMerge && c.IsShanghai(num, timestamp),
-		IsCrossway:       isMerge && c.IsCrossway(num, timestamp), // ##CROSS: fork
+		IsAdventure:      isMerge && c.IsAdventure(num, timestamp), // ##CROSS: fork
 		IsCancun:         isMerge && c.IsCancun(num, timestamp),
 		IsPrague:         isMerge && c.IsPrague(num, timestamp),
 		IsVerkle:         isMerge && c.IsVerkle(num, timestamp),
