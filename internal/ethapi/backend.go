@@ -111,7 +111,7 @@ func GetAPIs(apiBackend Backend, nodeConfig *node.Config) []rpc.API {
 			Service:   NewBlockChainAPI(apiBackend),
 		}, {
 			Namespace: "eth",
-			Service:   NewTransactionAPI(apiBackend, nonceLock, &nodeConfig.GasAbs),
+			Service:   NewTransactionAPI(apiBackend, nonceLock, nodeConfig.GasAbsURL),
 		}, {
 			Namespace: "txpool",
 			Service:   NewTxPoolAPI(apiBackend),
