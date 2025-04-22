@@ -141,8 +141,8 @@ var (
 		Usage:    "Cross mainnet",
 		Category: flags.EthCategory,
 	}
-	CrossTestFlag = &cli.BoolFlag{
-		Name:     "crosstest",
+	ZoneZeroFlag = &cli.BoolFlag{
+		Name:     "zonezero",
 		Usage:    "Cross testnet",
 		Category: flags.EthCategory,
 	}
@@ -936,7 +936,7 @@ var (
 	// TestnetFlags is the flag group of all built-in supported testnets.
 	TestnetFlags = []cli.Flag{
 		// ##CROSS: config
-		CrossTestFlag,
+		ZoneZeroFlag,
 		CrossDev3Flag,
 		CrossDevFlag,
 		// ##
@@ -1029,8 +1029,8 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 		}
 		switch {
 		// ##CROSS: config
-		case ctx.Bool(CrossTestFlag.Name):
-			urls = params.CrossTestBootnodes
+		case ctx.Bool(ZoneZeroFlag.Name):
+			urls = params.ZoneZeroBootnodes
 		case ctx.Bool(CrossDev3Flag.Name):
 			urls = params.CrossDev3Bootnodes
 		case ctx.Bool(CrossDevFlag.Name):
@@ -1622,8 +1622,8 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
-	CheckExclusive(ctx, CrossFlag, CrossTestFlag, CrossDev3Flag, CrossDevFlag, MainnetFlag, DeveloperFlag, GoerliFlag, SepoliaFlag, HoleskyFlag) // ##CROSS: config
-	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag)                                                                                       // Can't use both ephemeral unlocked and external signer
+	CheckExclusive(ctx, CrossFlag, ZoneZeroFlag, CrossDev3Flag, CrossDevFlag, MainnetFlag, DeveloperFlag, GoerliFlag, SepoliaFlag, HoleskyFlag) // ##CROSS: config
+	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag)                                                                                      // Can't use both ephemeral unlocked and external signer
 
 	// Set configurations from CLI flags
 	setEtherbase(ctx, cfg)
@@ -1775,12 +1775,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.Genesis = core.DefaultCrossGenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.CrossGenesisHash)
-	case ctx.Bool(CrossTestFlag.Name):
+	case ctx.Bool(ZoneZeroFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 612044
 		}
-		cfg.Genesis = core.DefaultCrossTestGenesisBlock()
-		SetDNSDiscoveryDefaults(cfg, params.CrossTestGenesisHash)
+		cfg.Genesis = core.DefaultZoneZeroGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.ZoneZeroGenesisHash)
 	case ctx.Bool(CrossDev3Flag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 612088
@@ -2125,8 +2125,8 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	// ##CROSS: config
 	case ctx.Bool(CrossFlag.Name):
 		genesis = core.DefaultCrossGenesisBlock()
-	case ctx.Bool(CrossTestFlag.Name):
-		genesis = core.DefaultCrossTestGenesisBlock()
+	case ctx.Bool(ZoneZeroFlag.Name):
+		genesis = core.DefaultZoneZeroGenesisBlock()
 	case ctx.Bool(CrossDev3Flag.Name):
 		genesis = core.DefaultCrossDev3GenesisBlock()
 	case ctx.Bool(CrossDevFlag.Name):

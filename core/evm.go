@@ -43,7 +43,7 @@ type ChainContext interface {
 // NewEVMBlockContext creates a new context for use in the EVM.
 func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address, config *params.ChainConfig) vm.BlockContext {
 	// ##CROSS: transfer log
-	// Parameter config is added to check if the Crossway fork is enabled
+	// Parameter config is added to check if the Adventure fork is enabled
 
 	var (
 		beneficiary common.Address
@@ -72,8 +72,8 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 	}
 	// ##CROSS: transfer log
 	transfer := Transfer
-	// Update Transfer function for Crossway fork
-	if config != nil && config.IsCrossway(header.Number, header.Time) {
+	// Update Transfer function for Adventure fork
+	if config != nil && config.IsAdventure(header.Number, header.Time) {
 		transfer = CrossTransfer
 	}
 	// ##

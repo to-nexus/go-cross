@@ -42,8 +42,8 @@ var (
 		},
 	}
 
-	GenesisAllocCrossTest = types.GenesisAlloc{
-		params.FoundationCrossTest: {
+	GenesisAllocZoneZero = types.GenesisAlloc{
+		params.FoundationZoneZero: {
 			Balance: new(big.Int).Mul(big.NewInt(1_000_000_000_000), big.NewInt(1e18)),
 		},
 		CrossExAddr:    GenesisAllocCross[CrossExAddr],

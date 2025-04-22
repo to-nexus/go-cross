@@ -56,7 +56,7 @@ var (
 	londonInstructionSet           = newLondonInstructionSet()
 	mergeInstructionSet            = newMergeInstructionSet()
 	shanghaiInstructionSet         = newShanghaiInstructionSet()
-	crosswayInstructionSet         = newCrosswayInstructionSet() // ##CROSS: fork
+	adventureInstructionSet        = newAdventureInstructionSet() // ##CROSS: fork
 	cancunInstructionSet           = newCancunInstructionSet()
 )
 
@@ -91,7 +91,7 @@ func newCancunInstructionSet() JumpTable {
 	return validate(instructionSet)
 }
 
-func newCrosswayInstructionSet() JumpTable { // ##CROSS: fork
+func newAdventureInstructionSet() JumpTable { // ##CROSS: fork
 	instructionSet := newShanghaiInstructionSet()
 	enable1153(&instructionSet) // EIP-1153 "Transient Storage"
 	enable5656(&instructionSet) // EIP-5656 (MCOPY opcode)

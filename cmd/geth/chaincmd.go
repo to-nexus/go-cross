@@ -204,8 +204,8 @@ func initGenesis(ctx *cli.Context) error {
 		// ##CROSS: config
 		case "cross":
 			genesis = core.DefaultCrossGenesisBlock()
-		case "crosstest":
-			genesis = core.DefaultCrossTestGenesisBlock()
+		case "zonezero":
+			genesis = core.DefaultZoneZeroGenesisBlock()
 		case "crossdev3":
 			genesis = core.DefaultCrossDev3GenesisBlock()
 		case "crossdev":
@@ -440,8 +440,8 @@ func importHistory(ctx *cli.Context) error {
 		// ##CROSS: config
 		case ctx.Bool(utils.CrossFlag.Name):
 			network = "cross"
-		case ctx.Bool(utils.CrossTestFlag.Name):
-			network = "crosstest"
+		case ctx.Bool(utils.ZoneZeroFlag.Name):
+			network = "zonezero"
 		case ctx.Bool(utils.CrossDev3Flag.Name):
 			network = "crossdev3"
 		case ctx.Bool(utils.CrossDevFlag.Name):

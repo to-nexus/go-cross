@@ -369,8 +369,8 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		// ##CROSS: config
 	case ghash == params.CrossGenesisHash:
 		return params.CrossChainConfig
-	case ghash == params.CrossTestGenesisHash:
-		return params.CrossTestChainConfig
+	case ghash == params.ZoneZeroGenesisHash:
+		return params.ZoneZeroChainConfig
 	case ghash == params.CrossDev3GenesisHash:
 		return params.CrossDev3ChainConfig
 	case ghash == params.CrossDevGenesisHash:
@@ -514,18 +514,18 @@ func DefaultCrossGenesisBlock() *Genesis {
 	}
 }
 
-// DefaultCrossTestGenesisBlock returns the Cross dev net genesis block.
-func DefaultCrossTestGenesisBlock() *Genesis {
+// DefaultZoneZeroGenesisBlock returns the Cross dev net genesis block.
+func DefaultZoneZeroGenesisBlock() *Genesis {
 	return &Genesis{
-		Config:     params.CrossTestChainConfig,
+		Config:     params.ZoneZeroChainConfig,
 		Nonce:      0xeeff,
 		Timestamp:  0x67ae9b37,
 		ExtraData:  hexutil.MustDecode("0xc680c0c080c080"),
 		GasLimit:   105000000,
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
-		Coinbase:   params.FoundationCrossTest,
-		Alloc:      predeploy.GenesisAllocCrossTest,
+		Coinbase:   params.FoundationZoneZero,
+		Alloc:      predeploy.GenesisAllocZoneZero,
 	}
 }
 

@@ -231,8 +231,8 @@ func ethFilter(args []string) (nodeFilter, error) {
 	// ##CROSS: config
 	case "cross":
 		filter = forkid.NewStaticFilter(params.CrossChainConfig, core.DefaultCrossGenesisBlock().ToBlock())
-	case "crosstest":
-		filter = forkid.NewStaticFilter(params.CrossTestChainConfig, core.DefaultCrossTestGenesisBlock().ToBlock())
+	case "zonezero":
+		filter = forkid.NewStaticFilter(params.ZoneZeroChainConfig, core.DefaultZoneZeroGenesisBlock().ToBlock())
 	case "crossdev3":
 		filter = forkid.NewStaticFilter(params.CrossDev3ChainConfig, core.DefaultCrossDev3GenesisBlock().ToBlock())
 	case "crossdev":
