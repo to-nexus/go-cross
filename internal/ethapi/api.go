@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -45,7 +44,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -1578,15 +1576,14 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 // TransactionAPI exposes methods for reading and creating transaction data.
 type TransactionAPI struct {
-	b               Backend
-	nonceLock       *AddrLocker
-	signer          types.Signer
-	gasAbs          *gasabs.Client // ##CROSS: gas abs
-	approvedAddress *sync.Map
+	b         Backend
+	nonceLock *AddrLocker
+	signer    types.Signer
+	gasAbs    *gasabs.Client // ##CROSS: gas abs
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
-func NewTransactionAPI(b Backend, nonceLock *AddrLocker, cfg *node.GasAbstraction) *TransactionAPI {
+func NewTransactionAPI(b Backend, nonceLock *AddrLocker, gasAbsURL string) *TransactionAPI {
 	var (
 		// The signer used by the API should always be the 'latest' known one because we expect
 		// signers to be backwards-compatible with old transactions.
@@ -1595,19 +1592,11 @@ func NewTransactionAPI(b Backend, nonceLock *AddrLocker, cfg *node.GasAbstractio
 	)
 
 	// ##CROSS: gasAbs
-	if cfg != nil {
-		gasAbs, _ = gasabs.DialContext(context.Background(), *cfg)
+	if gasAbsURL != "" {
+		gasAbs, _ = gasabs.DialContext(context.Background(), gasAbsURL)
 	}
 
-	s := &TransactionAPI{b, nonceLock, signer, gasAbs, &sync.Map{}}
-
-	// ##CROSS: gas abs
-	if gasAbs != nil {
-		for _, addr := range gasAbs.Config.ApprovedAddresses {
-			s.approvedAddress.Store(addr, struct{}{})
-		}
-	}
-	return s
+	return &TransactionAPI{b, nonceLock, signer, gasAbs}
 }
 
 // GetBlockTransactionCountByNumber returns the number of transactions in the block with the given block number.
@@ -1914,7 +1903,17 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 		if tx.To() != nil {
 			to = *tx.To()
 		}
-		if _, ok := s.approvedAddress.Load(to); ok {
+
+		approved := s.gasAbs.IsApprovedTo(ctx, to)
+		if !approved {
+			from, err := s.signer.Sender(tx)
+			if err != nil {
+				return common.Hash{}, err
+			}
+			approved = s.gasAbs.IsApprovedFrom(ctx, from)
+		}
+
+		if approved {
 			logger := log.New("to", to, "tx", tx.Hash().Hex())
 			logger.Info("Request GasAbstraction")
 			if tx, err = s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {

@@ -22,13 +22,16 @@ var (
 var (
 	GenesisAllocCross = types.GenesisAlloc{
 		params.FoundationCross: {
-			Balance: new(big.Int).Mul(big.NewInt(50_000_000), big.NewInt(1e18)),
+			Balance: new(big.Int).Mul(big.NewInt(10_000_000), big.NewInt(1e18)),
+		},
+		params.EchoCross: {
+			Balance: new(big.Int).Mul(big.NewInt(10_000_000), big.NewInt(1e18)),
 		},
 		CrossExAddr: {
 			Code: common.Hex2Bytes(CrossExBinRuntime),
 		},
 		BridgeAddr: {
-			Balance: new(big.Int).Mul(big.NewInt(950_000_000), big.NewInt(1e18)),
+			Balance: new(big.Int).Mul(big.NewInt(980_000_000), big.NewInt(1e18)),
 			Code:    common.Hex2Bytes(ERC1967ProxyBinRuntime),
 			Storage: map[common.Hash]common.Hash{
 				ERC1967ProxyImplementationSlot: common.BytesToHash(BridgeImplAddr.Bytes()),

@@ -212,13 +212,8 @@ type Config struct {
 
 	DBEngine string `toml:",omitempty"`
 
-	GasAbs GasAbstraction `toml:",omitempty"`
-}
-
-// ##CROSS: gas abstraction
-type GasAbstraction struct {
-	ApprovedAddresses []common.Address `toml:",omitempty"`
-	GasAbsURL         string           `toml:",omitempty"`
+	// ##CROSS: gas abstraction url.
+	GasAbsURL string `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into
