@@ -28,20 +28,22 @@ import (
 // Genesis hashes to enforce below configs on.
 var (
 	// ##CROSS: config
-	CrossGenesisHash     = common.HexToHash("0x9a48f4d9c0c73b86fd1abb239649223e89fc0797b90f7c7982999900f57c21b0")
-	ZoneZeroGenesisHash  = common.HexToHash("0xa570e4b2e71338415b8b7e51e639511398a93067322cfce5698a870a89813c03")
-	CrossDev3GenesisHash = common.HexToHash("0x1ba8d18d400eae1f2e181bf853edb8c001ab645c57caeb780699608c5cd1ba3c")
-	CrossDevGenesisHash  = common.HexToHash("0xfe493d82314ce8a829cce13681cd9d5886bf7e78665d392edaac4f6e9c14ce77")
+	CrossGenesisHash     = common.HexToHash("0x675a5d7c97cc1be3bf061635d31206966ef7ae0205a45890a4bab931456a8348")
+	ZoneZeroGenesisHash  = common.HexToHash("0xcd8ce15999597691045f5f9675debfe4e0a7e5dca94b866e01df6b5b9d4263aa")
+	CrossDev3GenesisHash = common.HexToHash("0xda75bb3ff72575b0fdc746a7fd23ebb733c8ce83cc6a6710470d1cf5528eab3f")
+	CrossDevGenesisHash  = common.HexToHash("0x43edb9ebbb2f946b92268c6934a2f89e4f2dc4249223f3ed61a320cb8dcc1b19")
 
-	FoundationCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
+	FoundationCross     = common.HexToAddress("0xb9e345ba27826d71eb89a015852c752e341010ec")
 	FoundationZoneZero  = common.HexToAddress("0x06Dc63E28d18172A689213071884c66c5281b493")
 	FoundationCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	FoundationCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 
-	BeneficiaryCross     = common.HexToAddress("0xb5e06b1ab772c63aa2e3795eba9b14a63f9785fd")
+	BeneficiaryCross     = common.HexToAddress("0xeb569ffda1a757938187320866959438aa61f4c6")
 	BeneficiaryZoneZero  = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
 	BeneficiaryCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	BeneficiaryCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
+
+	EchoCross = common.HexToAddress("0x0575a1b8e9e8950356b0c682bb270e16905eb108")
 
 	// ##
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
