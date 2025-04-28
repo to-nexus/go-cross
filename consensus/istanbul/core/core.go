@@ -96,6 +96,13 @@ type Core struct {
 	newRoundTimer *time.Timer
 }
 
+// ##CROSS: istanbul stats
+func (c *Core) CurrentView() *istanbul.View {
+	return c.currentView()
+}
+
+// ##
+
 func (c *Core) currentView() *istanbul.View {
 	return &istanbul.View{
 		Sequence: new(big.Int).Set(c.current.Sequence()),
@@ -168,7 +175,7 @@ func (c *Core) startNewRound(round *big.Int) {
 	if c.current == nil {
 		oldLogger = c.logger.New("old.round", -1, "old.seq", 0)
 	} else {
-		oldLogger = c.logger.New("old.round", c.current.Round().Uint64(), "old.sequence", c.current.Sequence().Uint64(), "old.state", c.state.String() /*, "old.proposer", c.valSet.GetProposer()*/)
+		oldLogger = c.logger.New("old.round", c.current.Round().Uint64(), "old.sequence", c.current.Sequence().Uint64(), "old.state", c.state.String(), "old.proposer", c.valSet.GetProposer())
 	}
 
 	// Create next view

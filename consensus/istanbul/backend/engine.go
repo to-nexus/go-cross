@@ -296,6 +296,23 @@ func (sb *Backend) Stop() error {
 	return nil
 }
 
+// ##CROSS: istanbul stats
+
+// Started returns true if the engine has been started.
+func (sb *Backend) Started() bool {
+	return sb.coreStarted
+}
+
+// CurrentView returns the current view of the engine.
+func (sb *Backend) CurrentView() *istanbul.View {
+	if sb.core != nil {
+		return sb.core.CurrentView()
+	}
+	return nil
+}
+
+// ##
+
 func addrsToString(addrs []common.Address) []string {
 	strs := make([]string, len(addrs))
 	for i, addr := range addrs {

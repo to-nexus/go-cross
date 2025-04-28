@@ -34,6 +34,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	istbackend "github.com/ethereum/go-ethereum/consensus/istanbul/backend"
+	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	ethproto "github.com/ethereum/go-ethereum/eth/protocols/eth"
@@ -87,12 +90,23 @@ type miningNodeBackend interface {
 	Miner() *miner.Miner
 }
 
+// ##CROSS: istanbul stats
+type istanbulBackend interface {
+	Started() bool
+	CurrentView() *istanbul.View
+	Validators(proposal istanbul.Proposal) istanbul.ValidatorSet
+	HasBadProposal(hash common.Hash) bool
+}
+
+// ##
+
 // Service implements an Ethereum netstats reporting daemon that pushes local
 // chain statistics up to a monitoring server.
 type Service struct {
-	server  *p2p.Server // Peer-to-peer server to retrieve networking infos
-	backend backend
-	engine  consensus.Engine // Consensus engine to retrieve variadic block fields
+	server     *p2p.Server // Peer-to-peer server to retrieve networking infos
+	backend    backend
+	engine     consensus.Engine // Consensus engine to retrieve variadic block fields
+	istBackend istanbulBackend  // ##CROSS: istanbul stats
 
 	node string // Name of the node to display on the monitoring page
 	pass string // Password to authorize access to the monitoring page
@@ -195,6 +209,23 @@ func New(node *node.Node, backend backend, engine consensus.Engine, url string) 
 		pongCh:  make(chan struct{}),
 		histCh:  make(chan []uint64, 1),
 	}
+
+	// ##CROSS: istanbul stats
+	// hack to get the istanbul backend
+	ist, _ := engine.(*istbackend.Backend)
+	if ist == nil {
+		// check inner engine
+		if engine, ok := engine.(interface{ InnerEngine() consensus.Engine }); ok {
+			ist, _ = engine.InnerEngine().(*istbackend.Backend)
+		}
+	}
+	if ist != nil {
+		ethstats.istBackend = ist
+		log.Info("Stats registered istanbul backend", "ist", ist.Address())
+	} else {
+		log.Info("Stats failed to register istanbul backend")
+	}
+	// ##
 
 	node.RegisterLifecycle(ethstats)
 	return nil
@@ -345,6 +376,11 @@ func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core
 					if err = s.reportPending(conn); err != nil {
 						log.Warn("Post-block transaction stats report failed", "err", err)
 					}
+					// ##CROSS: istanbul stats
+					if err = s.reportIstanbul(conn, head); err != nil {
+						log.Warn("Istanbul stats report failed", "err", err)
+					}
+					// ##
 				case <-txCh:
 					if err = s.reportPending(conn); err != nil {
 						log.Warn("Transaction stats report failed", "err", err)
@@ -533,6 +569,12 @@ func (s *Service) report(conn *connWrapper) error {
 	if err := s.reportStats(conn); err != nil {
 		return err
 	}
+	// ##CROSS: istanbul stats
+	if err := s.reportIstanbul(conn, nil); err != nil {
+		return err
+	}
+	// ##
+
 	return nil
 }
 
@@ -833,3 +875,56 @@ func (s *Service) reportStats(conn *connWrapper) error {
 	}
 	return conn.WriteJSON(report)
 }
+
+// ##CROSS: istanbul stats
+// istanbulStats is the information to report about the consensus layer.
+type istanbulStats struct {
+	Number         *big.Int         `json:"number"`
+	Validators     []common.Address `json:"validators"`
+	Proposer       common.Address   `json:"proposer"`
+	Quorum         uint64           `json:"quorum"`
+	F              uint64           `json:"f"`
+	Sequence       uint64           `json:"sequence"`
+	Round          uint64           `json:"round"`
+	HasBadProposal bool             `json:"hasBadProposal"`
+}
+
+// reportIstanbul retrieves various stats about the consensus layer and reports
+// it to the stats server.
+func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
+	if s.istBackend == nil || !s.istBackend.Started() {
+		// istanbul is not ready
+		return nil
+	}
+
+	if block == nil {
+		block = types.NewBlockWithHeader(s.backend.CurrentHeader())
+	}
+	proposal := istanbul.Proposal(block)
+	valSet := s.istBackend.Validators(proposal)
+	view := s.istBackend.CurrentView()
+	istStats := istanbulStats{
+		Number:         proposal.Number(),
+		Validators:     validator.SortedAddresses(valSet.List()),
+		Proposer:       valSet.GetProposer().Address(),
+		Quorum:         uint64(valSet.QuorumSize()),
+		F:              uint64(valSet.F()),
+		HasBadProposal: s.istBackend.HasBadProposal(proposal.Hash()),
+	}
+	if view != nil {
+		istStats.Sequence = view.Sequence.Uint64()
+		istStats.Round = view.Round.Uint64()
+	}
+
+	stats := map[string]interface{}{
+		"id":       s.node,
+		"istanbul": istStats,
+	}
+	report := map[string][]interface{}{
+		"emit": {"istanbul", stats},
+	}
+	// log.Trace("Sending istanbul stats to ethstats", "report", report)
+	return conn.WriteJSON(report)
+}
+
+// ##
