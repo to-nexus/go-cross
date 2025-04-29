@@ -92,6 +92,7 @@ type miningNodeBackend interface {
 
 // ##CROSS: istanbul stats
 type istanbulBackend interface {
+	Address() common.Address
 	Started() bool
 	CurrentView() *istanbul.View
 	Validators(proposal istanbul.Proposal) istanbul.ValidatorSet
@@ -499,6 +500,7 @@ type nodeInfo struct {
 	OsVer    string `json:"os_v"`
 	Client   string `json:"client"`
 	History  bool   `json:"canUpdateHistory"`
+	Address  string `json:"address"`
 }
 
 // authMsg is the authentication infos needed to login to a monitoring server.
@@ -539,6 +541,10 @@ func (s *Service) login(conn *connWrapper) error {
 		},
 		Secret: s.pass,
 	}
+	if s.istBackend != nil {
+		auth.Info.Address = s.istBackend.Address().Hex()
+	}
+
 	login := map[string][]interface{}{
 		"emit": {"hello", auth},
 	}
