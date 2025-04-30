@@ -98,6 +98,8 @@ type Core struct {
 
 // ##CROSS: istanbul stats
 func (c *Core) CurrentView() *istanbul.View {
+	c.currentMutex.Lock()
+	defer c.currentMutex.Unlock()
 	return c.currentView()
 }
 

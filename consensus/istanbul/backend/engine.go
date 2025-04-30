@@ -300,6 +300,8 @@ func (sb *Backend) Stop() error {
 
 // Started returns true if the engine has been started.
 func (sb *Backend) Started() bool {
+	sb.coreMu.RLock()
+	defer sb.coreMu.RUnlock()
 	return sb.coreStarted
 }
 
