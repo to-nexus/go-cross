@@ -883,7 +883,7 @@ func (s *Service) reportStats(conn *connWrapper) error {
 }
 
 // ##CROSS: istanbul stats
-// istanbulStats is the information to report about the consensus layer.
+// istanbulStats is the information to report about the istanbul consensus layer.
 type istanbulStats struct {
 	Number         *big.Int         `json:"number"`
 	Validators     []common.Address `json:"validators"`
@@ -895,8 +895,8 @@ type istanbulStats struct {
 	HasBadProposal bool             `json:"hasBadProposal"`
 }
 
-// reportIstanbul retrieves various stats about the consensus layer and reports
-// it to the stats server.
+// reportIstanbul retrieves various stats about the istanbul consensus layer and
+// reports it to the stats server.
 func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
 	if s.istBackend == nil || !s.istBackend.Started() {
 		// istanbul is not ready
@@ -922,6 +922,15 @@ func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
 		istStats.Round = view.Round.Uint64()
 	}
 
+	log.Trace("Sending istanbul stats to ethstats",
+		"number", istStats.Number,
+		"validators", len(istStats.Validators),
+		"proposer", istStats.Proposer,
+		"sequence", istStats.Sequence,
+		"round", istStats.Round,
+		"hasBadProposal", istStats.HasBadProposal,
+	)
+
 	stats := map[string]interface{}{
 		"id":       s.node,
 		"istanbul": istStats,
@@ -929,7 +938,6 @@ func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
 	report := map[string][]interface{}{
 		"emit": {"istanbul", stats},
 	}
-	// log.Trace("Sending istanbul stats to ethstats", "report", report)
 	return conn.WriteJSON(report)
 }
 
