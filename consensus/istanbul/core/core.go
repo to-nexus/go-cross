@@ -220,7 +220,14 @@ func (c *Core) startNewRound(round *big.Int) {
 		c.newRoundChangeTimer()
 	}
 
-	oldLogger.Info("Istanbul: start new round", "next.round", newView.Round, "next.seq", newView.Sequence, "next.proposer", c.valSet.GetProposer() /*"next.valSet", c.valSet.List(),*/, "next.size", c.valSet.Size(), "next.IsProposer", c.IsProposer())
+	oldLogger.Info("Istanbul: start new round",
+		"next.round", newView.Round,
+		"next.seq", newView.Sequence,
+		"next.proposer", c.valSet.GetProposer(),
+		"next.valSet", c.valSet.List(),
+		"next.size", c.valSet.Size(),
+		"next.IsProposer", c.IsProposer(),
+	)
 }
 
 // updateRoundState updates round state by checking if locking block is necessary

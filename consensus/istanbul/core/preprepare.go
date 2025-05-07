@@ -115,7 +115,7 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 	// Validates PRE-PREPARE message comes from current proposer
 	if !c.valSet.IsProposer(preprepare.Source()) {
 		// ##CROSS: istanbul stats
-		logger.Warn("Istanbul: ignore PRE-PREPARE message from non proposer", "source", preprepare.Source()) //"proposer", c.valSet.GetProposer().Address())
+		logger.Warn("Istanbul: ignore PRE-PREPARE message from non proposer")
 		return errNotFromProposer
 	}
 
