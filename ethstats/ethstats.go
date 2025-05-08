@@ -885,6 +885,7 @@ func (s *Service) reportStats(conn *connWrapper) error {
 // ##CROSS: istanbul stats
 // istanbulStats is the information to report about the istanbul consensus layer.
 type istanbulStats struct {
+	Active         bool             `json:"active"`
 	Number         *big.Int         `json:"number"`
 	Validators     []common.Address `json:"validators"`
 	Proposer       common.Address   `json:"proposer"`
@@ -898,31 +899,33 @@ type istanbulStats struct {
 // reportIstanbul retrieves various stats about the istanbul consensus layer and
 // reports it to the stats server.
 func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
-	if s.istBackend == nil || !s.istBackend.Started() {
-		// istanbul is not ready
-		return nil
-	}
-
 	if block == nil {
 		block = types.NewBlockWithHeader(s.backend.CurrentHeader())
 	}
 	proposal := istanbul.Proposal(block)
-	valSet := s.istBackend.Validators(proposal)
-	view := s.istBackend.CurrentView()
+
 	istStats := istanbulStats{
-		Number:         proposal.Number(),
-		Validators:     validator.SortedAddresses(valSet.List()),
-		Proposer:       valSet.GetProposer().Address(),
-		Quorum:         uint64(valSet.QuorumSize()),
-		F:              uint64(valSet.F()),
-		HasBadProposal: s.istBackend.HasBadProposal(proposal.Hash()),
+		Number: proposal.Number(),
 	}
-	if view != nil {
-		istStats.Sequence = view.Sequence.Uint64()
-		istStats.Round = view.Round.Uint64()
+
+	if s.istBackend != nil && s.istBackend.Started() {
+		valSet := s.istBackend.Validators(proposal)
+		istStats.Active = true
+		istStats.Validators = validator.SortedAddresses(valSet.List())
+		istStats.Proposer = valSet.GetProposer().Address()
+		istStats.Quorum = uint64(valSet.QuorumSize())
+		istStats.F = uint64(valSet.F())
+		istStats.HasBadProposal = s.istBackend.HasBadProposal(proposal.Hash())
+
+		view := s.istBackend.CurrentView()
+		if view != nil {
+			istStats.Sequence = view.Sequence.Uint64()
+			istStats.Round = view.Round.Uint64()
+		}
 	}
 
 	log.Trace("Sending istanbul stats to ethstats",
+		"active", istStats.Active,
 		"number", istStats.Number,
 		"validators", len(istStats.Validators),
 		"proposer", istStats.Proposer,
