@@ -313,6 +313,15 @@ func (sb *Backend) CurrentView() *istanbul.View {
 	return nil
 }
 
+// ValidatorsFrom returns the validator set from the given chain at the given proposal.
+func (sb *Backend) ValidatorsFrom(chain consensus.ChainHeaderReader, proposal istanbul.Proposal) istanbul.ValidatorSet {
+	snap, err := sb.snapshot(chain, proposal.Number().Uint64(), proposal.Hash(), nil)
+	if err != nil {
+		return validator.NewSet(nil, sb.config.ProposerPolicy)
+	}
+	return snap.ValSet
+}
+
 // ##
 
 func addrsToString(addrs []common.Address) []string {

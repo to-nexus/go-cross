@@ -95,8 +95,8 @@ type istanbulBackend interface {
 	Address() common.Address
 	Started() bool
 	CurrentView() *istanbul.View
-	Validators(proposal istanbul.Proposal) istanbul.ValidatorSet
 	HasBadProposal(hash common.Hash) bool
+	ValidatorsFrom(chain consensus.ChainHeaderReader, proposal istanbul.Proposal) istanbul.ValidatorSet
 }
 
 // ##
@@ -106,8 +106,9 @@ type istanbulBackend interface {
 type Service struct {
 	server     *p2p.Server // Peer-to-peer server to retrieve networking infos
 	backend    backend
-	engine     consensus.Engine // Consensus engine to retrieve variadic block fields
-	istBackend istanbulBackend  // ##CROSS: istanbul stats
+	engine     consensus.Engine            // Consensus engine to retrieve variadic block fields
+	istBackend istanbulBackend             // ##CROSS: istanbul stats
+	chain      consensus.ChainHeaderReader // ##CROSS: istanbul stats
 
 	node string // Name of the node to display on the monitoring page
 	pass string // Password to authorize access to the monitoring page
@@ -195,7 +196,7 @@ func parseEthstatsURL(url string) (parts []string, err error) {
 }
 
 // New returns a monitoring service ready for stats reporting.
-func New(node *node.Node, backend backend, engine consensus.Engine, url string) error {
+func New(node *node.Node, backend backend, engine consensus.Engine, chain consensus.ChainHeaderReader, url string) error {
 	parts, err := parseEthstatsURL(url)
 	if err != nil {
 		return err
@@ -204,6 +205,7 @@ func New(node *node.Node, backend backend, engine consensus.Engine, url string) 
 		backend: backend,
 		engine:  engine,
 		server:  node.Server(),
+		chain:   chain, //## CROSS: istanbul stats
 		node:    parts[0],
 		pass:    parts[1],
 		host:    parts[2],
@@ -908,17 +910,17 @@ func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
 		Number: proposal.Number(),
 	}
 
-	if s.istBackend != nil && s.istBackend.Started() {
-		valSet := s.istBackend.Validators(proposal)
-		istStats.Active = true
+	if s.istBackend != nil {
+		istStats.Active = s.istBackend.Started()
+		valSet := s.istBackend.ValidatorsFrom(s.chain, proposal)
 		istStats.Validators = validator.SortedAddresses(valSet.List())
-		istStats.Proposer = valSet.GetProposer().Address()
 		istStats.Quorum = uint64(valSet.QuorumSize())
 		istStats.F = uint64(valSet.F())
 		istStats.HasBadProposal = s.istBackend.HasBadProposal(proposal.Hash())
 
 		view := s.istBackend.CurrentView()
 		if view != nil {
+			istStats.Proposer = valSet.GetProposer().Address()
 			istStats.Sequence = view.Sequence.Uint64()
 			istStats.Round = view.Round.Uint64()
 		}
