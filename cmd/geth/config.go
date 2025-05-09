@@ -202,7 +202,9 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	}
 	// Add the Ethereum Stats daemon if requested.
 	if cfg.Ethstats.URL != "" {
-		utils.RegisterEthStatsService(stack, backend, cfg.Ethstats.URL)
+		//## CROSS: istanbul stats
+		// blockchain is injected
+		utils.RegisterEthStatsService(stack, backend, eth.BlockChain(), cfg.Ethstats.URL)
 	}
 	// Configure full-sync tester service if requested
 	if ctx.IsSet(utils.SyncTargetFlag.Name) {
