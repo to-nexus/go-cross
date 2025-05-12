@@ -152,7 +152,7 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 
 	// Here is about to accept the PRE-PREPARE
 	if c.state == StateAcceptRequest {
-		c.logger.Info("Istanbul: accepted PRE-PREPARE message")
+		logger.Debug("Istanbul: accepted PRE-PREPARE message")
 
 		// Re-initialize ROUND-CHANGE timer
 		c.newRoundChangeTimer()
