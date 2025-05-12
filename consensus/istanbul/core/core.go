@@ -145,7 +145,7 @@ func (c *Core) startNewRound(round *big.Int) {
 		logger = logger.New("lastProposal.number", lastProposal.Number().Uint64(), "lastProposal.hash", lastProposal.Hash())
 	}
 
-	logger.Info("Istanbul: initialize new round")
+	logger.Debug("Istanbul: initialize new round")
 
 	if c.current == nil {
 		logger.Debug("Istanbul: start at the initial round")

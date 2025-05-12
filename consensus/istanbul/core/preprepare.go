@@ -86,7 +86,7 @@ func (c *Core) sendPreprepareMsg(request *Request) {
 
 		logger = withMsg(logger, preprepare).New("block.number", preprepare.Proposal.Number().Uint64(), "block.hash", preprepare.Proposal.Hash().String())
 
-		logger.Info("Istanbul: broadcast PRE-PREPARE message", "payload", hexutil.Encode(payload))
+		logger.Debug("Istanbul: broadcast PRE-PREPARE message", "payload", hexutil.Encode(payload))
 
 		// Broadcast RLP-encoded message
 		if err = c.backend.Broadcast(c.valSet, preprepare.Code(), payload); err != nil {

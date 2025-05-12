@@ -19,7 +19,7 @@ package core
 import "github.com/ethereum/go-ethereum/common"
 
 func (c *Core) handleFinalCommitted() error {
-	c.currentLogger(true, nil).Info("Istanbul: handle final committed")
+	c.currentLogger(true, nil).Debug("Istanbul: handle final committed")
 
 	// Stopping the timer, so that round changes do not happen
 	c.stopTimer()

@@ -81,7 +81,7 @@ func (c *Core) broadcastRoundChange(round *big.Int) {
 		return
 	}
 
-	withMsg(logger, roundChange).Info("Istanbul: broadcast ROUND-CHANGE message", "payload", hexutil.Encode(data))
+	withMsg(logger, roundChange).Debug("Istanbul: broadcast ROUND-CHANGE message", "payload", hexutil.Encode(data))
 
 	// Broadcast RLP-encoded message
 	if err = c.backend.Broadcast(c.valSet, roundChange.Code(), data); err != nil {
