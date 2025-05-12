@@ -34,8 +34,6 @@ import (
 func (c *Core) handleRequest(request *Request) error {
 	logger := c.currentLogger(true, nil)
 
-	logger.Info("Istanbul: handle block proposal request")
-
 	if err := c.checkRequestMsg(request); err != nil {
 		if err == errInvalidMessage {
 			logger.Error("Istanbul: invalid request")
@@ -44,6 +42,8 @@ func (c *Core) handleRequest(request *Request) error {
 		}
 		return err
 	}
+
+	logger.Info("Istanbul: handle block proposal request")
 
 	c.current.pendingRequest = request
 	if c.state == StateAcceptRequest {
