@@ -243,7 +243,7 @@ func (c *Core) setState(state State) {
 	if c.state != state {
 		oldState := c.state
 		c.state = state
-		c.currentLogger(false, nil).Info("Istanbul: changed state", "old.state", oldState.String(), "new.state", state.String())
+		c.currentLogger(false, nil).Debug("Istanbul: changed state", "old.state", oldState.String(), "new.state", state.String())
 	}
 	if state == StateAcceptRequest {
 		c.processPendingRequests()
