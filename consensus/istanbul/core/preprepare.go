@@ -109,6 +109,7 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 	logger := c.currentLogger(true, preprepare)
 
 	logger = logger.New("proposal.number", preprepare.Proposal.Number().Uint64(), "proposal.hash", preprepare.Proposal.Hash().String())
+	logger.Debug("Istanbul: handle PRE-PREPARE message")
 
 	// Validates PRE-PREPARE message comes from current proposer
 	if !c.valSet.IsProposer(preprepare.Source()) {
@@ -116,8 +117,6 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 		logger.Warn("Istanbul: ignore PRE-PREPARE message from non proposer")
 		return errNotFromProposer
 	}
-
-	logger.Debug("Istanbul: handle PRE-PREPARE message")
 
 	// Validates PRE-PREPARE message justification
 	if preprepare.Round.Uint64() > 0 {
