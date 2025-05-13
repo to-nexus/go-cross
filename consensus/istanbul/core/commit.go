@@ -70,7 +70,7 @@ func (c *Core) broadcastCommit() {
 		return
 	}
 
-	withMsg(logger, commit).Info("Istanbul: broadcast COMMIT message", "payload", hexutil.Encode(payload))
+	withMsg(logger, commit).Debug("Istanbul: broadcast COMMIT message", "payload", hexutil.Encode(payload))
 
 	// Broadcast RLP-encoded message
 	if err = c.backend.Broadcast(c.valSet, commit.Code(), payload); err != nil {
@@ -88,7 +88,7 @@ func (c *Core) broadcastCommit() {
 func (c *Core) handleCommitMsg(commit *protocols.Commit) error {
 	logger := c.currentLogger(true, commit)
 
-	logger.Info("Istanbul: handle COMMIT message", "commits.count", c.current.Commits.Size(), "quorum", c.valSet.QuorumSize())
+	logger.Debug("Istanbul: handle COMMIT message", "commits.count", c.current.Commits.Size(), "quorum", c.valSet.QuorumSize())
 
 	// Check digest
 	if commit.Digest != c.current.Proposal().Hash() {
@@ -98,7 +98,7 @@ func (c *Core) handleCommitMsg(commit *protocols.Commit) error {
 
 	// Add to received msgs
 	if err := c.current.Commits.Add(commit); err != nil {
-		c.logger.Error("Istanbul: failed to save COMMIT message", "err", err)
+		logger.Error("Istanbul: failed to save COMMIT message", "err", err)
 		return err
 	}
 

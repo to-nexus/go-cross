@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -82,7 +81,7 @@ func (c *Core) broadcastRoundChange(round *big.Int) {
 		return
 	}
 
-	withMsg(logger, roundChange).Info("Istanbul: broadcast ROUND-CHANGE message", "payload", hexutil.Encode(data))
+	withMsg(logger, roundChange).Debug("Istanbul: broadcast ROUND-CHANGE message", "payload", hexutil.Encode(data))
 
 	// Broadcast RLP-encoded message
 	if err = c.backend.Broadcast(c.valSet, roundChange.Code(), data); err != nil {
@@ -138,12 +137,12 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 		// we start new round and broadcast ROUND-CHANGE message
 		newRound := c.roundChangeSet.getMinRoundChange(currentRound)
 
-		logger.Info("Istanbul: received F+1 ROUND-CHANGE messages", "F", c.valSet.F())
+		logger.Info("Istanbul: received F+1 ROUND-CHANGE messages", "F", c.valSet.F(), "newRound", newRound.Uint64())
 
 		c.startNewRound(newRound)
 		c.broadcastRoundChange(newRound)
 	} else if currentRoundMessages >= c.valSet.QuorumSize() && c.IsProposer() && c.current.preprepareSent.Cmp(currentRound) < 0 {
-		logger.Info("Istanbul: received quorum of ROUND-CHANGE messages")
+		logger.Info("Istanbul: received quorum of ROUND-CHANGE messages", "quorum", c.valSet.QuorumSize())
 
 		// We received quorum of ROUND-CHANGE for current round and we are proposer
 
@@ -155,7 +154,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 			if c.current != nil && c.current.pendingRequest != nil {
 				proposal = c.current.pendingRequest.Proposal
 			} else {
-				log.Warn("round change returns an error: no proposal as pending request is nil")
+				logger.Warn("Istanbul: round change returns an error: no proposal as pending request is nil")
 				return errors.New("no proposal as pending request is nil")
 			}
 		}
@@ -170,7 +169,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 
 		prepareMessages := c.roundChangeSet.prepareMessages[currentRound.Uint64()]
 		if err := isJustified(proposal, rcSignedPayloads, prepareMessages, c.valSet.QuorumSize()); err != nil {
-			logger.Error("Istanbul: invalid ROUND-CHANGE message justification", "err", err)
+			logger.Error("Istanbul: invalid ROUND-CHANGE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return nil
 		}
 

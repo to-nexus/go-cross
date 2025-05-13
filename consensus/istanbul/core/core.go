@@ -96,6 +96,15 @@ type Core struct {
 	newRoundTimer *time.Timer
 }
 
+// ##CROSS: istanbul stats
+func (c *Core) CurrentView() *istanbul.View {
+	c.currentMutex.Lock()
+	defer c.currentMutex.Unlock()
+	return c.currentView()
+}
+
+// ##
+
 func (c *Core) currentView() *istanbul.View {
 	return &istanbul.View{
 		Sequence: new(big.Int).Set(c.current.Sequence()),
@@ -136,7 +145,7 @@ func (c *Core) startNewRound(round *big.Int) {
 		logger = logger.New("lastProposal.number", lastProposal.Number().Uint64(), "lastProposal.hash", lastProposal.Hash())
 	}
 
-	logger.Info("Istanbul: initialize new round")
+	logger.Debug("Istanbul: initialize new round")
 
 	if c.current == nil {
 		logger.Debug("Istanbul: start at the initial round")
@@ -168,7 +177,7 @@ func (c *Core) startNewRound(round *big.Int) {
 	if c.current == nil {
 		oldLogger = c.logger.New("old.round", -1, "old.seq", 0)
 	} else {
-		oldLogger = c.logger.New("old.round", c.current.Round().Uint64(), "old.sequence", c.current.Sequence().Uint64(), "old.state", c.state.String() /*, "old.proposer", c.valSet.GetProposer()*/)
+		oldLogger = c.logger.New("old.round", c.current.Round().Uint64(), "old.sequence", c.current.Sequence().Uint64(), "old.state", c.state.String(), "old.proposer", c.valSet.GetProposer())
 	}
 
 	// Create next view
@@ -211,7 +220,14 @@ func (c *Core) startNewRound(round *big.Int) {
 		c.newRoundChangeTimer()
 	}
 
-	oldLogger.Info("Istanbul: start new round", "next.round", newView.Round, "next.seq", newView.Sequence, "next.proposer", c.valSet.GetProposer() /*"next.valSet", c.valSet.List(),*/, "next.size", c.valSet.Size(), "next.IsProposer", c.IsProposer())
+	oldLogger.Info("Istanbul: start new round",
+		"next.round", newView.Round,
+		"next.seq", newView.Sequence,
+		"next.proposer", c.valSet.GetProposer(),
+		"next.valSet", c.valSet.List(),
+		"next.size", c.valSet.Size(),
+		"next.IsProposer", c.IsProposer(),
+	)
 }
 
 // updateRoundState updates round state by checking if locking block is necessary
@@ -227,7 +243,7 @@ func (c *Core) setState(state State) {
 	if c.state != state {
 		oldState := c.state
 		c.state = state
-		c.currentLogger(false, nil).Info("Istanbul: changed state", "old.state", oldState.String(), "new.state", state.String())
+		c.currentLogger(false, nil).Debug("Istanbul: changed state", "old.state", oldState.String(), "new.state", state.String())
 	}
 	if state == StateAcceptRequest {
 		c.processPendingRequests()

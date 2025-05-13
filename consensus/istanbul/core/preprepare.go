@@ -86,7 +86,7 @@ func (c *Core) sendPreprepareMsg(request *Request) {
 
 		logger = withMsg(logger, preprepare).New("block.number", preprepare.Proposal.Number().Uint64(), "block.hash", preprepare.Proposal.Hash().String())
 
-		logger.Info("Istanbul: broadcast PRE-PREPARE message", "payload", hexutil.Encode(payload))
+		logger.Debug("Istanbul: broadcast PRE-PREPARE message", "payload", hexutil.Encode(payload))
 
 		// Broadcast RLP-encoded message
 		if err = c.backend.Broadcast(c.valSet, preprepare.Code(), payload); err != nil {
@@ -109,19 +109,18 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 	logger := c.currentLogger(true, preprepare)
 
 	logger = logger.New("proposal.number", preprepare.Proposal.Number().Uint64(), "proposal.hash", preprepare.Proposal.Hash().String())
-
-	c.logger.Info("Istanbul: handle PRE-PREPARE message")
+	logger.Debug("Istanbul: handle PRE-PREPARE message")
 
 	// Validates PRE-PREPARE message comes from current proposer
 	if !c.valSet.IsProposer(preprepare.Source()) {
-		logger.Warn("Istanbul: ignore PRE-PREPARE message from non proposer", "proposer", c.valSet.GetProposer().Address())
+		logger.Warn("Istanbul: ignore PRE-PREPARE message from non proposer")
 		return errNotFromProposer
 	}
 
 	// Validates PRE-PREPARE message justification
 	if preprepare.Round.Uint64() > 0 {
 		if err := isJustified(preprepare.Proposal, preprepare.JustificationRoundChanges, preprepare.JustificationPrepares, c.valSet.QuorumSize()); err != nil {
-			logger.Warn("Istanbul: invalid PRE-PREPARE message justification", "err", err)
+			logger.Warn("Istanbul: invalid PRE-PREPARE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return errInvalidPreparedBlock
 		}
 	}
@@ -150,7 +149,7 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 
 	// Here is about to accept the PRE-PREPARE
 	if c.state == StateAcceptRequest {
-		c.logger.Info("Istanbul: accepted PRE-PREPARE message")
+		logger.Debug("Istanbul: accepted PRE-PREPARE message")
 
 		// Re-initialize ROUND-CHANGE timer
 		c.newRoundChangeTimer()

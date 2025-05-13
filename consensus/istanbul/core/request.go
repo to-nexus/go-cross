@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 // handleRequest is called by proposer in reaction to `miner.Seal()`
@@ -34,7 +33,6 @@ import (
 // - creates and send PRE-PREPARE message to other validators
 func (c *Core) handleRequest(request *Request) error {
 	logger := c.currentLogger(true, nil)
-
 	logger.Info("Istanbul: handle block proposal request")
 
 	if err := c.checkRequestMsg(request); err != nil {
@@ -71,7 +69,7 @@ func (c *Core) handleRequest(request *Request) error {
 				config := c.config.GetConfig(c.current.Sequence())
 
 				if config.EmptyBlockPeriod > config.BlockPeriod {
-					log.Info("EmptyBlockPeriod detected adding delay to request", "EmptyBlockPeriod", config.EmptyBlockPeriod, "BlockTime", block.Time())
+					logger.Info("Istanbul: EmptyBlockPeriod detected adding delay to request", "EmptyBlockPeriod", config.EmptyBlockPeriod, "BlockTime", block.Time())
 					// Because the seal has an additional delay on the block period you need to subtract it from the delay
 					delay = time.Duration(config.EmptyBlockPeriod-config.BlockPeriod) * time.Second
 					header := block.Header()
@@ -153,11 +151,11 @@ func (c *Core) processPendingRequests() {
 		err := c.checkRequestMsg(r)
 		if err != nil {
 			if err == errFutureMessage {
-				logger.Trace("Istanbul: stop looking up for pending block proposal request")
+				logger.Trace("Istanbul: future message, stop looking up for pending block proposal request", "proposal.number", r.Proposal.Number(), "proposal.hash", r.Proposal.Hash())
 				c.pendingRequests.Push(r, prio)
 				break
 			}
-			logger.Trace("Istanbul: skip pending invalid block proposal request", "number", r.Proposal.Number(), "hash", r.Proposal.Hash(), "err", err)
+			logger.Trace("Istanbul: skip pending invalid block proposal request", "proposal.number", r.Proposal.Number(), "proposal.hash", r.Proposal.Hash(), "err", err)
 			continue
 		}
 		logger.Debug("Istanbul: found pending block proposal request", "proposal.number", r.Proposal.Number(), "proposal.hash", r.Proposal.Hash())
