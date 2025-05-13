@@ -137,13 +137,11 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 		// we start new round and broadcast ROUND-CHANGE message
 		newRound := c.roundChangeSet.getMinRoundChange(currentRound)
 
-		// ##CROSS: istanbul stats
 		logger.Info("Istanbul: received F+1 ROUND-CHANGE messages", "F", c.valSet.F(), "newRound", newRound.Uint64())
 
 		c.startNewRound(newRound)
 		c.broadcastRoundChange(newRound)
 	} else if currentRoundMessages >= c.valSet.QuorumSize() && c.IsProposer() && c.current.preprepareSent.Cmp(currentRound) < 0 {
-		// ##CROSS: istanbul stats
 		logger.Info("Istanbul: received quorum of ROUND-CHANGE messages", "quorum", c.valSet.QuorumSize())
 
 		// We received quorum of ROUND-CHANGE for current round and we are proposer
@@ -156,7 +154,6 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 			if c.current != nil && c.current.pendingRequest != nil {
 				proposal = c.current.pendingRequest.Proposal
 			} else {
-				// ##CROSS: istanbul stats
 				logger.Warn("Istanbul: round change returns an error: no proposal as pending request is nil")
 				return errors.New("no proposal as pending request is nil")
 			}
@@ -172,7 +169,6 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 
 		prepareMessages := c.roundChangeSet.prepareMessages[currentRound.Uint64()]
 		if err := isJustified(proposal, rcSignedPayloads, prepareMessages, c.valSet.QuorumSize()); err != nil {
-			// ##CROSS: istanbul stats
 			logger.Error("Istanbul: invalid ROUND-CHANGE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return nil
 		}

@@ -69,7 +69,6 @@ func (c *Core) handleRequest(request *Request) error {
 				config := c.config.GetConfig(c.current.Sequence())
 
 				if config.EmptyBlockPeriod > config.BlockPeriod {
-					// ##CROSS: istanbul stats
 					logger.Info("Istanbul: EmptyBlockPeriod detected adding delay to request", "EmptyBlockPeriod", config.EmptyBlockPeriod, "BlockTime", block.Time())
 					// Because the seal has an additional delay on the block period you need to subtract it from the delay
 					delay = time.Duration(config.EmptyBlockPeriod-config.BlockPeriod) * time.Second
@@ -152,12 +151,10 @@ func (c *Core) processPendingRequests() {
 		err := c.checkRequestMsg(r)
 		if err != nil {
 			if err == errFutureMessage {
-				// ##CROSS: istanbul stats
 				logger.Trace("Istanbul: future message, stop looking up for pending block proposal request", "proposal.number", r.Proposal.Number(), "proposal.hash", r.Proposal.Hash())
 				c.pendingRequests.Push(r, prio)
 				break
 			}
-			// ##CROSS: istanbul stats
 			logger.Trace("Istanbul: skip pending invalid block proposal request", "proposal.number", r.Proposal.Number(), "proposal.hash", r.Proposal.Hash(), "err", err)
 			continue
 		}

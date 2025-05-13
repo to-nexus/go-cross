@@ -113,7 +113,6 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 
 	// Validates PRE-PREPARE message comes from current proposer
 	if !c.valSet.IsProposer(preprepare.Source()) {
-		// ##CROSS: istanbul stats
 		logger.Warn("Istanbul: ignore PRE-PREPARE message from non proposer")
 		return errNotFromProposer
 	}
@@ -121,7 +120,6 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 	// Validates PRE-PREPARE message justification
 	if preprepare.Round.Uint64() > 0 {
 		if err := isJustified(preprepare.Proposal, preprepare.JustificationRoundChanges, preprepare.JustificationPrepares, c.valSet.QuorumSize()); err != nil {
-			// ##CROSS: istanbul stats
 			logger.Warn("Istanbul: invalid PRE-PREPARE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return errInvalidPreparedBlock
 		}

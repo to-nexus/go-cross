@@ -104,11 +104,14 @@ type istanbulBackend interface {
 // Service implements an Ethereum netstats reporting daemon that pushes local
 // chain statistics up to a monitoring server.
 type Service struct {
-	server     *p2p.Server // Peer-to-peer server to retrieve networking infos
-	backend    backend
-	engine     consensus.Engine            // Consensus engine to retrieve variadic block fields
-	istBackend istanbulBackend             // ##CROSS: istanbul stats
-	chain      consensus.ChainHeaderReader // ##CROSS: istanbul stats
+	server  *p2p.Server // Peer-to-peer server to retrieve networking infos
+	backend backend
+	engine  consensus.Engine // Consensus engine to retrieve variadic block fields
+
+	// ##CROSS: istanbul stats
+	istBackend istanbulBackend
+	chain      consensus.ChainHeaderReader
+	// ##
 
 	node string // Name of the node to display on the monitoring page
 	pass string // Password to authorize access to the monitoring page
