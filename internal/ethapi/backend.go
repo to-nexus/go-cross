@@ -124,6 +124,11 @@ func GetAPIs(apiBackend Backend, nodeConfig *node.Config) []rpc.API {
 		}, {
 			Namespace: "personal",
 			Service:   NewPersonalAccountAPI(apiBackend, nonceLock),
+		}, {
+			// ##CROSS: cross api
+			Namespace: "cross",
+			Service:   NewCrossAPI(apiBackend),
+			// ##
 		},
 	}
 }
