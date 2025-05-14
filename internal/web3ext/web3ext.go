@@ -32,6 +32,7 @@ var Modules = map[string]string{
 	"vflux":    VfluxJs,
 	"dev":      DevJs,
 	"istanbul": Istanbul_JS, // ##CROSS: istanbul
+	"cross":    CrossJs,     // ##CROSS: cross api
 }
 
 const CliqueJs = `
@@ -996,3 +997,24 @@ web3._extend({
 	]
 });
 `
+
+// ##
+
+// ##CROSS: cross api
+const CrossJs = `
+web3._extend({
+	property: 'cross',
+	methods:
+	[
+		new web3._extend.Method({
+			name: 'getCheckpointProof',
+			call: 'cross_getCheckpointProof',
+			params: 3,
+			inputFormatter: [web3._extend.formatters.inputBlockNumberFormatter, web3._extend.formatters.inputBlockNumberFormatter, web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+	],
+	properties: [],
+});
+`
+
+// ##
