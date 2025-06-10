@@ -97,10 +97,12 @@ type Core struct {
 }
 
 // ##CROSS: istanbul stats
-func (c *Core) CurrentView() *istanbul.View {
+
+// CurrentStat returns the current validator list and view for stat logging.
+func (c *Core) CurrentStat() (istanbul.ValidatorSet, *istanbul.View) {
 	c.currentMutex.Lock()
 	defer c.currentMutex.Unlock()
-	return c.currentView()
+	return c.valSet, c.currentView()
 }
 
 // ##

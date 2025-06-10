@@ -94,9 +94,8 @@ type miningNodeBackend interface {
 type istanbulBackend interface {
 	Address() common.Address
 	Started() bool
-	CurrentView() *istanbul.View
+	CurrentStat() (istanbul.ValidatorSet, *istanbul.View)
 	HasBadProposal(hash common.Hash) bool
-	ValidatorsFrom(chain consensus.ChainHeaderReader, proposal istanbul.Proposal) istanbul.ValidatorSet
 }
 
 // ##
@@ -913,17 +912,16 @@ func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
 		Number: proposal.Number(),
 	}
 
-	if s.istBackend != nil {
-		istStats.Active = s.istBackend.Started()
-		valSet := s.istBackend.ValidatorsFrom(s.chain, proposal)
+	if s.istBackend != nil && s.istBackend.Started() {
+		istStats.Active = true
+		valSet, view := s.istBackend.CurrentStat()
 		istStats.Validators = validator.SortedAddresses(valSet.List())
 		istStats.Quorum = uint64(valSet.QuorumSize())
 		istStats.F = uint64(valSet.F())
 		istStats.HasBadProposal = s.istBackend.HasBadProposal(proposal.Hash())
 
-		view := s.istBackend.CurrentView()
+		istStats.Proposer = valSet.GetProposer().Address()
 		if view != nil {
-			istStats.Proposer = valSet.GetProposer().Address()
 			istStats.Sequence = view.Sequence.Uint64()
 			istStats.Round = view.Round.Uint64()
 		}
