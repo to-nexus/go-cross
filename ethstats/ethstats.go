@@ -109,7 +109,6 @@ type Service struct {
 
 	// ##CROSS: istanbul stats
 	istBackend istanbulBackend
-	chain      consensus.ChainHeaderReader
 	// ##
 
 	node string // Name of the node to display on the monitoring page
@@ -198,7 +197,7 @@ func parseEthstatsURL(url string) (parts []string, err error) {
 }
 
 // New returns a monitoring service ready for stats reporting.
-func New(node *node.Node, backend backend, engine consensus.Engine, chain consensus.ChainHeaderReader, url string) error {
+func New(node *node.Node, backend backend, engine consensus.Engine, url string) error {
 	parts, err := parseEthstatsURL(url)
 	if err != nil {
 		return err
@@ -207,7 +206,6 @@ func New(node *node.Node, backend backend, engine consensus.Engine, chain consen
 		backend: backend,
 		engine:  engine,
 		server:  node.Server(),
-		chain:   chain, //## CROSS: istanbul stats
 		node:    parts[0],
 		pass:    parts[1],
 		host:    parts[2],

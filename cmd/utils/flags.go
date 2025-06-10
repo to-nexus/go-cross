@@ -1936,10 +1936,9 @@ func RegisterEthService(stack *node.Node, cfg *ethconfig.Config) (ethapi.Backend
 }
 
 // RegisterEthStatsService configures the Ethereum Stats daemon and adds it to the node.
-func RegisterEthStatsService(stack *node.Node, backend ethapi.Backend, chain *core.BlockChain, url string) {
-	//## CROSS: istanbul stats
+func RegisterEthStatsService(stack *node.Node, backend ethapi.Backend, url string) {
 	// blockchain is injected
-	if err := ethstats.New(stack, backend, backend.Engine(), chain, url); err != nil {
+	if err := ethstats.New(stack, backend, backend.Engine(), url); err != nil {
 		Fatalf("Failed to register the Ethereum Stats service: %v", err)
 	}
 }
