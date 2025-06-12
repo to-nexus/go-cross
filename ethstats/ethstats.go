@@ -94,9 +94,8 @@ type miningNodeBackend interface {
 type istanbulBackend interface {
 	Address() common.Address
 	Started() bool
-	CurrentView() *istanbul.View
-	HasBadProposal(hash common.Hash) bool
-	ValidatorsFrom(chain consensus.ChainHeaderReader, proposal istanbul.Proposal) istanbul.ValidatorSet
+	CurrentStat() (istanbul.ValidatorSet, *istanbul.View)
+	EventMux() *event.TypeMux
 }
 
 // ##
@@ -110,7 +109,6 @@ type Service struct {
 
 	// ##CROSS: istanbul stats
 	istBackend istanbulBackend
-	chain      consensus.ChainHeaderReader
 	// ##
 
 	node string // Name of the node to display on the monitoring page
@@ -120,8 +118,9 @@ type Service struct {
 	pongCh chan struct{} // Pong notifications are fed into this channel
 	histCh chan []uint64 // History request block numbers are fed into this channel
 
-	headSub event.Subscription
-	txSub   event.Subscription
+	headSub     event.Subscription
+	txSub       event.Subscription
+	newRoundSub *event.TypeMuxSubscription // ##CROSS: istanbul stats
 }
 
 // connWrapper is a wrapper to prevent concurrent-write or concurrent-read on the
@@ -199,7 +198,7 @@ func parseEthstatsURL(url string) (parts []string, err error) {
 }
 
 // New returns a monitoring service ready for stats reporting.
-func New(node *node.Node, backend backend, engine consensus.Engine, chain consensus.ChainHeaderReader, url string) error {
+func New(node *node.Node, backend backend, engine consensus.Engine, url string) error {
 	parts, err := parseEthstatsURL(url)
 	if err != nil {
 		return err
@@ -208,7 +207,6 @@ func New(node *node.Node, backend backend, engine consensus.Engine, chain consen
 		backend: backend,
 		engine:  engine,
 		server:  node.Server(),
-		chain:   chain, //## CROSS: istanbul stats
 		node:    parts[0],
 		pass:    parts[1],
 		host:    parts[2],
@@ -244,6 +242,8 @@ func (s *Service) Start() error {
 	s.headSub = s.backend.SubscribeChainHeadEvent(chainHeadCh)
 	txEventCh := make(chan core.NewTxsEvent, txChanSize)
 	s.txSub = s.backend.SubscribeNewTxsEvent(txEventCh)
+	s.newRoundSub = s.istBackend.EventMux().Subscribe(istanbul.NewRoundEvent{}) // ##CROSS: istanbul stats
+
 	go s.loop(chainHeadCh, txEventCh)
 
 	log.Info("Stats daemon started")
@@ -252,6 +252,11 @@ func (s *Service) Start() error {
 
 // Stop implements node.Lifecycle, terminating the monitoring and reporting daemon.
 func (s *Service) Stop() error {
+	// ##CROSS: istanbul stats
+	if s.newRoundSub != nil {
+		s.newRoundSub.Unsubscribe()
+	}
+	// ##
 	s.headSub.Unsubscribe()
 	s.txSub.Unsubscribe()
 	log.Info("Stats daemon stopped")
@@ -263,9 +268,10 @@ func (s *Service) Stop() error {
 func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core.NewTxsEvent) {
 	// Start a goroutine that exhausts the subscriptions to avoid events piling up
 	var (
-		quitCh = make(chan struct{})
-		headCh = make(chan *types.Block, 1)
-		txCh   = make(chan struct{}, 1)
+		quitCh     = make(chan struct{})
+		headCh     = make(chan *types.Block, 1)
+		txCh       = make(chan struct{}, 1)
+		newRoundCh = make(chan istanbul.NewRoundEvent, 1)
 	)
 	go func() {
 		var lastTx mclock.AbsTime
@@ -291,6 +297,20 @@ func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core
 				case txCh <- struct{}{}:
 				default:
 				}
+
+			// ##CROSS: istanbul stats
+			case event, ok := <-s.newRoundSub.Chan():
+				if !ok {
+					break HandleLoop
+				}
+				switch ev := event.Data.(type) {
+				case istanbul.NewRoundEvent:
+					select {
+					case newRoundCh <- ev:
+					default:
+					}
+				}
+			// ##
 
 			// node stopped
 			case <-s.txSub.Err():
@@ -382,15 +402,16 @@ func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core
 					if err = s.reportPending(conn); err != nil {
 						log.Warn("Post-block transaction stats report failed", "err", err)
 					}
-					// ##CROSS: istanbul stats
-					if err = s.reportIstanbul(conn, head); err != nil {
-						log.Warn("Istanbul stats report failed", "err", err)
-					}
-					// ##
 				case <-txCh:
 					if err = s.reportPending(conn); err != nil {
 						log.Warn("Transaction stats report failed", "err", err)
 					}
+				// ##CROSS: istanbul stats
+				case newRound := <-newRoundCh:
+					if err = s.reportIstanbul(conn, &newRound); err != nil {
+						log.Warn("Istanbul stats report failed", "err", err)
+					}
+					// ##
 				}
 			}
 			fullReport.Stop()
@@ -890,53 +911,58 @@ func (s *Service) reportStats(conn *connWrapper) error {
 // ##CROSS: istanbul stats
 // istanbulStats is the information to report about the istanbul consensus layer.
 type istanbulStats struct {
-	Active         bool             `json:"active"`
-	Number         *big.Int         `json:"number"`
-	Validators     []common.Address `json:"validators"`
-	Proposer       common.Address   `json:"proposer"`
-	Quorum         uint64           `json:"quorum"`
-	F              uint64           `json:"f"`
-	Sequence       uint64           `json:"sequence"`
-	Round          uint64           `json:"round"`
-	HasBadProposal bool             `json:"hasBadProposal"`
+	Active     bool             `json:"active"`
+	Validators []common.Address `json:"validators"`
+	Proposer   common.Address   `json:"proposer"`
+	Quorum     uint64           `json:"quorum"`
+	F          uint64           `json:"f"`
+	Sequence   uint64           `json:"sequence"`
+	Round      uint64           `json:"round"`
 }
 
 // reportIstanbul retrieves various stats about the istanbul consensus layer and
 // reports it to the stats server.
-func (s *Service) reportIstanbul(conn *connWrapper, block *types.Block) error {
-	if block == nil {
-		block = types.NewBlockWithHeader(s.backend.CurrentHeader())
-	}
-	proposal := istanbul.Proposal(block)
+func (s *Service) reportIstanbul(conn *connWrapper, newRound *istanbul.NewRoundEvent) error {
+	var (
+		istStats istanbulStats
+		valSet   istanbul.ValidatorSet
+		sequence uint64
+		round    uint64
+	)
 
-	istStats := istanbulStats{
-		Number: proposal.Number(),
+	if newRound == nil {
+		// check if istanbul engine is started
+		if s.istBackend != nil && s.istBackend.Started() {
+			var view *istanbul.View
+			valSet, view = s.istBackend.CurrentStat()
+			if view != nil {
+				sequence = view.Sequence.Uint64()
+				round = view.Round.Uint64()
+			}
+			istStats.Active = true
+		}
+	} else {
+		valSet = newRound.Validators
+		sequence = newRound.Sequence
+		round = newRound.Round
+		istStats.Active = true
 	}
 
-	if s.istBackend != nil {
-		istStats.Active = s.istBackend.Started()
-		valSet := s.istBackend.ValidatorsFrom(s.chain, proposal)
+	if istStats.Active {
 		istStats.Validators = validator.SortedAddresses(valSet.List())
 		istStats.Quorum = uint64(valSet.QuorumSize())
 		istStats.F = uint64(valSet.F())
-		istStats.HasBadProposal = s.istBackend.HasBadProposal(proposal.Hash())
-
-		view := s.istBackend.CurrentView()
-		if view != nil {
-			istStats.Proposer = valSet.GetProposer().Address()
-			istStats.Sequence = view.Sequence.Uint64()
-			istStats.Round = view.Round.Uint64()
-		}
+		istStats.Proposer = valSet.GetProposer().Address()
+		istStats.Sequence = sequence
+		istStats.Round = round
 	}
 
 	log.Trace("Sending istanbul stats to ethstats",
 		"active", istStats.Active,
-		"number", istStats.Number,
-		"validators", len(istStats.Validators),
-		"proposer", istStats.Proposer,
 		"sequence", istStats.Sequence,
 		"round", istStats.Round,
-		"hasBadProposal", istStats.HasBadProposal,
+		"validators", len(istStats.Validators),
+		"proposer", istStats.Proposer,
 	)
 
 	stats := map[string]interface{}{

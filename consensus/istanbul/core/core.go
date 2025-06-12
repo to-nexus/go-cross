@@ -97,10 +97,12 @@ type Core struct {
 }
 
 // ##CROSS: istanbul stats
-func (c *Core) CurrentView() *istanbul.View {
+
+// CurrentStat returns the current validator list and view for stat logging.
+func (c *Core) CurrentStat() (istanbul.ValidatorSet, *istanbul.View) {
 	c.currentMutex.Lock()
 	defer c.currentMutex.Unlock()
-	return c.currentView()
+	return c.valSet, c.currentView()
 }
 
 // ##
@@ -215,6 +217,14 @@ func (c *Core) startNewRound(round *big.Int) {
 		c.roundChangeSet.ClearLowerThan(round)
 	}
 	c.roundChangeSet.NewRound(round)
+
+	// ##CROSS: istanbul stats
+	go c.sendEvent(istanbul.NewRoundEvent{
+		Validators: c.valSet,
+		Sequence:   newView.Sequence.Uint64(),
+		Round:      newView.Round.Uint64(),
+	})
+	// ##
 
 	if round.Uint64() > 0 {
 		c.newRoundChangeTimer()

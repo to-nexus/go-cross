@@ -30,3 +30,13 @@ type MessageEvent struct {
 // FinalCommittedEvent is posted when a proposal is committed
 type FinalCommittedEvent struct {
 }
+
+// ##CROSS: istanbul stats
+// NewRoundEvent is posted when a new round starts
+type NewRoundEvent struct {
+	Validators ValidatorSet
+	Sequence   uint64
+	Round      uint64
+}
+
+// ##

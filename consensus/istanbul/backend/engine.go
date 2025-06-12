@@ -305,21 +305,12 @@ func (sb *Backend) Started() bool {
 	return sb.coreStarted
 }
 
-// CurrentView returns the current view of the engine.
-func (sb *Backend) CurrentView() *istanbul.View {
+// CurrentStat returns the current validator list and view for stat logging.
+func (sb *Backend) CurrentStat() (istanbul.ValidatorSet, *istanbul.View) {
 	if sb.core != nil {
-		return sb.core.CurrentView()
+		return sb.core.CurrentStat()
 	}
-	return nil
-}
-
-// ValidatorsFrom returns the validator set from the given chain at the given proposal.
-func (sb *Backend) ValidatorsFrom(chain consensus.ChainHeaderReader, proposal istanbul.Proposal) istanbul.ValidatorSet {
-	snap, err := sb.snapshot(chain, proposal.Number().Uint64(), proposal.Hash(), nil)
-	if err != nil {
-		return validator.NewSet(nil, sb.config.ProposerPolicy)
-	}
-	return snap.ValSet
+	return nil, nil
 }
 
 // ##
