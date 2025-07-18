@@ -50,7 +50,6 @@ func (api *CrossAPI) GetCheckpointProof(ctx context.Context, blockNr, startNr, e
 	if err != nil {
 		return nil, err
 	}
-
 	return generateMerkleProof(tree, uint64(blockNr-startNr))
 }
 
@@ -65,6 +64,7 @@ func generateMerkleTree(hashes [][]byte) (*merkle.Tree, error) {
 	copy(leaves, hashes)
 
 	// build a merkle tree
+	// hashes are sorted to simplify the proof path
 	tree := merkle.NewTreeWithOpts(merkle.TreeOptions{EnableHashSorting: true, DisableHashLeaves: true})
 	if err := tree.Generate(leaves, sha3.NewLegacyKeccak256()); err != nil {
 		return nil, err
@@ -83,26 +83,23 @@ func generateMerkleProof(tree *merkle.Tree, index uint64) ([]hexutil.Bytes, erro
 		return nil, errors.New("index out of range")
 	}
 
-	// start from the leaf node
-	currentIndex := index
-
 	// traverse up the tree, collecting sibling nodes for the proof
+	current := index
 	for level := len(tree.Levels) - 1; level > 0; level-- {
 		nodes := tree.Levels[level]
-		isLeftChild := currentIndex%2 == 0
 
-		siblingIndex := currentIndex
-		if isLeftChild {
-			siblingIndex = currentIndex + 1
+		sibling := current
+		if current&1 == 0 {
+			sibling++ // sibling is the right child
 		} else {
-			siblingIndex = currentIndex - 1
+			sibling-- // sibling is the left child
 		}
 
-		if siblingIndex < uint64(len(nodes)) {
-			proof = append(proof, nodes[siblingIndex].Hash)
+		if sibling < uint64(len(nodes)) {
+			proof = append(proof, nodes[sibling].Hash)
 		}
 
-		currentIndex = currentIndex / 2
+		current >>= 1
 	}
 	return proof, nil
 }
