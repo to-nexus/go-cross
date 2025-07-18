@@ -851,6 +851,10 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			// last step, however the direction of SetHead is from high
 			// to low, so it's safe to update in-memory markers directly.
 			bc.currentBlock.Store(newHeadBlock)
+			// ##CROSS: istanbul
+			block := bc.GetBlock(newHeadBlock.Hash(), newHeadBlock.Number.Uint64())
+			bc.currentBlockWithBody.Store(block)
+			// ##
 			headBlockGauge.Update(int64(newHeadBlock.Number.Uint64()))
 
 			// The head state is missing, which is only possible in the path-based

@@ -138,18 +138,6 @@ var (
 		Value:    ethconfig.Defaults.Miner.Recommit,
 		Category: flags.DeprecatedCategory,
 	}
-	// ##CROSS: legacy sync
-	MinerEtherbaseFlag = &cli.StringFlag{
-		Name:     "miner.etherbase",
-		Usage:    "0x prefixed public address for block mining rewards (deprecated)",
-		Category: flags.MinerCategory,
-	}
-	MiningEnabledFlag = &cli.BoolFlag{
-		Name:     "mine",
-		Usage:    "Enable mining",
-		Category: flags.MinerCategory,
-	}
-	// ##
 	MetricsEnabledExpensiveFlag = &cli.BoolFlag{
 		Name:     "metrics.expensive",
 		Usage:    "Enable expensive metrics collection and reporting (deprecated)",

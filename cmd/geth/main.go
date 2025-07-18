@@ -290,20 +290,18 @@ func prepare(ctx *cli.Context) {
 	// If we're running a known preset, log it for convenience.
 	switch {
 	// ##CROSS: config
-	case ctx.IsSet(utils.CrossFlag.Name):
-		log.Info("Starting Geth on Cross mainnet...")
-
 	case ctx.IsSet(utils.ZoneZeroFlag.Name):
-		log.Info("Starting Geth on Cross ZoneZero testnet...")
+		log.Info("Starting Geth on ZoneZero testnet...")
 
 	case ctx.IsSet(utils.CrossDev3Flag.Name):
 		log.Info("Starting Geth on Cross dev3net...")
 
 	case ctx.IsSet(utils.CrossDevFlag.Name):
 		log.Info("Starting Geth on Cross devnet...")
-		// ##
+
 	case ctx.IsSet(utils.MainnetFlag.Name):
-		log.Info("Starting Geth on Mainnet...")
+		log.Info("Starting Geth on Ethereum Mainnet...")
+	// ##
 
 	case ctx.IsSet(utils.SepoliaFlag.Name):
 		log.Info("Starting Geth on Sepolia testnet...")
@@ -335,16 +333,14 @@ func prepare(ctx *cli.Context) {
 	// If we're a full node on mainnet without --cache specified, bump default cache allowance
 	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
 		// Make sure we're not on any supported preconfigured testnet either
-		if !ctx.IsSet(utils.CrossFlag.Name) && // ##CROSS: config
-			ctx.IsSet(utils.ZoneZeroFlag.Name) &&
-			ctx.IsSet(utils.CrossDev3Flag.Name) &&
-			ctx.IsSet(utils.CrossDevFlag.Name) && // ##
-			!ctx.IsSet(utils.MainnetFlag.Name) &&
+		if !ctx.IsSet(utils.ZoneZeroFlag.Name) && // ##CROSS: config
+			!ctx.IsSet(utils.CrossDev3Flag.Name) &&
+			!ctx.IsSet(utils.CrossDevFlag.Name) && // ##
 			!ctx.IsSet(utils.HoleskyFlag.Name) &&
 			!ctx.IsSet(utils.SepoliaFlag.Name) &&
 			!ctx.IsSet(utils.DeveloperFlag.Name) {
 			// Nope, we're really on mainnet. Bump that cache up!
-			log.Info("Bumping default cache on cross", "provided", ctx.Int(utils.CacheFlag.Name), "updated", 4096)
+			log.Info("Bumping default cache on mainnet", "provided", ctx.Int(utils.CacheFlag.Name), "updated", 4096)
 			ctx.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
 		}
 	}

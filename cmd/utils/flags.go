@@ -491,6 +491,13 @@ var (
 	}
 
 	// Miner settings
+	// ##CROSS: legacy sync
+	MiningEnabledFlag = &cli.BoolFlag{
+		Name:     "mine",
+		Usage:    "Enable mining",
+		Category: flags.MinerCategory,
+	}
+	// ##
 	MinerGasLimitFlag = &cli.Uint64Flag{
 		Name:     "miner.gaslimit",
 		Usage:    "Target gas ceiling for mined blocks",
@@ -503,6 +510,13 @@ var (
 		Value:    ethconfig.Defaults.Miner.GasPrice,
 		Category: flags.MinerCategory,
 	}
+	// ##CROSS: legacy sync
+	MinerEtherbaseFlag = &cli.StringFlag{
+		Name:     "miner.etherbase",
+		Usage:    "0x prefixed public address for block mining rewards",
+		Category: flags.MinerCategory,
+	}
+	// ##
 	MinerExtraDataFlag = &cli.StringFlag{
 		Name:     "miner.extradata",
 		Usage:    "Block extra data set by the miner (default = client version)",
