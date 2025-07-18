@@ -111,6 +111,9 @@ type SendTxArgs struct {
 	Blobs       []kzg4844.Blob       `json:"blobs,omitempty"`
 	Commitments []kzg4844.Commitment `json:"commitments,omitempty"`
 	Proofs      []kzg4844.Proof      `json:"proofs,omitempty"`
+
+	// For FeeDelegatedDynamicFeeTxType transaction
+	FeePayer *common.Address `json:"feePayer,omitempty"` // ##CROSS: fee delegation
 }
 
 func (args SendTxArgs) String() string {
@@ -187,6 +190,15 @@ func (args *SendTxArgs) ToTransaction() (*types.Transaction, error) {
 			Data:       args.data(),
 			AccessList: al,
 		}
+		// ##CROSS: fee delegation
+		if args.FeePayer != nil {
+			data = &types.FeeDelegatedDynamicFeeTx{
+				SenderTx: *data.(*types.DynamicFeeTx),
+				FeePayer: args.FeePayer,
+			}
+		}
+		// ##
+
 	case args.AccessList != nil:
 		data = &types.AccessListTx{
 			To:         to,

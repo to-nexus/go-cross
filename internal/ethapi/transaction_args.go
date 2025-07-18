@@ -74,6 +74,9 @@ type TransactionArgs struct {
 
 	// This configures whether blobs are allowed to be passed.
 	blobSidecarAllowed bool
+
+	// For FeeDelegatedDynamicFeeTxType transaction
+	FeePayer *common.Address `json:"feePayer,omitempty"` // ##CROSS: fee delegation
 }
 
 // from retrieves the transaction sender address.
@@ -465,6 +468,7 @@ func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck, skipEoA
 		BlobHashes:       args.BlobHashes,
 		SkipNonceChecks:  skipNonceCheck,
 		SkipFromEOACheck: skipEoACheck,
+		FeePayer:         args.FeePayer, // ##CROSS: fee delegation
 	}
 }
 
@@ -476,7 +480,11 @@ func (args *TransactionArgs) ToTransaction(defaultType int) *types.Transaction {
 	case args.BlobHashes != nil || defaultType == types.BlobTxType:
 		usedType = types.BlobTxType
 	case args.MaxFeePerGas != nil || defaultType == types.DynamicFeeTxType:
-		usedType = types.DynamicFeeTxType
+		if args.FeePayer != nil { // ##CROSS: fee delegation
+			usedType = types.FeeDelegatedDynamicFeeTxType
+		} else {
+			usedType = types.DynamicFeeTxType
+		}
 	case args.AccessList != nil || defaultType == types.AccessListTxType:
 		usedType = types.AccessListTxType
 	}
@@ -511,6 +519,28 @@ func (args *TransactionArgs) ToTransaction(defaultType int) *types.Transaction {
 				Proofs:      args.Proofs,
 			}
 		}
+
+	// ##CROSS: fee delegation
+	case types.FeeDelegatedDynamicFeeTxType:
+		al := types.AccessList{}
+		if args.AccessList != nil {
+			al = *args.AccessList
+		}
+		data = &types.FeeDelegatedDynamicFeeTx{
+			SenderTx: types.DynamicFeeTx{
+				To:         args.To,
+				ChainID:    (*big.Int)(args.ChainID),
+				Nonce:      uint64(*args.Nonce),
+				Gas:        uint64(*args.Gas),
+				GasFeeCap:  (*big.Int)(args.MaxFeePerGas),
+				GasTipCap:  (*big.Int)(args.MaxPriorityFeePerGas),
+				Value:      (*big.Int)(args.Value),
+				Data:       args.data(),
+				AccessList: al,
+			},
+			FeePayer: args.FeePayer,
+		}
+	// ##
 
 	case types.DynamicFeeTxType:
 		al := types.AccessList{}
