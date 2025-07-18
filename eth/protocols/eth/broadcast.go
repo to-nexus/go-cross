@@ -29,6 +29,7 @@ const (
 	maxTxPacketSize = 100 * 1024
 )
 
+// ##CROSS: legacy sync
 // blockPropagation is a block propagation event, waiting for its turn in the
 // broadcast queue.
 type blockPropagation struct {
@@ -59,6 +60,8 @@ func (p *Peer) broadcastBlocks() {
 		}
 	}
 }
+
+// ##
 
 // broadcastTransactions is a write loop that schedules transaction broadcasts
 // to the remote peer. The goal is to have an async writer that does not lock up

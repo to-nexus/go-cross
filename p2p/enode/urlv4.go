@@ -181,7 +181,7 @@ func (n *Node) URLv4() string {
 		nodeid = fmt.Sprintf("%s.%x", scheme, n.id[:])
 	}
 	u := url.URL{Scheme: "enode"}
-	if !n.ip.IsValid() { // ##CROSS: UPSTREAM PR-29801
+	if !n.ip.IsValid() {
 		u.Host = nodeid
 	} else {
 		addr := net.TCPAddr{IP: n.IP(), Port: n.TCP()}

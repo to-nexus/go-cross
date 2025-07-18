@@ -182,7 +182,7 @@ type worker struct {
 	eth         Backend
 	chain       *core.BlockChain
 
-	istanbulBackend *istanbulBackend.Backend
+	istanbulBackend *istanbulBackend.Backend // ##CROSS: istanbul
 
 	// Feeds
 	pendingLogsFeed event.Feed
@@ -359,13 +359,13 @@ func (w *worker) setRecommitInterval(interval time.Duration) {
 
 // pending returns the pending state and corresponding block. The returned
 // values can be nil in case the pending block is not initialized.
-func (w *worker) pending() (*types.Block, *state.StateDB) {
+func (w *worker) pending() (*types.Block, types.Receipts, *state.StateDB) {
 	w.snapshotMu.RLock()
 	defer w.snapshotMu.RUnlock()
 	if w.snapshotState == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return w.snapshotBlock, w.snapshotState.Copy()
+	return w.snapshotBlock, w.snapshotReceipts, w.snapshotState.Copy()
 }
 
 // pendingBlock returns pending block. The returned block can be nil in case the
@@ -498,7 +498,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				handler.NewChainHead()
 			}
 
-			clearPending(head.Block.NumberU64())
+			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			commit(commitInterruptNewHead)
 
@@ -750,7 +750,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	if err != nil {
 		return nil, err
 	}
-	state.StartPrefetcher("miner")
+	state.StartPrefetcher("miner", nil)
 
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
@@ -771,8 +771,7 @@ func (w *worker) updateSnapshot(env *environment) {
 
 	w.snapshotBlock = types.NewBlock(
 		env.header,
-		env.txs,
-		nil,
+		&types.Body{Transactions: env.txs},
 		env.receipts,
 		trie.NewStackTrie(nil),
 	)
@@ -1050,7 +1049,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		return nil, err
 	}
 	if header.ParentBeaconRoot != nil {
-		context := core.NewEVMBlockContext(header, w.chain, nil, w.chainConfig) // ##CROSS: transfer log
+		context := core.NewEVMBlockContext(header, w.chain, nil, w.chainConfig)
 		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
 		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
 	}
@@ -1135,7 +1134,7 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
 	}
-	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, nil, work.receipts, params.withdrawals)
+	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &types.Body{Transactions: work.txs}, work.receipts)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
@@ -1224,7 +1223,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		// https://github.com/ethereum/go-ethereum/issues/24299
 		env := env.copy()
 		// Withdrawals are set to nil here, because this is only called in PoW.
-		block, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, env.txs, nil, env.receipts, nil)
+		block, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &types.Body{Transactions: env.txs}, env.receipts)
 		if err != nil {
 			return err
 		}

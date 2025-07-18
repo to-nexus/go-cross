@@ -65,7 +65,7 @@ func generateMerkleTree(hashes [][]byte) (*merkle.Tree, error) {
 	copy(leaves, hashes)
 
 	// build a merkle tree
-	tree := merkle.NewTreeWithOpts(merkle.TreeOptions{EnableHashSorting: false, DisableHashLeaves: true})
+	tree := merkle.NewTreeWithOpts(merkle.TreeOptions{EnableHashSorting: true, DisableHashLeaves: true})
 	if err := tree.Generate(leaves, sha3.NewLegacyKeccak256()); err != nil {
 		return nil, err
 	}
@@ -83,17 +83,14 @@ func generateMerkleProof(tree *merkle.Tree, index uint64) ([]hexutil.Bytes, erro
 		return nil, errors.New("index out of range")
 	}
 
-	// Start from the leaf node
+	// start from the leaf node
 	currentIndex := index
 
-	// Traverse up the tree, collecting sibling nodes for the proof
+	// traverse up the tree, collecting sibling nodes for the proof
 	for level := len(tree.Levels) - 1; level > 0; level-- {
 		nodes := tree.Levels[level]
-
-		// Determine if current node is left or right child
 		isLeftChild := currentIndex%2 == 0
 
-		// Get sibling index
 		siblingIndex := currentIndex
 		if isLeftChild {
 			siblingIndex = currentIndex + 1
@@ -101,12 +98,10 @@ func generateMerkleProof(tree *merkle.Tree, index uint64) ([]hexutil.Bytes, erro
 			siblingIndex = currentIndex - 1
 		}
 
-		// Add sibling to proof if it exists
 		if siblingIndex < uint64(len(nodes)) {
 			proof = append(proof, nodes[siblingIndex].Hash)
 		}
 
-		// Move to parent node for next iteration
 		currentIndex = currentIndex / 2
 	}
 	return proof, nil

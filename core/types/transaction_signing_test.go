@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// ##CROSS: fee delegation
 // TestFeeDelegationSigning verifies the fee-delegation (gas fee sponsorship) mechanism in EIP-1559 transactions.
 // It demonstrates how an original DynamicFeeTx can be wrapped into a FeeDelegatedDynamicFeeTx,
 // allowing a separate payer address to cover gas fees without changing the original sender.
@@ -179,6 +180,8 @@ func TestFeeDelegationSigning(t *testing.T) {
 		}
 	})
 }
+
+// ##
 
 func TestEIP155Signing(t *testing.T) {
 	key, _ := crypto.GenerateKey()

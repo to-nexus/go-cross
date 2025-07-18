@@ -21,6 +21,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
+// ##CROSS: legacy sync
+
 // EthereumAPI provides an API to access Ethereum full node-related information.
 type EthereumAPI struct {
 	e *Ethereum
@@ -43,10 +45,12 @@ func (api *EthereumAPI) Coinbase() (common.Address, error) {
 
 // Hashrate returns the POW hashrate.
 func (api *EthereumAPI) Hashrate() hexutil.Uint64 {
-	return hexutil.Uint64(api.e.Miner().Hashrate())
+	return 0
 }
 
 // Mining returns an indication if this node is currently mining.
 func (api *EthereumAPI) Mining() bool {
 	return api.e.IsMining()
 }
+
+// ##

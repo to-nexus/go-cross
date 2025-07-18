@@ -304,6 +304,7 @@ func (it *nodeIterator) seek(prefix []byte) error {
 	// The path we're looking for is the hex encoded key without terminator.
 	key := keybytesToHex(prefix)
 	key = key[:len(key)-1]
+
 	// Move forward until we're just before the closest match to key.
 	for {
 		state, parentIndex, path, err := it.peekSeek(key)
@@ -311,7 +312,7 @@ func (it *nodeIterator) seek(prefix []byte) error {
 			return errIteratorEnd
 		} else if err != nil {
 			return seekError{prefix, err}
-		} else if reachedPath(path, key) { // ##CROSS: UPSTREAM PR-27838
+		} else if reachedPath(path, key) {
 			return nil
 		}
 		it.push(state, parentIndex, path)
@@ -339,7 +340,6 @@ func (it *nodeIterator) peek(descend bool) (*nodeIteratorState, *int, []byte, er
 		// If we're skipping children, pop the current node first
 		it.pop()
 	}
-
 	// Continue iteration to the next child
 	for len(it.stack) > 0 {
 		parent := it.stack[len(it.stack)-1]
@@ -372,7 +372,6 @@ func (it *nodeIterator) peekSeek(seekKey []byte) (*nodeIteratorState, *int, []by
 		// If we're skipping children, pop the current node first
 		it.pop()
 	}
-
 	// Continue iteration to the next child
 	for len(it.stack) > 0 {
 		parent := it.stack[len(it.stack)-1]
@@ -449,16 +448,18 @@ func (it *nodeIterator) findChild(n *fullNode, index int, ancestor common.Hash) 
 		state     *nodeIteratorState
 		childPath []byte
 	)
-	for ; index < len(n.Children); index = nextChildIndex(index) { // ##CROSS: UPSTREAM PR-27838
+	for ; index < len(n.Children); index = nextChildIndex(index) {
 		if n.Children[index] != nil {
 			child = n.Children[index]
 			hash, _ := child.cache()
+
 			state = it.getFromPool()
 			state.hash = common.BytesToHash(hash)
 			state.node = child
 			state.parent = ancestor
 			state.index = -1
 			state.pathlen = len(path)
+
 			childPath = append(childPath, path...)
 			childPath = append(childPath, byte(index))
 			return child, state, childPath, index
@@ -472,7 +473,7 @@ func (it *nodeIterator) nextChild(parent *nodeIteratorState, ancestor common.Has
 	case *fullNode:
 		// Full node, move to the first non-nil child.
 		if child, state, path, index := it.findChild(node, nextChildIndex(parent.index), ancestor); child != nil {
-			parent.index = prevChildIndex(index) // ##CROSS: UPSTREAM PR-27838
+			parent.index = prevChildIndex(index)
 			return state, path, true
 		}
 	case *shortNode:
@@ -498,13 +499,13 @@ func (it *nodeIterator) nextChildAt(parent *nodeIteratorState, ancestor common.H
 	switch n := parent.node.(type) {
 	case *fullNode:
 		// Full node, move to the first non-nil child before the desired key position
-		child, state, path, index := it.findChild(n, nextChildIndex(parent.index), ancestor) // ##CROSS: UPSTREAM PR-27838
+		child, state, path, index := it.findChild(n, nextChildIndex(parent.index), ancestor)
 		if child == nil {
 			// No more children in this fullnode
 			return parent, it.path, false
 		}
 		// If the child we found is already past the seek position, just return it.
-		if reachedPath(path, key) { // ##CROSS: UPSTREAM PR-27838
+		if reachedPath(path, key) {
 			parent.index = prevChildIndex(index)
 			return state, path, true
 		}
@@ -541,7 +542,7 @@ func (it *nodeIterator) push(state *nodeIteratorState, parentIndex *int, path []
 	it.path = path
 	it.stack = append(it.stack, state)
 	if parentIndex != nil {
-		*parentIndex = nextChildIndex(*parentIndex) // ##CROSS: UPSTREAM PR-27838
+		*parentIndex = nextChildIndex(*parentIndex)
 	}
 }
 
@@ -550,11 +551,10 @@ func (it *nodeIterator) pop() {
 	it.path = it.path[:last.pathlen]
 	it.stack[len(it.stack)-1] = nil
 	it.stack = it.stack[:len(it.stack)-1]
-	// last is now unused
-	it.putInPool(last)
+
+	it.putInPool(last) // last is now unused
 }
 
-// ##CROSS: UPSTREAM PR-27838
 // reachedPath normalizes a path by truncating a terminator if present, and
 // returns true if it is greater than or equal to the target. Using this,
 // the path of a value node embedded a full node will compare less than the
@@ -600,8 +600,6 @@ func nextChildIndex(index int) int {
 		return index + 1
 	}
 }
-
-// ##
 
 func compareNodes(a, b NodeIterator) int {
 	if cmp := bytes.Compare(a.Path(), b.Path()); cmp != 0 {

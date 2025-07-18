@@ -37,8 +37,7 @@ var errMissingPrefix = errors.New("missing 'enr:' prefix for base64-encoded reco
 type Node struct {
 	r  enr.Record
 	id ID
-
-	// endpoint information ##CROSS: UPSTREAM PR-29801
+	// endpoint information
 	ip  netip.Addr
 	udp uint16
 	tcp uint16
@@ -57,7 +56,6 @@ func New(validSchemes enr.IdentityScheme, r *enr.Record) (*Node, error) {
 	return newNodeWithID(r, id), nil
 }
 
-// ##CROSS: UPSTREAM PR-29801
 func newNodeWithID(r *enr.Record, id ID) *Node {
 	n := &Node{r: *r, id: id}
 	// Set the preferred endpoint.
@@ -123,8 +121,6 @@ func (n *Node) setIP6(ip netip.Addr) {
 	}
 }
 
-// ##
-
 // MustParse parses a node record or enode:// URL. It panics if the input is invalid.
 func MustParse(rawurl string) *Node {
 	n, err := Parse(ValidSchemes, rawurl)
@@ -163,11 +159,6 @@ func (n *Node) Seq() uint64 {
 	return n.r.Seq()
 }
 
-// Incomplete returns true for nodes with no IP address.
-func (n *Node) Incomplete() bool {
-	return n.IP() == nil
-}
-
 // Load retrieves an entry from the underlying record.
 func (n *Node) Load(k enr.Entry) error {
 	return n.r.Load(k)
@@ -175,10 +166,9 @@ func (n *Node) Load(k enr.Entry) error {
 
 // IP returns the IP address of the node.
 func (n *Node) IP() net.IP {
-	return net.IP(n.ip.AsSlice()) // ##CROSS: UPSTREAM PR-29801
+	return net.IP(n.ip.AsSlice())
 }
 
-// ##CROSS: UPSTREAM PR-29801
 // IPAddr returns the IP address of the node.
 func (n *Node) IPAddr() netip.Addr {
 	return n.ip
@@ -186,15 +176,14 @@ func (n *Node) IPAddr() netip.Addr {
 
 // UDP returns the UDP port of the node.
 func (n *Node) UDP() int {
-	return int(n.udp) // ##CROSS: UPSTREAM PR-29801
+	return int(n.udp)
 }
 
 // TCP returns the TCP port of the node.
 func (n *Node) TCP() int {
-	return int(n.tcp) // ##CROSS: UPSTREAM PR-29801
+	return int(n.tcp)
 }
 
-// ##CROSS: UPSTREAM PR-29801
 // UDPEndpoint returns the announced UDP endpoint.
 func (n *Node) UDPEndpoint() (netip.AddrPort, bool) {
 	if !n.ip.IsValid() || n.ip.IsUnspecified() || n.udp == 0 {
@@ -203,13 +192,26 @@ func (n *Node) UDPEndpoint() (netip.AddrPort, bool) {
 	return netip.AddrPortFrom(n.ip, n.udp), true
 }
 
-// ##CROSS: UPSTREAM PR-29801
 // TCPEndpoint returns the announced TCP endpoint.
 func (n *Node) TCPEndpoint() (netip.AddrPort, bool) {
 	if !n.ip.IsValid() || n.ip.IsUnspecified() || n.tcp == 0 {
 		return netip.AddrPort{}, false
 	}
 	return netip.AddrPortFrom(n.ip, n.tcp), true
+}
+
+// QUICEndpoint returns the announced QUIC endpoint.
+func (n *Node) QUICEndpoint() (netip.AddrPort, bool) {
+	var quic uint16
+	if n.ip.Is4() || n.ip.Is4In6() {
+		n.Load((*enr.QUIC)(&quic))
+	} else if n.ip.Is6() {
+		n.Load((*enr.QUIC6)(&quic))
+	}
+	if !n.ip.IsValid() || n.ip.IsUnspecified() || quic == 0 {
+		return netip.AddrPort{}, false
+	}
+	return netip.AddrPortFrom(n.ip, quic), true
 }
 
 // Pubkey returns the secp256k1 public key of the node, if present.
@@ -228,7 +230,6 @@ func (n *Node) Record() *enr.Record {
 	return &cpy
 }
 
-// ##CROSS: UPSTREAM PR-29801
 // ValidateComplete checks whether n has a valid IP and UDP port.
 // Deprecated: don't use this method.
 func (n *Node) ValidateComplete() error {
