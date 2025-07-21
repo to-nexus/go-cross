@@ -272,7 +272,7 @@ func (t *Transaction) GasPrice(ctx context.Context) hexutil.Big {
 		return hexutil.Big{}
 	}
 	switch tx.Type() {
-	case types.DynamicFeeTxType:
+	case types.DynamicFeeTxType, types.FeeDelegatedDynamicFeeTxType: // ##CROSS: feedelegation
 		if block != nil {
 			if baseFee, _ := block.BaseFeePerGas(ctx); baseFee != nil {
 				// price = min(gasTipCap + baseFee, gasFeeCap)
@@ -318,7 +318,7 @@ func (t *Transaction) MaxFeePerGas(ctx context.Context) *hexutil.Big {
 		return nil
 	}
 	switch tx.Type() {
-	case types.DynamicFeeTxType, types.BlobTxType:
+	case types.DynamicFeeTxType, types.BlobTxType, types.FeeDelegatedDynamicFeeTxType: // ##CROSS: feedelegation
 		return (*hexutil.Big)(tx.GasFeeCap())
 	default:
 		return nil

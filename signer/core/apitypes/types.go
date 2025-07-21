@@ -187,6 +187,7 @@ func (args *SendTxArgs) ToTransaction() (*types.Transaction, error) {
 			Data:       args.data(),
 			AccessList: al,
 		}
+
 	case args.AccessList != nil:
 		data = &types.AccessListTx{
 			To:         to,
