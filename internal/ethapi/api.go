@@ -1730,7 +1730,8 @@ func (api *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil
 		if approved {
 			logger := log.New("to", to, "tx", tx.Hash().Hex())
 			logger.Info("Request GasAbstraction")
-			if tx, err := api.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+			var err error
+			if tx, err = api.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
 				errlog := logger.Warn
 				if errors.Is(err, syscall.ECONNREFUSED) {
 					errlog = logger.Error
