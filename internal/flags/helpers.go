@@ -25,7 +25,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/mattn/go-isatty"
 	"github.com/urfave/cli/v2"
 )
@@ -39,23 +38,14 @@ func NewApp(usage string) *cli.App {
 	git, _ := version.VCS()
 	app := cli.NewApp()
 	app.EnableBashCompletion = true
-	app.Version = params.VersionWithCommit(git.Commit, git.Date)
+	app.Version = version.WithCommit(git.Commit, git.Date)
 	app.Usage = usage
-	app.Copyright = "Copyright 2013-2024 The go-ethereum Authors"
+	app.Copyright = "Copyright 2025 The go-cross Authors\nCopyright 2013-2024 The go-ethereum Authors"
 	app.Before = func(ctx *cli.Context) error {
 		MigrateGlobalFlags(ctx)
 		return nil
 	}
 	return app
-}
-
-// Merge merges the given flag slices.
-func Merge(groups ...[]cli.Flag) []cli.Flag {
-	var ret []cli.Flag
-	for _, group := range groups {
-		ret = append(ret, group...)
-	}
-	return ret
 }
 
 var migrationApplied = map[*cli.Command]struct{}{}
@@ -65,11 +55,11 @@ var migrationApplied = map[*cli.Command]struct{}{}
 //
 // Example:
 //
-//	cross account new --keystore /tmp/mykeystore --lightkdf
+//	geth account new --keystore /tmp/mykeystore --lightkdf
 //
 // is equivalent after calling this method with:
 //
-//	cross --keystore /tmp/mykeystore --lightkdf account new
+//	geth --keystore /tmp/mykeystore --lightkdf account new
 //
 // i.e. in the subcommand Action function of 'account new', ctx.Bool("lightkdf)
 // will return true even if --lightkdf is set as a global option.
@@ -264,9 +254,6 @@ func AutoEnvVars(flags []cli.Flag, prefix string) {
 			flag.EnvVars = append(flag.EnvVars, envvar)
 
 		case *BigFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
-		case *TextMarshalerFlag:
 			flag.EnvVars = append(flag.EnvVars, envvar)
 
 		case *DirectoryFlag:

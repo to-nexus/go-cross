@@ -76,7 +76,7 @@ type typedQueue interface {
 // concurrentFetch iteratively downloads scheduled block parts, taking available
 // peers, reserving a chunk of fetch requests for each and waiting for delivery
 // or timeouts.
-func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
+func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error { // ##CROSS: legacy sync
 	// Create a delivery channel to accept responses from all peers
 	responses := make(chan *eth.Response)
 

@@ -258,7 +258,6 @@ func (t *Tree) Disable() {
 	for _, layer := range t.layers {
 		switch layer := layer.(type) {
 		case *diskLayer:
-			// ##CROSS: UPSTREAM PR-30040
 			// TODO this function will hang if it's called twice. Will
 			// fix it in the following PRs.
 			layer.stopGeneration()
@@ -654,7 +653,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 
 // Release releases resources
 func (t *Tree) Release() {
-	t.lock.RLock() // ##CROSS: UPSTREAM PR-30011
+	t.lock.RLock()
 	defer t.lock.RUnlock()
 
 	if dl := t.disklayer(); dl != nil {
@@ -718,7 +717,6 @@ func (t *Tree) Rebuild(root common.Hash) {
 	for _, layer := range t.layers {
 		switch layer := layer.(type) {
 		case *diskLayer:
-			// ##CROSS: UPSTREAM PR-30040
 			// TODO this function will hang if it's called twice. Will
 			// fix it in the following PRs.
 			layer.stopGeneration()
@@ -816,7 +814,7 @@ func (t *Tree) disklayer() *diskLayer {
 	case *diskLayer:
 		return layer
 	case *diffLayer:
-		layer.lock.RLock() // ##CROSS: UPSTREAM PR-30001
+		layer.lock.RLock()
 		defer layer.lock.RUnlock()
 		return layer.origin
 	default:
@@ -824,7 +822,7 @@ func (t *Tree) disklayer() *diskLayer {
 	}
 }
 
-// diskRoot is a internal helper function to return the disk layer root.
+// diskRoot is an internal helper function to return the disk layer root.
 // The lock of snapTree is assumed to be held already.
 func (t *Tree) diskRoot() common.Hash {
 	disklayer := t.disklayer()
@@ -837,7 +835,7 @@ func (t *Tree) diskRoot() common.Hash {
 // generating is an internal helper function which reports whether the snapshot
 // is still under the construction.
 func (t *Tree) generating() (bool, error) {
-	t.lock.RLock() // ##CROSS: UPSTREAM PR-30011
+	t.lock.RLock()
 	defer t.lock.RUnlock()
 
 	layer := t.disklayer()
@@ -851,7 +849,7 @@ func (t *Tree) generating() (bool, error) {
 
 // DiskRoot is an external helper function to return the disk layer root.
 func (t *Tree) DiskRoot() common.Hash {
-	t.lock.RLock() // ##CROSS: UPSTREAM PR-30011
+	t.lock.RLock()
 	defer t.lock.RUnlock()
 
 	return t.diskRoot()

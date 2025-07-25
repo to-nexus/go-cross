@@ -75,7 +75,7 @@ func (dl *diskLayer) Stale() bool {
 }
 
 // markStale sets the stale flag as true.
-func (dl *diskLayer) markStale() { // ##CROSS: UPSTREAM PR-30040
+func (dl *diskLayer) markStale() {
 	dl.lock.Lock()
 	defer dl.lock.Unlock()
 
@@ -185,7 +185,7 @@ func (dl *diskLayer) Update(blockHash common.Hash, destructs map[common.Hash]str
 }
 
 // stopGeneration aborts the state snapshot generation if it is currently running.
-func (dl *diskLayer) stopGeneration() { // ##CROSS: UPSTREAM PR-30040
+func (dl *diskLayer) stopGeneration() {
 	dl.lock.RLock()
 	generating := dl.genMarker != nil
 	dl.lock.RUnlock()

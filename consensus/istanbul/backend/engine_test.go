@@ -114,7 +114,7 @@ func makeBlockWithoutSeal(chain *core.BlockChain, engine *Backend, parent *types
 	header := makeHeader(parent, engine.config)
 	engine.Prepare(chain, header)
 	state, _ := chain.StateAt(parent.Root())
-	block, _ := engine.FinalizeAndAssemble(chain, header, state, nil, nil, nil, nil)
+	block, _ := engine.FinalizeAndAssemble(chain, header, state, nil, nil)
 	return block
 }
 

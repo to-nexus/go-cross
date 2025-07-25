@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -31,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -223,7 +223,6 @@ func (p *Peer) Disconnect(reason DiscReason) {
 	case p.EthPeerDisconnected <- struct{}{}:
 	default:
 	}
-
 }
 
 // String implements fmt.Stringer.
@@ -240,16 +239,18 @@ func (p *Peer) Inbound() bool {
 func newPeer(log log.Logger, conn *conn, protocols []Protocol) *Peer {
 	protomap := matchProtocols(protocols, conn.caps, conn)
 	p := &Peer{
-		rw:                  conn,
-		running:             protomap,
-		created:             mclock.Now(),
-		disc:                make(chan DiscReason),
-		protoErr:            make(chan error, len(protomap)+1), // protocols + pingLoop
-		closed:              make(chan struct{}),
-		pingRecv:            make(chan struct{}, 16),
-		log:                 log.New("id", conn.node.ID(), "conn", conn.flags),
+		rw:       conn,
+		running:  protomap,
+		created:  mclock.Now(),
+		disc:     make(chan DiscReason),
+		protoErr: make(chan error, len(protomap)+1), // protocols + pingLoop
+		closed:   make(chan struct{}),
+		pingRecv: make(chan struct{}, 16),
+		log:      log.New("id", conn.node.ID(), "conn", conn.flags),
+		// ##CROSS: istanbul
 		EthPeerRegistered:   make(chan struct{}, 1),
 		EthPeerDisconnected: make(chan struct{}, 1),
+		// ##
 	}
 	return p
 }
@@ -426,7 +427,6 @@ outer:
 func (p *Peer) startProtocols(writeStart <-chan struct{}, writeErr chan<- error) {
 	p.wg.Add(len(p.running))
 	for _, proto := range p.running {
-		proto := proto
 		proto.closed = p.closed
 		proto.wstart = writeStart
 		proto.werr = writeErr

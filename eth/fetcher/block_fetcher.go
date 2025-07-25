@@ -15,7 +15,10 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 // Package fetcher contains the announcement based header, blocks or transaction synchronisation.
+
 package fetcher
+
+// ##CROSS: legacy sync
 
 import (
 	"errors"
@@ -686,7 +689,7 @@ func (f *BlockFetcher) loop() {
 						// Mark the body matched, reassemble if still unknown
 						matched = true
 						if f.getBlock(hash) == nil {
-							block := types.NewBlockWithHeader(announce.header).WithBody(task.transactions[i], task.uncles[i])
+							block := types.NewBlockWithHeader(announce.header).WithBody(types.Body{Transactions: task.transactions[i], Uncles: task.uncles[i]})
 							block.ReceivedAt = task.time
 							blocks = append(blocks, block)
 						} else {

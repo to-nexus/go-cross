@@ -147,6 +147,7 @@ func abigen(c *cli.Context) error {
 			}
 		}
 		bins = append(bins, string(bin))
+
 		var binruntime []byte
 		if binruntimeFile := c.String(binruntimeFlag.Name); binruntimeFile != "" {
 			if binruntime, err = os.ReadFile(binruntimeFile); err != nil {
