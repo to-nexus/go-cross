@@ -1584,22 +1584,32 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 // ##CROSS: legacy sync
 // WriteBlockAndSetHead writes the given block and all associated state to the database,
 // and applies the block as the new chain head.
-func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent, precheckDuplicate bool) (status WriteStatus, err error) {
 	if !bc.chainmu.TryLock() {
 		return NonStatTy, errChainStopped
 	}
 	defer bc.chainmu.Unlock()
 
-	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent)
+	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent, precheckDuplicate)
 }
 
 // writeBlockAndSetHead is the internal implementation of WriteBlockAndSetHead.
 // This function expects the chain mutex to be held.
-func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent, precheckDuplicate bool) (status WriteStatus, err error) {
+	// ##CROSS: istanbul
+	currentBlock := bc.CurrentBlock()
+	if precheckDuplicate {
+		if block.Hash() == currentBlock.Hash() {
+			log.Debug("block is already the head", "number", block.Number, "hash", block.Hash())
+			return NonStatTy, nil
+		}
+	}
+	// ##
+
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
 	}
-	currentBlock := bc.CurrentBlock()
+
 	// Reorganise the chain if the parent is not the head block
 	if block.ParentHash() != currentBlock.Hash() {
 		if err := bc.reorg(currentBlock, block.Header()); err != nil {
@@ -2084,7 +2094,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 		// Don't set the head, only insert the block
 		err = bc.writeBlockWithState(block, res.Receipts, statedb)
 	} else {
-		status, err = bc.writeBlockAndSetHead(block, res.Receipts, res.Logs, statedb, false)
+		status, err = bc.writeBlockAndSetHead(block, res.Receipts, res.Logs, statedb, false, false)
 	}
 	if err != nil {
 		return nil, err
