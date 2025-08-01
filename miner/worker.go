@@ -832,7 +832,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		gp   = env.gasPool.Gas()
 	)
 	// func ApplyTransaction(evm *vm.EVM, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64) (*types.Receipt, error) {
-	blockContext := core.NewEVMBlockContext(env.header, w.chain, nil)
+	blockContext := core.NewEVMBlockContext(env.header, w.chain, &env.coinbase)
 	evm := vm.NewEVM(blockContext, env.state, w.chainConfig, *w.chain.GetVMConfig())
 	receipt, err := core.ApplyTransaction(evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
 	if err != nil {
