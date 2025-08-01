@@ -45,7 +45,7 @@ var (
 		LondonBlock:             big.NewInt(0),
 		ArrowGlacierBlock:       big.NewInt(0),
 		GrayGlacierBlock:        big.NewInt(0),
-		TerminalTotalDifficulty: common.Big0,
+		TerminalTotalDifficulty: common.Big1,
 		ShanghaiTime:            u64(0),
 		AdventureTime:           u64(0),
 	}
@@ -147,7 +147,7 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 				gen = genFunc(tt.atBlock, testBigUnit)
 			}
 			db, chain, receipts := GenerateChainWithGenesis(tt.gspec, beacon.NewFaker(), 5, gen)
-			blockchain, _ := NewBlockChain(db, nil, tt.gspec, nil, beacon.NewFaker(), vm.Config{}, nil, nil)
+			blockchain, _ := NewBlockChain(db, nil, tt.gspec, nil, beacon.NewFaker(), vm.Config{}, nil)
 			defer blockchain.Stop()
 
 			if i, err := blockchain.InsertChain(chain); err != nil {
@@ -264,7 +264,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 			addTx(gen, testChainID, testKey1, contract1, testBigUnit, input)
 		}
 	})
-	blockchain, _ := NewBlockChain(db, nil, gspec, nil, beacon.NewFaker(), vm.Config{}, nil, nil)
+	blockchain, _ := NewBlockChain(db, nil, gspec, nil, beacon.NewFaker(), vm.Config{}, nil)
 	defer blockchain.Stop()
 
 	if i, err := blockchain.InsertChain(chain); err != nil {

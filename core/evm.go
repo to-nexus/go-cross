@@ -18,6 +18,7 @@ package core
 
 import (
 	"math/big"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -39,10 +40,13 @@ type ChainContext interface {
 
 	// GetHeader returns the header corresponding to the hash/number argument pair.
 	GetHeader(common.Hash, uint64) *types.Header
+
+	// Config returns the chain's configuration.
+	Config() *params.ChainConfig
 }
 
 // NewEVMBlockContext creates a new context for use in the EVM.
-func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address, config *params.ChainConfig) vm.BlockContext {
+func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address) vm.BlockContext {
 	// ##CROSS: transfer log
 	// Parameter config is added to check if the Adventure fork is enabled
 
@@ -63,7 +67,7 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		baseFee = new(big.Int).Set(header.BaseFee)
 	}
 	if header.ExcessBlobGas != nil {
-		blobBaseFee = eip4844.CalcBlobFee(*header.ExcessBlobGas)
+		blobBaseFee = eip4844.CalcBlobFee(chain.Config(), header)
 	}
 	if header.Difficulty.Sign() == 0 {
 		random = &header.MixDigest
@@ -74,8 +78,10 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 	// ##CROSS: transfer log
 	transfer := Transfer
 	// Update Transfer function for Adventure fork
-	if config != nil && config.IsAdventure(header.Number, header.Time) {
-		transfer = CrossTransfer
+	if chain != nil && !reflect.ValueOf(chain).IsNil() {
+		if config := chain.Config(); config != nil && config.IsAdventure(header.Number, header.Time) {
+			transfer = CrossTransfer
+		}
 	}
 	// ##
 	return vm.BlockContext{

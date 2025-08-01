@@ -7,7 +7,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -24,7 +23,7 @@ func TestCrossAPI_GetCheckpointProof(t *testing.T) {
 			Alloc:  types.GenesisAlloc{},
 		}
 	)
-	api := NewCrossAPI(newTestBackend(t, genBlocks, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
+	api := NewCrossAPI(newTestBackend(t, genBlocks, genesis, beacon.NewFaker(), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	}))
 
@@ -41,13 +40,13 @@ func TestCrossAPI_GetCheckpointProof(t *testing.T) {
 			endNumber:   rpc.BlockNumber(genBlocks - 1),
 			expectErr:   "",
 			want: []hexutil.Bytes{
-				hexutil.MustDecode("0xd03a06f3f369354d90e2b618173dbc90e86108b73dc44d0ace3675afd03ebcfd"),
-				hexutil.MustDecode("0x60bfe5a78e7fc3038c4fafc335a81731f5c602f48eda27d8d588990108a4df32"),
-				hexutil.MustDecode("0xe6da2f0464c2ec6e5fb0acb315bbac9b2587dfca4318767c4a077f6972fa67a9"),
-				hexutil.MustDecode("0xf3638bbf0b61b2f1b7a7a369c9e65795984534cb24c33ae721e6666dd37e6a8f"),
-				hexutil.MustDecode("0xd003763c7d9dad98e026ffa209cc1a2911659721562cc2a8937d31767c27d470"),
-				hexutil.MustDecode("0xddf098e7044f701f4a974d9cb58d42e5d41733f088b1fb49f5ac41f192b858c7"),
-				hexutil.MustDecode("0x552259cc768c2472fe9275a4e00ebd8ebf18b6c76661acf629f505a632c1d486"),
+				hexutil.MustDecode("0x23b77de72d3b74b419b297b97447149eb2686fa78e9d2422e0d6413221ab8e62"),
+				hexutil.MustDecode("0x59636c033d8bcdfc74002797ce17bca6f15ea598fe376ce33db07b5a54b68679"),
+				hexutil.MustDecode("0xecbd8162c0309bed4ca4acf70faf2311f77451f8da2a889f48c871bb9c7c6dc1"),
+				hexutil.MustDecode("0xebc2c9d482409851b56360a2fa323a11a48972a0dabdf26483b682f2f9495790"),
+				hexutil.MustDecode("0xacd5e8d210f20f60de45ec0911cbe8cc18774e671db64986291540fb2cdb1281"),
+				hexutil.MustDecode("0x1bf83590e26f20453618409f24445cea1cc327335bf368752436efe60ca81437"),
+				hexutil.MustDecode("0x8c0d0ddf20af5c3476155157ad7b286654dd12434a62f22545efe6425b1be350"),
 			},
 		},
 		{

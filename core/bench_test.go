@@ -90,7 +90,7 @@ func genValueTx(nbytes int) func(int, *BlockGen) {
 	data := make([]byte, nbytes)
 	return func(i int, gen *BlockGen) {
 		toaddr := common.Address{}
-		gas, _ := IntrinsicGas(data, nil, false, false, false, false)
+		gas, _ := IntrinsicGas(data, nil, nil, false, false, false, false)
 		signer := gen.Signer()
 		gasPrice := big.NewInt(0)
 		if gen.header.BaseFee != nil {
@@ -183,7 +183,7 @@ func benchInsertChain(b *testing.B, disk bool, gen func(int, *BlockGen)) {
 	if !disk {
 		db = rawdb.NewMemoryDatabase()
 	} else {
-		pdb, err := pebble.New(b.TempDir(), 128, 128, "", false)
+		pdb, err := pebble.New(b.TempDir(), 128, 128, "", false, true)
 		if err != nil {
 			b.Fatalf("cannot create temporary database: %v", err)
 		}
@@ -200,7 +200,7 @@ func benchInsertChain(b *testing.B, disk bool, gen func(int, *BlockGen)) {
 
 	// Time the insertion of the new chain.
 	// State and blocks are stored in the same DB.
-	chainman, _ := NewBlockChain(db, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chainman, _ := NewBlockChain(db, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil)
 	defer chainman.Stop()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -285,7 +285,7 @@ func makeChainForBench(db ethdb.Database, genesis *Genesis, full bool, count uin
 
 		rawdb.WriteHeader(db, header)
 		rawdb.WriteCanonicalHash(db, hash, n)
-		rawdb.WriteTd(db, hash, n, big.NewInt(int64(n+1)))
+		rawdb.WriteTd(db, hash, n, big.NewInt(int64(n+1))) // ##CROSS: legacy sync
 
 		if n == 0 {
 			rawdb.WriteChainConfig(db, hash, genesis.Config)
@@ -304,7 +304,7 @@ func makeChainForBench(db ethdb.Database, genesis *Genesis, full bool, count uin
 func benchWriteChain(b *testing.B, full bool, count uint64) {
 	genesis := &Genesis{Config: params.AllEthashProtocolChanges}
 	for i := 0; i < b.N; i++ {
-		pdb, err := pebble.New(b.TempDir(), 1024, 128, "", false)
+		pdb, err := pebble.New(b.TempDir(), 1024, 128, "", false, true)
 		if err != nil {
 			b.Fatalf("error opening database: %v", err)
 		}
@@ -317,7 +317,7 @@ func benchWriteChain(b *testing.B, full bool, count uint64) {
 func benchReadChain(b *testing.B, full bool, count uint64) {
 	dir := b.TempDir()
 
-	pdb, err := pebble.New(dir, 1024, 128, "", false)
+	pdb, err := pebble.New(dir, 1024, 128, "", false, true)
 	if err != nil {
 		b.Fatalf("error opening database: %v", err)
 	}
@@ -333,13 +333,13 @@ func benchReadChain(b *testing.B, full bool, count uint64) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		pdb, err = pebble.New(dir, 1024, 128, "", false)
+		pdb, err = pebble.New(dir, 1024, 128, "", false, true)
 		if err != nil {
 			b.Fatalf("error opening database: %v", err)
 		}
 		db = rawdb.NewDatabase(pdb)
 
-		chain, err := NewBlockChain(db, &cacheConfig, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
+		chain, err := NewBlockChain(db, &cacheConfig, genesis, nil, ethash.NewFaker(), vm.Config{}, nil)
 		if err != nil {
 			b.Fatalf("error creating chain: %v", err)
 		}

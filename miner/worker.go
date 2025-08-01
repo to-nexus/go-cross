@@ -607,6 +607,13 @@ func (w *worker) mainLoop() {
 				if tcount != w.current.tcount {
 					w.updateSnapshot(w.current)
 				}
+			} else {
+				// Special case, if the consensus engine is 0 period clique(dev mode),
+				// submit sealing work here since all empty submission will be rejected
+				// by clique. Of course the advance sealing(empty submission) is disabled.
+				if w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0 {
+					w.commitWork(nil, time.Now().Unix())
+				}
 			}
 			w.newTxs.Add(int32(len(ev.Txs)))
 
@@ -660,7 +667,9 @@ func (w *worker) taskLoop() {
 			w.pendingMu.Unlock()
 
 			if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
-				log.Warn("Block sealing failed", "err", err)
+				if err.Error() != "recently signed" {
+					log.Warn("Block sealing failed", "err", err)
+				}
 				w.pendingMu.Lock()
 				delete(w.pendingTasks, sealHash)
 				w.pendingMu.Unlock()
@@ -822,7 +831,10 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
 	)
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig())
+	// func ApplyTransaction(evm *vm.EVM, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64) (*types.Receipt, error) {
+	blockContext := core.NewEVMBlockContext(env.header, w.chain, nil)
+	evm := vm.NewEVM(blockContext, env.state, w.chainConfig, *w.chain.GetVMConfig())
+	receipt, err := core.ApplyTransaction(evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
@@ -1026,10 +1038,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	if w.chainConfig.IsCancun(header.Number, header.Time) {
 		var excessBlobGas uint64
 		if w.chainConfig.IsCancun(parent.Number, parent.Time) {
-			excessBlobGas = eip4844.CalcExcessBlobGas(*parent.ExcessBlobGas, *parent.BlobGasUsed)
-		} else {
-			// For the first post-fork block, both parent.data_gas_used and parent.excess_data_gas are evaluated as 0
-			excessBlobGas = eip4844.CalcExcessBlobGas(0, 0)
+			excessBlobGas = eip4844.CalcExcessBlobGas(w.chainConfig, parent, header.Time)
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
@@ -1049,9 +1058,9 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		return nil, err
 	}
 	if header.ParentBeaconRoot != nil {
-		context := core.NewEVMBlockContext(header, w.chain, nil, w.chainConfig)
-		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
+		context := core.NewEVMBlockContext(env.header, w.chain, nil)
+		vmenv := vm.NewEVM(context, env.state, w.chainConfig, vm.Config{})
+		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv)
 	}
 	return env, nil
 }
@@ -1072,7 +1081,7 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 		filter.BaseFee = uint256.MustFromBig(env.header.BaseFee)
 	}
 	if env.header.ExcessBlobGas != nil {
-		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
+		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
 	}
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
@@ -1080,32 +1089,10 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
-	// Split the pending transactions into locals and remotes.
-	localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
-	localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
-
-	for _, account := range w.eth.TxPool().Locals() {
-		if txs := remotePlainTxs[account]; len(txs) > 0 {
-			delete(remotePlainTxs, account)
-			localPlainTxs[account] = txs
-		}
-		if txs := remoteBlobTxs[account]; len(txs) > 0 {
-			delete(remoteBlobTxs, account)
-			localBlobTxs[account] = txs
-		}
-	}
 	// Fill the block with all available pending transactions.
-	if len(localPlainTxs) > 0 || len(localBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, localPlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, localBlobTxs, env.header.BaseFee)
-
-		if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt); err != nil {
-			return err
-		}
-	}
-	if len(remotePlainTxs) > 0 || len(remoteBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, remotePlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, remoteBlobTxs, env.header.BaseFee)
+	if len(pendingPlainTxs) > 0 || len(pendingBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, pendingPlainTxs, env.header.BaseFee)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, pendingBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt); err != nil {
 			return err
@@ -1156,13 +1143,15 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
-	if w.isRunning() {
-		coinbase = w.etherbase()
-		if coinbase == (common.Address{}) {
-			log.Error("Refusing to mine without etherbase")
-			return
-		}
+	if !w.isRunning() {
+		return
 	}
+	coinbase = w.etherbase()
+	if coinbase == (common.Address{}) {
+		log.Error("Refusing to mine without etherbase")
+		return
+	}
+
 	work, err := w.prepareWork(&generateParams{
 		timestamp: uint64(timestamp),
 		coinbase:  coinbase,

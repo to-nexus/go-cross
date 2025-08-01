@@ -48,6 +48,7 @@ const (
 	AccessListTxType             = 0x01
 	DynamicFeeTxType             = 0x02
 	BlobTxType                   = 0x03
+	SetCodeTxType                = 0x04
 	FeeDelegatedDynamicFeeTxType = 0x07 // ##CROSS: fee delegation
 )
 
@@ -101,6 +102,9 @@ type TxData interface {
 
 	encode(*bytes.Buffer) error
 	decode([]byte) error
+
+	// sigHash returns the hash of the transaction that is ought to be signed
+	sigHash(*big.Int) common.Hash
 }
 
 // EncodeRLP implements rlp.Encoder
@@ -207,6 +211,8 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 		inner = new(DynamicFeeTx)
 	case BlobTxType:
 		inner = new(BlobTx)
+	case SetCodeTxType:
+		inner = new(SetCodeTx)
 	case FeeDelegatedDynamicFeeTxType: // ##CROSS: fee delegation
 		inner = new(FeeDelegatedDynamicFeeTx)
 	default:
@@ -334,12 +340,7 @@ func (tx *Transaction) To() *common.Address {
 	return copyAddressPtr(tx.inner.to())
 }
 
-// Cost computes the total cost of a transaction. For standard transactions, it calculates:
-//
-//	(gas limit * gas price) + (blob gas * blob gas fee cap, if applicable) + transaction value.
-//
-// For fee-delegated dynamic fee transactions, if the fee payer is not the sender,
-// only the transaction value is considered since the fee payer covers the gas fees.
+// Cost returns (gas * gasPrice) + (blobGas * blobGasPrice) + value.
 func (tx *Transaction) Cost() *big.Int {
 	// ##CROSS: fee delegation
 	if tx.Type() == FeeDelegatedDynamicFeeTxType {
@@ -521,6 +522,38 @@ func (tx *Transaction) WithBlobTxSidecar(sideCar *BlobTxSidecar) *Transaction {
 		cpy.from.Store(f)
 	}
 	return cpy
+}
+
+// SetCodeAuthorizations returns the authorizations list of the transaction.
+func (tx *Transaction) SetCodeAuthorizations() []SetCodeAuthorization {
+	setcodetx, ok := tx.inner.(*SetCodeTx)
+	if !ok {
+		return nil
+	}
+	return setcodetx.AuthList
+}
+
+// SetCodeAuthorities returns a list of unique authorities from the
+// authorization list.
+func (tx *Transaction) SetCodeAuthorities() []common.Address {
+	setcodetx, ok := tx.inner.(*SetCodeTx)
+	if !ok {
+		return nil
+	}
+	var (
+		marks = make(map[common.Address]bool)
+		auths = make([]common.Address, 0, len(setcodetx.AuthList))
+	)
+	for _, auth := range setcodetx.AuthList {
+		if addr, err := auth.Authority(); err == nil {
+			if marks[addr] {
+				continue
+			}
+			marks[addr] = true
+			auths = append(auths, addr)
+		}
+	}
+	return auths
 }
 
 // SetTime sets the decoding time of a transaction. This is used by tests to set

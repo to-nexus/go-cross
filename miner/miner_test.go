@@ -303,14 +303,14 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	chainDB := rawdb.NewMemoryDatabase()
 	triedb := triedb.NewDatabase(chainDB, nil)
 	genesis := minerTestGenesisBlock(15, 11_500_000, common.HexToAddress("12345"))
-	chainConfig, _, err := core.SetupGenesisBlock(chainDB, triedb, genesis)
+	chainConfig, _, _, err := core.SetupGenesisBlock(chainDB, triedb, genesis)
 	if err != nil {
 		t.Fatalf("can't create new chain config: %v", err)
 	}
 	// Create consensus engine
 	engine := clique.New(chainConfig.Clique, chainDB)
 	// Create Ethereum backend
-	bc, err := core.NewBlockChain(chainDB, nil, genesis, nil, engine, vm.Config{}, nil, nil)
+	bc, err := core.NewBlockChain(chainDB, nil, genesis, nil, engine, vm.Config{}, nil)
 	if err != nil {
 		t.Fatalf("can't create new chain %v", err)
 	}

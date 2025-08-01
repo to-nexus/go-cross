@@ -36,8 +36,8 @@ import (
 
 const (
 	headerCacheLimit = 512
-	tdCacheLimit     = 1024
 	numberCacheLimit = 2048
+	tdCacheLimit     = 1024 // ##CROSS: legacy sync
 )
 
 // HeaderChain implements the basic block header chain logic. It is not usable
@@ -65,7 +65,7 @@ type HeaderChain struct {
 	currentHeaderHash common.Hash                  // Hash of the current head of the header chain (prevent recomputing all the time)
 
 	headerCache *lru.Cache[common.Hash, *types.Header]
-	tdCache     *lru.Cache[common.Hash, *big.Int] // most recent total difficulties
+	tdCache     *lru.Cache[common.Hash, *big.Int] // most recent total difficulties	// ##CROSS: legacy sync
 	numberCache *lru.Cache[common.Hash, uint64]   // most recent block numbers
 
 	procInterrupt func() bool
@@ -79,7 +79,7 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 		config:        config,
 		chainDb:       chainDb,
 		headerCache:   lru.NewCache[common.Hash, *types.Header](headerCacheLimit),
-		tdCache:       lru.NewCache[common.Hash, *big.Int](tdCacheLimit),
+		tdCache:       lru.NewCache[common.Hash, *big.Int](tdCacheLimit), // ##CROSS: legacy sync
 		numberCache:   lru.NewCache[common.Hash, uint64](numberCacheLimit),
 		procInterrupt: procInterrupt,
 		engine:        engine,
@@ -193,7 +193,7 @@ func (hc *HeaderChain) Reorg(headers []*types.Header) error {
 // parents are already known. The chain head header won't be updated in this
 // function, the additional SetCanonical is expected in order to finish the entire
 // procedure.
-func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
+func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) { // ##CROSS: legacy sync
 	if len(headers) == 0 {
 		return 0, nil
 	}
@@ -202,7 +202,7 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 		return 0, consensus.ErrUnknownAncestor
 	}
 	var (
-		newTD       = new(big.Int).Set(ptd) // Total difficulty of inserted chain
+		newTD       = new(big.Int).Set(ptd) // Total difficulty of inserted chain // ##CROSS: legacy sync
 		inserted    []rawdb.NumberHash      // Ephemeral lookup of number/hash for the chain
 		parentKnown = true                  // Set to true to force hc.HasHeader check the first iteration
 		batch       = hc.chainDb.NewBatch()
@@ -248,7 +248,8 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 }
 
 // writeHeadersAndSetHead writes a batch of block headers and applies the last
-// header as the chain head if the fork choicer says it's ok to update the chain.
+// header as the chain head.
+//
 // Note: This method is not concurrent-safe with inserting blocks simultaneously
 // into the chain, as side effects caused by reorganisations cannot be emulated
 // without the real blocks. Hence, writing headers directly should only be done
@@ -283,12 +284,14 @@ func (hc *HeaderChain) writeHeadersAndSetHead(headers []*types.Header) (*headerW
 	return result, nil
 }
 
+// ValidateHeaderChain verifies that the supplied header chain is contiguous
+// and conforms to consensus rules.
 func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header) (int, error) {
 	// Do a sanity check that the provided chain is actually ordered and linked
 	for i := 1; i < len(chain); i++ {
 		if chain[i].Number.Uint64() != chain[i-1].Number.Uint64()+1 {
-			hash := chain[i].Hash()
-			parentHash := chain[i-1].Hash()
+			hash, parentHash := chain[i].Hash(), chain[i-1].Hash()
+
 			// Chain broke ancestry, log a message (programming error) and skip insertion
 			log.Error("Non contiguous header insert", "number", chain[i].Number, "hash", hash,
 				"parent", chain[i].ParentHash, "prevnumber", chain[i-1].Number, "prevhash", parentHash)
@@ -313,7 +316,6 @@ func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header) (int, error) {
 			return i, err
 		}
 	}
-
 	return 0, nil
 }
 
@@ -394,7 +396,7 @@ func (hc *HeaderChain) GetAncestor(hash common.Hash, number, ancestor uint64, ma
 
 // GetTd retrieves a block's total difficulty in the canonical chain from the
 // database by hash and number, caching it if found.
-func (hc *HeaderChain) GetTd(hash common.Hash, number uint64) *big.Int {
+func (hc *HeaderChain) GetTd(hash common.Hash, number uint64) *big.Int { // ##CROSS: legacy sync
 	// Short circuit if the td's already in the cache, retrieve otherwise
 	if cached, ok := hc.tdCache.Get(hash); ok {
 		return cached
@@ -620,7 +622,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 					delFn(batch, hash, num)
 				}
 				rawdb.DeleteHeader(batch, hash, num)
-				rawdb.DeleteTd(batch, hash, num)
+				rawdb.DeleteTd(batch, hash, num) // ##CROSS: legacy sync
 			}
 			rawdb.DeleteCanonicalHash(batch, num)
 		}
@@ -631,7 +633,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 	}
 	// Clear out any stale content from the caches
 	hc.headerCache.Purge()
-	hc.tdCache.Purge()
+	hc.tdCache.Purge() // ##CROSS: legacy sync
 	hc.numberCache.Purge()
 }
 

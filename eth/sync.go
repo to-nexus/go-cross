@@ -154,7 +154,7 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	}
 	mode, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
-	if op.td.Cmp(ourTD) <= 0 {
+	if ourTD != nil && op.td.Cmp(ourTD) <= 0 {
 		// We seem to be in sync according to the legacy rules. In the merge
 		// world, it can also mean we're stuck on the merge block, waiting for
 		// a beacon client. In the latter case, notify the user.

@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -72,8 +73,16 @@ type txPool interface {
 	// tx hash.
 	Get(hash common.Hash) *types.Transaction
 
+	// GetRLP retrieves the RLP-encoded transaction from local txpool
+	// with given tx hash.
+	GetRLP(hash common.Hash) []byte
+
+	// GetMetadata returns the transaction type and transaction size with the
+	// given transaction hash.
+	GetMetadata(hash common.Hash) *txpool.TxMetadata
+
 	// Add should add the given transactions to the pool.
-	Add(txs []*types.Transaction, local bool, sync bool) []error
+	Add(txs []*types.Transaction, sync bool) []error
 
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
@@ -93,7 +102,7 @@ type handlerConfig struct {
 	Chain          *core.BlockChain       // Blockchain to serve data from
 	TxPool         txPool                 // Transaction pool to propagate from
 	Network        uint64                 // Network identifier to advertise
-	Sync           downloader.SyncMode    // Whether to snap or full sync
+	Sync           ethconfig.SyncMode     // Whether to snap or full sync
 	BloomCache     uint64                 // Megabytes to alloc for snap sync bloom
 	EventMux       *event.TypeMux         // Legacy event mux, deprecate for `feed`
 	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
@@ -167,7 +176,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	// ##CROSS: istanbul
-	//var handler consensus.IstanbulHandler
 	if h.istanbulHandler, _ = h.engine.(consensus.IstanbulHandler); h.istanbulHandler == nil {
 		if beacon, ok := h.engine.(*beacon.Beacon); ok {
 			h.istanbulHandler, _ = beacon.InnerEngine().(consensus.IstanbulHandler)
@@ -178,7 +186,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	// ##
 
-	if config.Sync == downloader.FullSync {
+	if config.Sync == ethconfig.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap
 		// block is ahead, so snap sync was enabled for this node at a certain point.
 		// The scenarios where this can happen is
@@ -212,6 +220,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	// Construct the downloader (long sync)
 	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, h.enableSyncedFeatures)
+
 	// ##CROSS: legacy sync
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
@@ -253,7 +262,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return p.RequestTxs(hashes)
 	}
 	addTxs := func(txs []*types.Transaction) []error {
-		return h.txpool.Add(txs, false, false)
+		return h.txpool.Add(txs, false)
 	}
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
 	h.chainSync = newChainSyncer(h) // ##CROSS: legacy sync
@@ -441,7 +450,7 @@ func (h *handler) runSnapExtension(peer *snap.Peer, handler snap.Handler) error 
 	defer h.decHandlers()
 
 	if err := h.peers.registerSnapExtension(peer); err != nil {
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			if peer.Inbound() {
 				snap.IngressRegistrationErrorMeter.Mark(1)
 			} else {
@@ -475,7 +484,7 @@ func (h *handler) unregisterPeer(id string) {
 	// Abort if the peer does not exist
 	peer := h.peers.peer(id)
 	if peer == nil {
-		logger.Error("Ethereum peer removal failed", "err", errPeerNotRegistered)
+		logger.Warn("Ethereum peer removal failed", "err", errPeerNotRegistered)
 		return
 	}
 	// Remove the `eth` peer if it exists
@@ -522,6 +531,8 @@ func (h *handler) Stop() {
 	h.txsSub.Unsubscribe()        // quits txBroadcastLoop
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop // ##CROSS: legacy sync
 
+	h.downloader.Terminate()
+
 	// Quit chainSync and txsync64.
 	// After this is done, no new peers will be accepted.
 	close(h.quitSync)
@@ -553,7 +564,11 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) { // ##CROS
 		// Calculate the TD of the block (it's not imported yet, so block.Td is not valid)
 		var td *big.Int
 		if parent := h.chain.GetBlock(block.ParentHash(), block.NumberU64()-1); parent != nil {
-			td = new(big.Int).Add(block.Difficulty(), h.chain.GetTd(block.ParentHash(), block.NumberU64()-1))
+			ptd := h.chain.GetTd(block.ParentHash(), block.NumberU64()-1)
+			if ptd == nil {
+				ptd = big.NewInt(1)
+			}
+			td = new(big.Int).Add(block.Difficulty(), ptd)
 		} else {
 			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
@@ -598,7 +613,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	total := new(big.Int).Exp(direct, big.NewInt(2), nil) // Stabilise total peer count a bit based on sqrt peers
 
 	var (
-		signer = types.LatestSignerForChainID(h.chain.Config().ChainID) // Don't care about chain status, we just need *a* sender
+		signer = types.LatestSigner(h.chain.Config()) // Don't care about chain status, we just need *a* sender
 		hasher = crypto.NewKeccakState()
 		hash   = make([]byte, 32)
 	)
@@ -649,7 +664,6 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		annCount += len(hashes)
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
-
 	log.Debug("Distributed transactions", "plaintxs", len(txs)-blobTxs-largeTxs, "blobtxs", blobTxs, "largetxs", largeTxs,
 		"bcastpeers", len(txset), "bcastcount", directCount, "annpeers", len(annos), "anncount", annCount)
 }

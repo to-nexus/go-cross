@@ -62,9 +62,9 @@ func newChainFreezer(datadir string, namespace string, readonly bool) (*chainFre
 		freezer ethdb.AncientStore
 	)
 	if datadir == "" {
-		freezer = NewMemoryFreezer(readonly, chainFreezerNoSnappy)
+		freezer = NewMemoryFreezer(readonly, chainFreezerTableConfigs)
 	} else {
-		freezer, err = NewFreezer(datadir, namespace, readonly, freezerTableSize, chainFreezerNoSnappy)
+		freezer, err = NewFreezer(datadir, namespace, readonly, freezerTableSize, chainFreezerTableConfigs)
 	}
 	if err != nil {
 		return nil, err
@@ -315,10 +315,12 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if len(receipts) == 0 {
 				return fmt.Errorf("block receipts missing, can't freeze block %d", number)
 			}
+			// ##CROSS: legacy sync
 			td := ReadTdRLP(nfdb, hash, number)
 			if len(td) == 0 {
 				return fmt.Errorf("total difficulty missing, can't freeze block %d", number)
 			}
+			// ##
 
 			// Write to the batch.
 			if err := op.AppendRaw(ChainFreezerHashTable, number, hash[:]); err != nil {
@@ -333,7 +335,7 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if err := op.AppendRaw(ChainFreezerReceiptTable, number, receipts); err != nil {
 				return fmt.Errorf("can't write receipts to Freezer: %v", err)
 			}
-			if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
+			if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil { // ##CROSS: legacy sync
 				return fmt.Errorf("can't write td to Freezer: %v", err)
 			}
 			hashes = append(hashes, hash)

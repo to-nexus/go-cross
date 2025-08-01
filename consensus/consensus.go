@@ -29,6 +29,10 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+var (
+	SystemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE") // ##CROSS: from bsc
+)
+
 // ChainHeaderReader defines a small collection of methods needed to access the local
 // blockchain during header verification.
 type ChainHeaderReader interface {
@@ -45,7 +49,7 @@ type ChainHeaderReader interface {
 	GetHeaderByNumber(number uint64) *types.Header
 
 	// GetHeaderByHash retrieves a block header from the database by its hash.
-	GetHeaderByHash(hash common.Hash) *types.Header
+	GetHeaderByHash(hash common.Hash) *types.Header // ##CROSS: legacy sync
 
 	// GetTd retrieves the total difficulty from the database by hash and number.
 	GetTd(hash common.Hash, number uint64) *big.Int

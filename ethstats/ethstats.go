@@ -69,9 +69,9 @@ type backend interface {
 	SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription
 	CurrentHeader() *types.Header
 	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Header, error)
-	GetTd(ctx context.Context, hash common.Hash) *big.Int
+	GetTd(ctx context.Context, hash common.Hash) *big.Int // ##CROSS: legacy sync
 	Stats() (pending int, queued int)
-	SyncProgress() ethereum.SyncProgress
+	SyncProgress(ctx context.Context) ethereum.SyncProgress
 }
 
 // fullNodeBackend encompasses the functionality necessary for a full node
@@ -110,9 +110,7 @@ type Service struct {
 	backend backend
 	engine  consensus.Engine // Consensus engine to retrieve variadic block fields
 
-	// ##CROSS: istanbul stats
-	istBackend istanbulBackend
-	// ##
+	istBackend istanbulBackend // ##CROSS: istanbul stats
 
 	node string // Name of the node to display on the monitoring page
 	pass string // Password to authorize access to the monitoring page
@@ -730,7 +728,7 @@ func (s *Service) assembleBlockStats(header *types.Header) *blockStats {
 		if block == nil {
 			return nil
 		}
-		td = fullBackend.GetTd(context.Background(), header.Hash())
+		td = fullBackend.GetTd(context.Background(), header.Hash()) // ##CROSS: legacy sync
 
 		txs = make([]txStats, len(block.Transactions()))
 		for i, tx := range block.Transactions() {
@@ -840,13 +838,15 @@ func (s *Service) reportPending(conn *connWrapper) error {
 
 // nodeStats is the information to report about the local node.
 type nodeStats struct {
-	Active   bool `json:"active"`
-	Syncing  bool `json:"syncing"`
+	Active  bool `json:"active"`
+	Syncing bool `json:"syncing"`
+	// ##CROSS: legacy sync
 	Mining   bool `json:"mining"`
 	Hashrate int  `json:"hashrate"`
-	Peers    int  `json:"peers"`
-	GasPrice int  `json:"gasPrice"`
-	Uptime   int  `json:"uptime"`
+	// ##
+	Peers    int `json:"peers"`
+	GasPrice int `json:"gasPrice"`
+	Uptime   int `json:"uptime"`
 }
 
 // reportStats retrieves various stats about the node at the networking layer
@@ -870,7 +870,7 @@ func (s *Service) reportStats(conn *connWrapper) error {
 		}
 		// ##
 
-		sync := fullBackend.SyncProgress()
+		sync := fullBackend.SyncProgress(context.Background())
 		syncing = !sync.Done()
 
 		price, _ := fullBackend.SuggestGasTipCap(context.Background())
@@ -879,7 +879,7 @@ func (s *Service) reportStats(conn *connWrapper) error {
 			gasprice += int(basefee.Uint64())
 		}
 	} else {
-		sync := s.backend.SyncProgress()
+		sync := s.backend.SyncProgress(context.Background())
 		syncing = !sync.Done()
 	}
 	// Assemble the node stats and send it to the server

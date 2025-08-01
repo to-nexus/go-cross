@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"go.uber.org/automaxprocs/maxprocs"
 
@@ -65,7 +64,7 @@ var (
 		utils.NoUSBFlag, // deprecated
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
-		utils.OverrideCancun,
+		utils.OverridePrague,
 		utils.OverrideVerkle,
 		utils.EnablePersonal, // deprecated
 		utils.TxPoolLocalsFlag,
@@ -89,6 +88,10 @@ var (
 		utils.SnapshotFlag,
 		utils.TxLookupLimitFlag, // deprecated
 		utils.TransactionHistoryFlag,
+		utils.ChainHistoryFlag,
+		utils.LogHistoryFlag,
+		utils.LogNoHistoryFlag,
+		utils.LogExportCheckpointsFlag,
 		utils.StateHistoryFlag,
 		utils.LightServeFlag,    // deprecated
 		utils.LightIngressFlag,  // deprecated
@@ -99,7 +102,6 @@ var (
 		utils.LightNoSyncServeFlag, // deprecated
 		utils.EthRequiredBlocksFlag,
 		utils.LegacyWhitelistFlag, // deprecated
-		utils.BloomFilterSizeFlag,
 		utils.CacheFlag,
 		utils.CacheDatabaseFlag,
 		utils.CacheTrieFlag,
@@ -141,7 +143,6 @@ var (
 		utils.VMTraceJsonConfigFlag,
 		utils.NetworkIdFlag,
 		utils.EthStatsURLFlag,
-		utils.NoCompactionFlag,
 		utils.GpoBlocksFlag,
 		utils.GpoPercentileFlag,
 		utils.GpoMaxGasPriceFlag,
@@ -157,6 +158,7 @@ var (
 		utils.BeaconGenesisRootFlag,
 		utils.BeaconGenesisTimeFlag,
 		utils.BeaconCheckpointFlag,
+		utils.BeaconCheckpointFileFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -225,6 +227,7 @@ func init() {
 		removedbCommand,
 		dumpCommand,
 		dumpGenesisCommand,
+		pruneCommand,
 		// See accountcmd.go:
 		accountCommand,
 		walletCommand,
@@ -309,6 +312,9 @@ func prepare(ctx *cli.Context) {
 	case ctx.IsSet(utils.HoleskyFlag.Name):
 		log.Info("Starting Geth on Holesky testnet...")
 
+	case ctx.IsSet(utils.HoodiFlag.Name):
+		log.Info("Starting Geth on Hoodi testnet...")
+
 	case ctx.IsSet(utils.DeveloperFlag.Name):
 		log.Info("Starting Geth in ephemeral dev mode...")
 		log.Warn(`You are running Geth in --dev mode. Please note the following:
@@ -328,7 +334,7 @@ func prepare(ctx *cli.Context) {
 `)
 
 	case !ctx.IsSet(utils.NetworkIdFlag.Name):
-		log.Info("Starting Geth on Cross mainnet...")
+		log.Info("Starting Geth on Ethereum mainnet...")
 	}
 	// If we're a full node on mainnet without --cache specified, bump default cache allowance
 	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
@@ -338,18 +344,13 @@ func prepare(ctx *cli.Context) {
 			!ctx.IsSet(utils.CrossDevFlag.Name) && // ##
 			!ctx.IsSet(utils.HoleskyFlag.Name) &&
 			!ctx.IsSet(utils.SepoliaFlag.Name) &&
+			!ctx.IsSet(utils.HoodiFlag.Name) &&
 			!ctx.IsSet(utils.DeveloperFlag.Name) {
 			// Nope, we're really on mainnet. Bump that cache up!
 			log.Info("Bumping default cache on mainnet", "provided", ctx.Int(utils.CacheFlag.Name), "updated", 4096)
 			ctx.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
 		}
 	}
-
-	// Start metrics export if enabled
-	utils.SetupMetrics(ctx)
-
-	// Start system runtime metrics collection
-	go metrics.CollectProcessMetrics(3 * time.Second)
 }
 
 // geth is the main entry point into the system if no special subcommand is run.
@@ -383,7 +384,7 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 	events := make(chan accounts.WalletEvent, 16)
 	stack.AccountManager().Subscribe(events)
 
-	// Create a client to interact with local cross node.
+	// Create a client to interact with local geth node.
 	rpcClient := stack.Attach()
 	ethClient := ethclient.NewClient(rpcClient)
 
@@ -443,7 +444,6 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 			}
 		}()
 	}
-
 	// Start auxiliary services if enabled
 	if ctx.Bool(utils.MiningEnabledFlag.Name) { // ##CROSS: legacy sync
 		// Mining only makes sense if a full Ethereum node is running

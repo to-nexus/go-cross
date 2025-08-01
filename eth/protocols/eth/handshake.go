@@ -46,7 +46,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 		errc <- p2p.Send(p.rw, StatusMsg, &StatusPacket{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       network,
-			TD:              td,
+			TD:              td, // ##CROSS: legacy sync
 			Head:            head,
 			Genesis:         genesis,
 			ForkID:          forkID,
@@ -69,6 +69,8 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 			return p2p.DiscReadTimeout
 		}
 	}
+
+	// ##CROSS: legacy sync
 	p.td, p.head = status.TD, status.Head
 
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
@@ -76,6 +78,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	if tdlen := p.td.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}
+	// ##
 	return nil
 }
 
@@ -112,7 +115,7 @@ func (p *Peer) readStatus(network uint64, status *StatusPacket, genesis common.H
 
 // markError registers the error with the corresponding metric.
 func markError(p *Peer, err error) {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return
 	}
 	m := meters.get(p.Inbound())

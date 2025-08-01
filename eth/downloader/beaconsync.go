@@ -250,9 +250,6 @@ func (d *Downloader) findBeaconAncestor() (uint64, error) {
 		check := (start + end) / 2
 
 		h := d.skeleton.Header(check)
-		if h == nil {
-			return 0, fmt.Errorf("filled skeleton header is missing: %d", check)
-		}
 		n := h.Number.Uint64()
 
 		var known bool
@@ -273,9 +270,10 @@ func (d *Downloader) findBeaconAncestor() (uint64, error) {
 	return start, nil
 }
 
+// ##CROSS: legacy sync
 // fetchBeaconHeaders feeds skeleton headers to the downloader queue for scheduling
 // until sync errors or is finished.
-func (d *Downloader) fetchBeaconHeaders(from uint64) error { // ##CROSS: legacy sync
+func (d *Downloader) fetchBeaconHeaders(from uint64) error {
 	var head *types.Header
 	_, tail, _, err := d.skeleton.Bounds()
 	if err != nil {
@@ -402,7 +400,7 @@ func (d *Downloader) fetchBeaconHeaders(from uint64) error { // ##CROSS: legacy 
 // other peers are only accepted if they map cleanly to the skeleton. If no one
 // can fill in the skeleton - not even the origin peer - it's assumed invalid and
 // the origin is dropped.
-func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) error { // ##CROSS: legacy sync
+func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) error {
 	p.log.Debug("Directing header downloads", "origin", from)
 	defer p.log.Debug("Header download terminated")
 
@@ -634,3 +632,5 @@ func (d *Downloader) fillHeaderSkeleton(from uint64, skeleton []*types.Header) (
 	}
 	return filled, hashes, proced, err
 }
+
+// ##

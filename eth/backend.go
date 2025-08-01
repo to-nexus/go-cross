@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,12 +33,13 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/bloombits"
+	"github.com/ethereum/go-ethereum/core/filtermaps"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
+	"github.com/ethereum/go-ethereum/core/txpool/locals"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -71,14 +73,15 @@ type Config = ethconfig.Config
 // Ethereum implements the Ethereum full node service.
 type Ethereum struct {
 	// core protocol objects
-	config     *ethconfig.Config
-	nodeConfig *node.Config
-
-	txPool     *txpool.TxPool
-	blockchain *core.BlockChain
+	config         *ethconfig.Config
+	nodeConfig     *node.Config // ##CROSS: gas abstraction
+	txPool         *txpool.TxPool
+	localTxTracker *locals.TxTracker
+	blockchain     *core.BlockChain
 
 	handler *handler
 	discmix *enode.FairMix
+	dropper *dropper
 
 	// DB interfaces
 	chainDb ethdb.Database // Block chain database
@@ -87,15 +90,13 @@ type Ethereum struct {
 	engine         consensus.Engine
 	accountManager *accounts.Manager
 
-	bloomRequests     chan chan *bloombits.Retrieval // Channel receiving bloom data retrieval requests
-	bloomIndexer      *core.ChainIndexer             // Bloom indexer operating during block imports
-	closeBloomHandler chan struct{}
+	filterMaps      *filtermaps.FilterMaps
+	closeFilterMaps chan chan struct{}
 
 	APIBackend *EthAPIBackend
 
-	miner     *miner.Miner
-	gasPrice  *big.Int
-	etherbase common.Address // ##CROSS: legacy sync
+	miner    *miner.Miner
+	gasPrice *big.Int
 
 	networkID     uint64
 	netRPCService *ethapi.NetAPI
@@ -105,7 +106,11 @@ type Ethereum struct {
 	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
-	signDataFn      clique.SignerFn                // ##CROSS: legacy sync
+
+	// ##CROSS: legacy sync
+	etherbase  common.Address
+	signDataFn clique.SignerFn
+	// ##
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
@@ -114,6 +119,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Ensure configuration values are compatible and sane
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
+	}
+	if !config.HistoryMode.IsValid() {
+		return nil, fmt.Errorf("invalid history mode %d", config.HistoryMode)
 	}
 	if config.Miner.GasPrice == nil || config.Miner.GasPrice.Sign() <= 0 {
 		log.Warn("Sanitizing invalid miner gas price", "provided", config.Miner.GasPrice, "updated", ethconfig.Defaults.Miner.GasPrice)
@@ -130,7 +138,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	log.Info("Allocated trie memory caches", "clean", common.StorageSize(config.TrieCleanCache)*1024*1024, "dirty", common.StorageSize(config.TrieDirtyCache)*1024*1024)
 
-	// Assemble the Ethereum object
 	chainDb, err := stack.OpenDatabaseWithFreezer("chaindata", config.DatabaseCache, config.DatabaseHandles, config.DatabaseFreezer, "eth/db/chaindata/", false)
 	if err != nil {
 		return nil, err
@@ -145,8 +152,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			log.Error("Failed to recover state", "error", err)
 		}
 	}
-	// Transfer mining-related config to the ethash config.
-	chainConfig, err := core.LoadChainConfig(chainDb, config.Genesis)
+
+	// Here we determine genesis hash and active ChainConfig.
+	// We need these to figure out the consensus parameters and to set up history pruning.
+	chainConfig, _, err := core.LoadChainConfig(chainDb, config.Genesis)
 	if err != nil {
 		return nil, err
 	}
@@ -154,26 +163,26 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Set networkID to chainID by default.
 	networkID := config.NetworkId
 	if networkID == 0 {
 		networkID = chainConfig.ChainID.Uint64()
 	}
+
+	// Assemble the Ethereum object.
 	eth := &Ethereum{
-		config:            config,
-		nodeConfig:        stack.Config(),
-		chainDb:           chainDb,
-		eventMux:          stack.EventMux(),
-		accountManager:    stack.AccountManager(),
-		engine:            engine,
-		closeBloomHandler: make(chan struct{}),
-		networkID:         networkID,
-		gasPrice:          config.Miner.GasPrice,
-		etherbase:         config.Miner.Etherbase, // ##CROSS: legacy sync
-		bloomRequests:     make(chan chan *bloombits.Retrieval),
-		bloomIndexer:      core.NewBloomIndexer(chainDb, params.BloomBitsBlocks, params.BloomConfirms),
-		p2pServer:         stack.Server(),
-		discmix:           enode.NewFairMix(0),
-		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
+		config:          config,
+		nodeConfig:      stack.Config(),
+		chainDb:         chainDb,
+		eventMux:        stack.EventMux(),
+		accountManager:  stack.AccountManager(),
+		engine:          engine,
+		networkID:       networkID,
+		gasPrice:        config.Miner.GasPrice,
+		etherbase:       config.Miner.Etherbase, // ##CROSS: legacy sync
+		p2pServer:       stack.Server(),
+		discmix:         enode.NewFairMix(0),
+		shutdownTracker: shutdowncheck.NewShutdownTracker(chainDb),
 	}
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"
@@ -182,6 +191,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	log.Info("Initialising Ethereum protocol", "network", networkID, "dbversion", dbVer)
 
+	// Create BlockChain object.
 	if !config.SkipBcVersionCheck {
 		if bcVersion != nil && *bcVersion > core.BlockChainVersion {
 			return nil, fmt.Errorf("database version is v%d, Geth %s only supports v%d", *bcVersion, version.WithMeta, core.BlockChainVersion)
@@ -206,6 +216,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			Preimages:           config.Preimages,
 			StateHistory:        config.StateHistory,
 			StateScheme:         scheme,
+			ChainHistoryMode:    config.HistoryMode,
 		}
 	)
 	if config.VMTrace != "" {
@@ -221,32 +232,59 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	// Override the chain config with provided settings.
 	var overrides core.ChainOverrides
-	if config.OverrideCancun != nil {
-		overrides.OverrideCancun = config.OverrideCancun
+	if config.OverridePrague != nil {
+		overrides.OverridePrague = config.OverridePrague
 	}
 	if config.OverrideVerkle != nil {
 		overrides.OverrideVerkle = config.OverrideVerkle
 	}
-	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, eth.shouldPreserve, &config.TransactionHistory)
+	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, &config.TransactionHistory)
 	if err != nil {
 		return nil, err
 	}
-	eth.bloomIndexer.Start(eth.blockchain)
 
-	if config.BlobPool.Datadir != "" {
-		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
+	// Initialize filtermaps log index.
+	fmConfig := filtermaps.Config{
+		History:        config.LogHistory,
+		Disabled:       config.LogNoHistory,
+		ExportFileName: config.LogExportCheckpoints,
+		HashScheme:     scheme == rawdb.HashScheme,
 	}
-	blobPool := blobpool.New(config.BlobPool, eth.blockchain)
+	chainView := eth.newChainView(eth.blockchain.CurrentBlock())
+	historyCutoff, _ := eth.blockchain.HistoryPruningCutoff()
+	var finalBlock uint64
+	if fb := eth.blockchain.CurrentFinalBlock(); fb != nil {
+		finalBlock = fb.Number.Uint64()
+	}
+	eth.filterMaps = filtermaps.NewFilterMaps(chainDb, chainView, historyCutoff, finalBlock, filtermaps.DefaultParams, fmConfig)
+	eth.closeFilterMaps = make(chan chan struct{})
 
+	// TxPool
 	if config.TxPool.Journal != "" {
 		config.TxPool.Journal = stack.ResolvePath(config.TxPool.Journal)
 	}
 	legacyPool := legacypool.New(config.TxPool, eth.blockchain)
 
+	if config.BlobPool.Datadir != "" {
+		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
+	}
+	blobPool := blobpool.New(config.BlobPool, eth.blockchain, legacyPool.HasPendingAuth)
+
 	eth.txPool, err = txpool.New(config.TxPool.PriceLimit, eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
 	if err != nil {
 		return nil, err
 	}
+
+	if !config.TxPool.NoLocals {
+		rejournal := config.TxPool.Rejournal
+		if rejournal < time.Second {
+			log.Warn("Sanitizing invalid txpool journal time", "provided", rejournal, "updated", time.Second)
+			rejournal = time.Second
+		}
+		eth.localTxTracker = locals.New(config.TxPool.Journal, rejournal, eth.blockchain.Config(), eth.txPool)
+		stack.RegisterLifecycle(eth.localTxTracker)
+	}
+
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	if eth.handler, err = newHandler(&handlerConfig{
@@ -264,6 +302,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 
+	eth.dropper = newDropper(eth.p2pServer.MaxDialedConns(), eth.p2pServer.MaxInboundConns())
+
+	// ##CROSS: legacy sync
 	eth.miner = miner.New(eth, &config.Miner, eth.blockchain.Config(), eth.EventMux(), eth.engine, eth.isLocalBlock)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 
@@ -318,7 +359,7 @@ func makeExtraData(extra []byte) []byte {
 // APIs return the collection of RPC services the ethereum package offers.
 // NOTE, some of these services probably need to be moved to somewhere else.
 func (s *Ethereum) APIs() []rpc.API {
-	apis := ethapi.GetAPIs(s.APIBackend, s.nodeConfig)
+	apis := ethapi.GetAPIs(s.APIBackend, s.nodeConfig) // ##CROSS: gas abstraction
 
 	// Append any APIs exposed explicitly by the consensus engine
 	apis = append(apis, s.engine.APIs(s.BlockChain())...)
@@ -488,7 +529,7 @@ func (s *Ethereum) Miner() *miner.Miner { return s.miner }
 func (s *Ethereum) AccountManager() *accounts.Manager  { return s.accountManager }
 func (s *Ethereum) BlockChain() *core.BlockChain       { return s.blockchain }
 func (s *Ethereum) TxPool() *txpool.TxPool             { return s.txPool }
-func (s *Ethereum) EventMux() *event.TypeMux           { return s.eventMux }
+func (s *Ethereum) EventMux() *event.TypeMux           { return s.eventMux } // ##CROSS: legacy sync
 func (s *Ethereum) Engine() consensus.Engine           { return s.engine }
 func (s *Ethereum) ChainDb() ethdb.Database            { return s.chainDb }
 func (s *Ethereum) IsListening() bool                  { return true } // Always listening
@@ -496,7 +537,6 @@ func (s *Ethereum) Downloader() *downloader.Downloader { return s.handler.downlo
 func (s *Ethereum) Synced() bool                       { return s.handler.synced.Load() }
 func (s *Ethereum) SetSynced()                         { s.handler.enableSyncedFeatures() }
 func (s *Ethereum) ArchiveMode() bool                  { return s.config.NoPruning }
-func (s *Ethereum) BloomIndexer() *core.ChainIndexer   { return s.bloomIndexer }
 
 // Protocols returns all the currently configured
 // network protocols to start.
@@ -519,10 +559,9 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 // Start implements node.Lifecycle, starting all internal goroutines needed by the
 // Ethereum protocol implementation.
 func (s *Ethereum) Start() error {
-	s.setupDiscovery()
-
-	// Start the bloom bits servicing goroutines
-	s.startBloomHandlers(params.BloomBitsBlocks)
+	if err := s.setupDiscovery(); err != nil {
+		return err
+	}
 
 	// Regularly update shutdown marker
 	s.shutdownTracker.Start()
@@ -530,8 +569,71 @@ func (s *Ethereum) Start() error {
 	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers)
 
-	log.Info("Ethereum downloader", "syncmode", s.SyncMode())
+	// Start the connection manager
+	s.dropper.Start(s.p2pServer, func() bool { return !s.Synced() })
+
+	// start log indexer
+	s.filterMaps.Start()
+	go s.updateFilterMapsHeads()
 	return nil
+}
+
+func (s *Ethereum) newChainView(head *types.Header) *filtermaps.ChainView {
+	if head == nil {
+		return nil
+	}
+	return filtermaps.NewChainView(s.blockchain, head.Number.Uint64(), head.Hash())
+}
+
+func (s *Ethereum) updateFilterMapsHeads() {
+	headEventCh := make(chan core.ChainEvent, 10)
+	blockProcCh := make(chan bool, 10)
+	sub := s.blockchain.SubscribeChainEvent(headEventCh)
+	sub2 := s.blockchain.SubscribeBlockProcessingEvent(blockProcCh)
+	defer func() {
+		sub.Unsubscribe()
+		sub2.Unsubscribe()
+		for {
+			select {
+			case <-headEventCh:
+			case <-blockProcCh:
+			default:
+				return
+			}
+		}
+	}()
+
+	var head *types.Header
+	setHead := func(newHead *types.Header) {
+		if newHead == nil {
+			return
+		}
+		if head == nil || newHead.Hash() != head.Hash() {
+			head = newHead
+			chainView := s.newChainView(head)
+			historyCutoff, _ := s.blockchain.HistoryPruningCutoff()
+			var finalBlock uint64
+			if fb := s.blockchain.CurrentFinalBlock(); fb != nil {
+				finalBlock = fb.Number.Uint64()
+			}
+			s.filterMaps.SetTarget(chainView, historyCutoff, finalBlock)
+		}
+	}
+	setHead(s.blockchain.CurrentBlock())
+
+	for {
+		select {
+		case ev := <-headEventCh:
+			setHead(ev.Header)
+		case blockProc := <-blockProcCh:
+			s.filterMaps.SetBlockProcessing(blockProc)
+		case <-time.After(time.Second * 10):
+			setHead(s.blockchain.CurrentBlock())
+		case ch := <-s.closeFilterMaps:
+			close(ch)
+			return
+		}
+	}
 }
 
 func (s *Ethereum) setupDiscovery() error {
@@ -571,13 +673,16 @@ func (s *Ethereum) setupDiscovery() error {
 func (s *Ethereum) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.discmix.Close()
+	s.dropper.Stop()
 	s.handler.Stop()
 
 	// Then stop everything else.
-	s.bloomIndexer.Close()
-	close(s.closeBloomHandler)
+	ch := make(chan struct{})
+	s.closeFilterMaps <- ch
+	<-ch
+	s.filterMaps.Stop()
 	s.txPool.Close()
-	s.miner.Close()
+	s.miner.Close() // ##CROSS: legacy sync
 	s.blockchain.Stop()
 	s.engine.Close()
 

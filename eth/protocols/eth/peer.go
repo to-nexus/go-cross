@@ -56,6 +56,7 @@ const (
 	// above some healthy uncle limit, so use that.
 	maxQueuedBlockAnns = 4
 	// ##
+
 )
 
 // Peer is a collection of relevant information we have about a `eth` peer.
@@ -66,8 +67,10 @@ type Peer struct {
 	rw        p2p.MsgReadWriter // Input/output streams for snap
 	version   uint              // Protocol version negotiated
 
+	// ##CROSS: legacy sync
 	head common.Hash // Latest advertised head block hash
 	td   *big.Int    // Latest advertised head block total difficulty
+	// ##
 
 	// ##CROSS: legacy sync
 	knownBlocks     *knownCache            // Set of block hashes known to be known by this peer
@@ -85,7 +88,7 @@ type Peer struct {
 	resDispatch chan *response // Dispatch channel to fulfil pending requests and untrack them
 
 	term chan struct{} // Termination channel to stop the broadcasters
-	lock sync.RWMutex  // Mutex protecting the internal fields
+	lock sync.RWMutex  // Mutex protecting the internal fields // ##CROSS: legacy sync
 
 	// ##CROSS: istanbul
 	consensusRw p2p.MsgReadWriter // this is the RW for the consensus devp2p protocol, e.g. "istanbul/100"
@@ -141,6 +144,7 @@ func (p *Peer) Version() uint {
 	return p.version
 }
 
+// ##CROSS: legacy sync
 // Head retrieves the current head hash and total difficulty of the peer.
 func (p *Peer) Head() (hash common.Hash, td *big.Int) {
 	p.lock.RLock()
@@ -158,6 +162,8 @@ func (p *Peer) SetHead(hash common.Hash, td *big.Int) {
 	copy(p.head[:], hash[:])
 	p.td.Set(td)
 }
+
+// ##
 
 // KnownTransaction returns whether peer is known to already have a transaction.
 func (p *Peer) KnownTransaction(hash common.Hash) bool {

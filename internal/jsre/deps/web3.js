@@ -13688,8 +13688,6 @@ module.exports = Cross;
 // ##
 
 },{"../formatters":30}],"bignumber.js":[function(require,module,exports){
-
-},{}],"bignumber.js":[function(require,module,exports){
 'use strict';
 
 module.exports = BigNumber; // jshint ignore:line

@@ -21,7 +21,6 @@ package fetcher
 // ##CROSS: legacy sync
 
 import (
-	"errors"
 	"math/rand"
 	"time"
 
@@ -68,8 +67,6 @@ var (
 	bodyFilterInMeter    = metrics.NewRegisteredMeter("eth/fetcher/block/filter/bodies/in", nil)
 	bodyFilterOutMeter   = metrics.NewRegisteredMeter("eth/fetcher/block/filter/bodies/out", nil)
 )
-
-var errTerminated = errors.New("terminated")
 
 // HeaderRetrievalFn is a callback type for retrieving a header from the local chain.
 type HeaderRetrievalFn func(common.Hash) *types.Header

@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
@@ -132,7 +131,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		if err := backend.TxPool().Add([]*types.Transaction{tx}, true, false); err != nil {
+		if err := backend.TxPool().Add([]*types.Transaction{tx}, true); err != nil {
 			panic(err)
 		}
 		nonces[index]++
@@ -204,7 +203,7 @@ func makeSealer(genesis *core.Genesis) (*node.Node, *eth.Ethereum, error) {
 	ethBackend, err := eth.New(stack, &ethconfig.Config{
 		Genesis:         genesis,
 		NetworkId:       genesis.Config.ChainID.Uint64(),
-		SyncMode:        downloader.FullSync,
+		SyncMode:        ethconfig.FullSync,
 		DatabaseCache:   256,
 		DatabaseHandles: 256,
 		TxPool:          legacypool.DefaultConfig,

@@ -44,33 +44,33 @@ func testSetupGenesis(t *testing.T, scheme string) {
 	var (
 		customghash = common.HexToHash("0x89c99d90b79719238d2645c7642f2c9295246e80775b38cfd162b696817fbd50")
 		customg     = Genesis{
-			Config: &params.ChainConfig{HomesteadBlock: big.NewInt(3)},
+			Config: &params.ChainConfig{HomesteadBlock: big.NewInt(3), Ethash: &params.EthashConfig{}},
 			Alloc: types.GenesisAlloc{
 				{1}: {Balance: big.NewInt(1), Storage: map[common.Hash]common.Hash{{1}: {1}}},
 			},
 		}
 		oldcustomg = customg
 	)
-	oldcustomg.Config = &params.ChainConfig{HomesteadBlock: big.NewInt(2)}
+	oldcustomg.Config = &params.ChainConfig{HomesteadBlock: big.NewInt(2), Ethash: &params.EthashConfig{}}
 
 	tests := []struct {
-		name       string
-		fn         func(ethdb.Database) (*params.ChainConfig, common.Hash, error)
-		wantConfig *params.ChainConfig
-		wantHash   common.Hash
-		wantErr    error
+		name           string
+		fn             func(ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error)
+		wantConfig     *params.ChainConfig
+		wantHash       common.Hash
+		wantErr        error
+		wantCompactErr *params.ConfigCompatError
 	}{
 		{
 			name: "genesis without ChainConfig",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), new(Genesis))
 			},
-			wantErr:    errGenesisNoConfig,
-			wantConfig: params.AllEthashProtocolChanges,
+			wantErr: errGenesisNoConfig,
 		},
 		{
-			name: "cross block in DB, genesis == nil",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			name: "no block in DB, genesis == nil",
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), nil)
 			},
 			wantHash:   params.CrossGenesisHash,
@@ -78,7 +78,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		},
 		{
 			name: "cross testnet block in DB, genesis == nil",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), DefaultZoneZeroGenesisBlock())
 			},
 			wantHash:   params.ZoneZeroGenesisHash,
@@ -86,7 +86,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		},
 		{
 			name: "cross dev3 block in DB, genesis == nil",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), DefaultCrossDev3GenesisBlock())
 			},
 			wantHash:   params.CrossDev3GenesisHash,
@@ -94,7 +94,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		},
 		{
 			name: "cross dev block in DB, genesis == nil",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), DefaultCrossDevGenesisBlock())
 			},
 			wantHash:   params.CrossDevGenesisHash,
@@ -102,7 +102,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		},
 		{
 			name: "mainnet block in DB, genesis == nil",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				DefaultGenesisBlock().MustCommit(db, triedb.NewDatabase(db, newDbConfig(scheme)))
 				return SetupGenesisBlock(db, triedb.NewDatabase(db, newDbConfig(scheme)), nil)
 			},
@@ -111,7 +111,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		},
 		{
 			name: "custom block in DB, genesis == nil",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
 				customg.Commit(db, tdb)
 				return SetupGenesisBlock(db, tdb, nil)
@@ -121,18 +121,25 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		},
 		{
 			name: "custom block in DB, genesis == sepolia",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
 				customg.Commit(db, tdb)
 				return SetupGenesisBlock(db, tdb, DefaultSepoliaGenesisBlock())
 			},
-			wantErr:    &GenesisMismatchError{Stored: customghash, New: params.SepoliaGenesisHash},
-			wantHash:   params.SepoliaGenesisHash,
-			wantConfig: params.SepoliaChainConfig,
+			wantErr: &GenesisMismatchError{Stored: customghash, New: params.SepoliaGenesisHash},
+		},
+		{
+			name: "custom block in DB, genesis == hoodi",
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
+				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
+				customg.Commit(db, tdb)
+				return SetupGenesisBlock(db, tdb, DefaultHoodiGenesisBlock())
+			},
+			wantErr: &GenesisMismatchError{Stored: customghash, New: params.HoodiGenesisHash},
 		},
 		{
 			name: "compatible config in DB",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
 				oldcustomg.Commit(db, tdb)
 				return SetupGenesisBlock(db, tdb, &customg)
@@ -142,13 +149,13 @@ func testSetupGenesis(t *testing.T, scheme string) {
 		},
 		{
 			name: "incompatible config in DB",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, error) {
+			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				// Commit the 'old' genesis block with Homestead transition at #2.
 				// Advance to block #4, past the homestead transition block of customg.
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
 				oldcustomg.Commit(db, tdb)
 
-				bc, _ := NewBlockChain(db, DefaultCacheConfigWithScheme(scheme), &oldcustomg, nil, ethash.NewFullFaker(), vm.Config{}, nil, nil)
+				bc, _ := NewBlockChain(db, DefaultCacheConfigWithScheme(scheme), &oldcustomg, nil, ethash.NewFullFaker(), vm.Config{}, nil)
 				defer bc.Stop()
 
 				_, blocks, _ := GenerateChainWithGenesis(&oldcustomg, ethash.NewFaker(), 4, nil)
@@ -159,7 +166,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			},
 			wantHash:   customghash,
 			wantConfig: customg.Config,
-			wantErr: &params.ConfigCompatError{
+			wantCompactErr: &params.ConfigCompatError{
 				What:          "Homestead fork block",
 				StoredBlock:   big.NewInt(2),
 				NewBlock:      big.NewInt(3),
@@ -170,11 +177,15 @@ func testSetupGenesis(t *testing.T, scheme string) {
 
 	for _, test := range tests {
 		db := rawdb.NewMemoryDatabase()
-		config, hash, err := test.fn(db)
+		config, hash, compatErr, err := test.fn(db)
 		// Check the return values.
 		if !reflect.DeepEqual(err, test.wantErr) {
 			spew := spew.ConfigState{DisablePointerAddresses: true, DisableCapacities: true}
 			t.Errorf("%s: returned error %#v, want %#v", test.name, spew.NewFormatter(err), spew.NewFormatter(test.wantErr))
+		}
+		if !reflect.DeepEqual(compatErr, test.wantCompactErr) {
+			spew := spew.ConfigState{DisablePointerAddresses: true, DisableCapacities: true}
+			t.Errorf("%s: returned error %#v, want %#v", test.name, spew.NewFormatter(compatErr), spew.NewFormatter(test.wantCompactErr))
 		}
 		if !reflect.DeepEqual(config, test.wantConfig) {
 			t.Errorf("%s:\nreturned %v\nwant     %v", test.name, config, test.wantConfig)
@@ -200,6 +211,8 @@ func TestGenesisHashes(t *testing.T) {
 	}{
 		{DefaultGenesisBlock(), params.MainnetGenesisHash},
 		{DefaultSepoliaGenesisBlock(), params.SepoliaGenesisHash},
+		{DefaultHoleskyGenesisBlock(), params.HoleskyGenesisHash},
+		{DefaultHoodiGenesisBlock(), params.HoodiGenesisHash},
 	} {
 		// Test via MustCommit
 		db := rawdb.NewMemoryDatabase()
@@ -213,7 +226,7 @@ func TestGenesisHashes(t *testing.T) {
 	}
 }
 
-func TestGenesis_Commit(t *testing.T) {
+func TestGenesisCommit(t *testing.T) {
 	genesis := &Genesis{
 		BaseFee: big.NewInt(params.InitialBaseFee),
 		Config:  params.TestChainConfig,
@@ -301,10 +314,18 @@ func TestVerkleGenesisCommit(t *testing.T) {
 		ShanghaiTime:            &verkleTime,
 		CancunTime:              &verkleTime,
 		PragueTime:              &verkleTime,
+		OsakaTime:               &verkleTime,
 		VerkleTime:              &verkleTime,
 		TerminalTotalDifficulty: big.NewInt(0),
+		EnableVerkleAtGenesis:   true,
 		Ethash:                  nil,
 		Clique:                  nil,
+		BlobScheduleConfig: &params.BlobScheduleConfig{
+			Cancun: params.DefaultCancunBlobConfig,
+			Prague: params.DefaultPragueBlobConfig,
+			Osaka:  params.DefaultOsakaBlobConfig,
+			Verkle: params.DefaultPragueBlobConfig,
+		},
 	}
 
 	genesis := &Genesis{
@@ -317,7 +338,7 @@ func TestVerkleGenesisCommit(t *testing.T) {
 		},
 	}
 
-	expected := common.FromHex("4a83dc39eb688dbcfaf581d60e82de18f875e38786ebce5833342011d6fef37b")
+	expected := common.FromHex("018d20eebb130b5e2b796465fe36aafab650650729a92435aec071bf2386f080")
 	got := genesis.ToBlock().Root().Bytes()
 	if !bytes.Equal(got, expected) {
 		t.Fatalf("invalid genesis state root, expected %x, got %x", expected, got)

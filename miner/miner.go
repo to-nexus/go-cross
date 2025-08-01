@@ -57,8 +57,8 @@ type Config struct {
 
 // DefaultConfig contains default settings for miner.
 var DefaultConfig = Config{
-	GasCeil:  30_000_000,
-	GasPrice: big.NewInt(params.GWei / 1000),
+	GasCeil:  30000000,
+	GasPrice: big.NewInt(params.GWei),
 
 	// The default recommit time is chosen as two seconds since
 	// consensus-layer usually will wait a half slot of time(6s)
@@ -132,6 +132,7 @@ func (miner *Miner) update() {
 					log.Info("Mining aborted due to sync")
 				}
 				miner.worker.syncing.Store(true)
+				log.Warn("downloader Start")
 
 			case downloader.FailedEvent:
 				canStart = true
@@ -139,6 +140,7 @@ func (miner *Miner) update() {
 					miner.worker.start()
 				}
 				miner.worker.syncing.Store(false)
+				log.Warn("downloader Failed")
 
 			case downloader.DoneEvent:
 				canStart = true
@@ -149,6 +151,7 @@ func (miner *Miner) update() {
 
 				// Stop reacting to downloader events
 				events.Unsubscribe()
+				log.Warn("downloader Done")
 			}
 		case <-miner.startCh:
 			if canStart {
@@ -200,10 +203,26 @@ func (miner *Miner) SetRecommitInterval(interval time.Duration) {
 	miner.worker.setRecommitInterval(interval)
 }
 
-// Pending returns the currently pending block and associated state. The returned
-// values can be nil in case the pending block is not initialized
-func (miner *Miner) Pending() (*types.Block, types.Receipts, *state.StateDB) {
-	return miner.worker.pending()
+// Pending returns the currently pending block and associated receipts, logs
+// and statedb. The returned values can be nil in case the pending block is
+// not initialized.
+func (miner *Miner) Pending() (*types.Block, types.Receipts, *state.StateDB) { // ##CROSS: from bsc
+	if miner.worker.isRunning() {
+		pendingBlock, pendingReceipts, pendingState := miner.worker.pending()
+		if pendingState != nil && pendingBlock != nil {
+			return pendingBlock, pendingReceipts, pendingState
+		}
+	}
+	// fallback to latest block
+	block := miner.worker.chain.CurrentBlock()
+	if block == nil {
+		return nil, nil, nil
+	}
+	stateDb, err := miner.worker.chain.StateAt(block.Root)
+	if err != nil {
+		return nil, nil, nil
+	}
+	return miner.worker.chain.GetBlockByHash(block.Hash()), miner.worker.chain.GetReceiptsByHash(block.Hash()), stateDb
 }
 
 // PendingBlock returns the currently pending block. The returned block can be
