@@ -360,7 +360,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.genesisBlock = types.NewBlockWithHeader(genesisHeader)
 
 	bc.currentBlock.Store(nil)
-	bc.currentBlockWithBody.Store(nil)
+	bc.currentBlockWithBody.Store(nil) // ##CROSS: istanbul
 	bc.currentSnapBlock.Store(nil)
 	bc.currentFinalBlock.Store(nil)
 	bc.currentSafeBlock.Store(nil)
@@ -564,7 +564,7 @@ func (bc *BlockChain) loadLastState() error {
 	}
 	// Everything seems to be fine, set as the head block
 	bc.currentBlock.Store(headHeader)
-	bc.currentBlockWithBody.Store(headBlock)
+	bc.currentBlockWithBody.Store(headBlock) // ##CROSS: istanbul
 	headBlockGauge.Update(int64(headBlock.NumberU64()))
 
 	// Restore the last known head header
@@ -1084,7 +1084,7 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 		return errChainStopped
 	}
 	bc.currentBlock.Store(block.Header())
-	bc.currentBlockWithBody.Store(block)
+	bc.currentBlockWithBody.Store(block) // ##CROSS: istanbul
 	headBlockGauge.Update(int64(block.NumberU64()))
 	bc.chainmu.Unlock()
 
@@ -1126,7 +1126,7 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	// Last update all in-memory chain markers
 	bc.genesisBlock = genesis
 	bc.currentBlock.Store(bc.genesisBlock.Header())
-	bc.currentBlockWithBody.Store(bc.genesisBlock)
+	bc.currentBlockWithBody.Store(bc.genesisBlock) // ##CROSS: istanbul
 	headBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
 	bc.hc.SetGenesis(bc.genesisBlock.Header())
 	bc.hc.SetCurrentHeader(bc.genesisBlock.Header())
@@ -1200,7 +1200,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	headFastBlockGauge.Update(int64(block.NumberU64()))
 
 	bc.currentBlock.Store(block.Header())
-	bc.currentBlockWithBody.Store(block)
+	bc.currentBlockWithBody.Store(block) // ##CROSS: istanbul
 	headBlockGauge.Update(int64(block.NumberU64()))
 }
 

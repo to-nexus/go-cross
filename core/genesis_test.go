@@ -245,12 +245,14 @@ func TestGenesisCommit(t *testing.T) {
 		t.Errorf("assumption wrong: want: %d, got: %v", params.GenesisDifficulty, genesisBlock.Difficulty())
 	}
 
+	// ##CROSS: legacy sync
 	// Expect the stored total difficulty to be the difficulty of the genesis block.
 	stored := rawdb.ReadTd(db, genesisBlock.Hash(), genesisBlock.NumberU64())
 
 	if stored.Cmp(genesisBlock.Difficulty()) != 0 {
 		t.Errorf("inequal difficulty; stored: %v, genesisBlock: %v", stored, genesisBlock.Difficulty())
 	}
+	// ##
 }
 
 func TestReadWriteGenesisAlloc(t *testing.T) {

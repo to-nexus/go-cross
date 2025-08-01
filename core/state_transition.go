@@ -566,6 +566,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	beneficiary := st.evm.Context.Coinbase
 	effectiveTip := msg.GasPrice
 
+	// Update beneficiary
 	if rules.IsShanghai && (st.evm.Context.Difficulty != nil && st.evm.Context.Difficulty.Cmp(istanbul.DefaultDifficulty) == 0) { // difficulty is always 1 in the Istanbul consensus
 		if collector := st.evm.ChainConfig().GetBeneficiaryAddress(st.evm.Context.BlockNumber); collector != nil {
 			beneficiary = *collector
@@ -575,6 +576,8 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			// ##CROSS: legacy sync
 			beneficiary = consensus.SystemAddress
 		}
+
+		// Also update effective tip
 		if rules.IsLondon {
 			effectiveTip = new(big.Int).Sub(msg.GasFeeCap, st.evm.Context.BaseFee)
 			if effectiveTip.Cmp(msg.GasTipCap) > 0 {

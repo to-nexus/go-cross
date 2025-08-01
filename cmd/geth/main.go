@@ -293,6 +293,9 @@ func prepare(ctx *cli.Context) {
 	// If we're running a known preset, log it for convenience.
 	switch {
 	// ##CROSS: config
+	case ctx.IsSet(utils.CrossFlag.Name):
+		log.Info("Starting Geth on Cross mainnet...")
+
 	case ctx.IsSet(utils.ZoneZeroFlag.Name):
 		log.Info("Starting Geth on ZoneZero testnet...")
 
@@ -334,7 +337,7 @@ func prepare(ctx *cli.Context) {
 `)
 
 	case !ctx.IsSet(utils.NetworkIdFlag.Name):
-		log.Info("Starting Geth on Ethereum mainnet...")
+		log.Info("Starting Geth on Cross mainnet...")
 	}
 	// If we're a full node on mainnet without --cache specified, bump default cache allowance
 	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {

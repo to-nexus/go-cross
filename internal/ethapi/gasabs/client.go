@@ -90,7 +90,7 @@ func (ec *Client) Close() {
 	ec.c.Close()
 }
 
-// ##CROSS: gas abstraction
+// ##CROSS: fee delegation
 // SignFeeDelegateTransaction
 func (ec *Client) SignFeeDelegateTransaction(ctx context.Context, tx *types.Transaction) (*types.Transaction, error) {
 	var resp hexutil.Bytes
