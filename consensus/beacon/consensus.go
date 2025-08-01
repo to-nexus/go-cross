@@ -76,6 +76,12 @@ func New(ethone consensus.Engine) *Beacon {
 // Here we check the MergeNetsplitBlock to allow configuring networks with a PoW or
 // PoA chain for unit testing purposes.
 func isPostMerge(config *params.ChainConfig, blockNum uint64, timestamp uint64) bool {
+	// ##CROSS: fork
+	// If adventure is active, it is always pre-merge state
+	if config.IsAdventure(new(big.Int).SetUint64(blockNum), timestamp) {
+		return false
+	}
+	// ##
 	mergedAtGenesis := config.TerminalTotalDifficulty != nil && config.TerminalTotalDifficulty.Sign() == 0
 	return mergedAtGenesis ||
 		config.MergeNetsplitBlock != nil && blockNum >= config.MergeNetsplitBlock.Uint64() ||
