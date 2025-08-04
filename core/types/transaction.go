@@ -61,7 +61,7 @@ type Transaction struct {
 	hash     atomic.Pointer[common.Hash]
 	size     atomic.Uint64
 	from     atomic.Pointer[sigCache]
-	feePayer atomic.Value // ##CROSS: fee delegation
+	feePayer atomic.Pointer[sigCache] // ##CROSS: fee delegation
 }
 
 // NewTx creates a new transaction.

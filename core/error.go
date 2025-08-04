@@ -127,7 +127,7 @@ var (
 	// -- Fee Delegation errors --
 
 	// ErrInvalidFeePayer is returned if the transaction contains an invalid feePayer's signature.
-	ErrInvalidFeePayer = errors.New("invalid feepayer")
+	ErrInvalidFeePayer = errors.New("invalid fee payer")
 
 	// ErrFeePayerInsufficientFunds is returned if the fee cost of executing a transaction
 	// is higher than the balance of the feePayer's account.

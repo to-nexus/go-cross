@@ -1524,7 +1524,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		if tx.FeePayer() == nil {
 			return common.Hash{}, errors.New("feepayer's address is nil")
 		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(b.ChainConfig().ChainID), tx); err != nil {
-			return common.Hash{}, err
+			return common.Hash{}, fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
 		} else if feePayer != *tx.FeePayer() {
 			return common.Hash{}, fmt.Errorf("feepayer's signature mismatch. recoverd: %v want: %v", feePayer, *tx.FeePayer())
 		}

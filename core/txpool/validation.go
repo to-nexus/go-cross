@@ -78,7 +78,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	}
 	// ##CROSS: fee delegation
 	if !rules.IsAdventure && tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-		return fmt.Errorf("%w: type %d rejected, pool not yet in Cancun", core.ErrTxTypeNotSupported, tx.Type())
+		return fmt.Errorf("%w: type %d rejected, pool not yet in Adventure", core.ErrTxTypeNotSupported, tx.Type())
 	}
 	// ##
 	if !rules.IsCancun && tx.Type() == types.BlobTxType {
@@ -259,7 +259,7 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		if tx.FeePayer() == nil {
 			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
 		} else if feePayer, err := types.FeePayer(types.NewAdventureSigner(signer.ChainID()), tx); err != nil {
-			return err
+			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
 		} else if *tx.FeePayer() != feePayer {
 			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), feePayer)
 		}

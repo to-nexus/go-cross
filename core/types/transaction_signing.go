@@ -162,8 +162,11 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 // If a cached address exists and matches the current signer, it is returned;
 // otherwise, the address is recalculated and cached.
 func FeePayer(signer Signer, tx *Transaction) (common.Address, error) {
-	if sc := tx.feePayer.Load(); sc != nil {
-		sigCache := sc.(sigCache)
+	if tx.Type() != FeeDelegatedDynamicFeeTxType {
+		return common.Address{}, ErrTxTypeNotSupported
+	}
+
+	if sigCache := tx.feePayer.Load(); sigCache != nil {
 		// If the signer used to derive from in a previous
 		// call is not the same as used current, invalidate
 		// the cache.
@@ -172,11 +175,12 @@ func FeePayer(signer Signer, tx *Transaction) (common.Address, error) {
 		}
 	}
 
-	addr, err := signer.Sender(tx)
+	fsigner := feeDelegationSigner{signer}
+	addr, err := fsigner.Sender(tx)
 	if err != nil {
 		return common.Address{}, err
 	}
-	tx.feePayer.Store(sigCache{signer: signer, from: addr})
+	tx.feePayer.Store(&sigCache{signer: signer, from: addr})
 	return addr, nil
 }
 
@@ -277,9 +281,7 @@ func newModernSigner(chainID *big.Int, fork forks.Fork) Signer {
 	}
 	if fork >= forks.London {
 		s.txtypes[DynamicFeeTxType] = struct{}{}
-	}
-	if fork >= forks.Adventure {
-		s.txtypes[FeeDelegatedDynamicFeeTxType] = struct{}{}
+		s.txtypes[FeeDelegatedDynamicFeeTxType] = struct{}{} // ##CROSS: fork
 	}
 	if fork >= forks.Cancun {
 		s.txtypes[BlobTxType] = struct{}{}
