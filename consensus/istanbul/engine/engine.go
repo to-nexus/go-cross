@@ -403,8 +403,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// Accumulate any block and uncle rewards and commit the final state root
 	e.accumulateRewards(chain, state, header)
 
-	// vm.StateDB does not have IntermediateRoot method, so we need to use type assertion to call it
-	header.Root = state.(interface{ IntermediateRoot(bool) common.Hash }).IntermediateRoot(chain.Config().IsEIP158(header.Number)) // ##CROSS: istanbul
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	header.UncleHash = nilUncleHash
 }
 

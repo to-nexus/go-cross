@@ -101,4 +101,7 @@ type StateDB interface {
 
 	// Finalise must be invoked at the end of a transaction
 	Finalise(bool)
+
+	// IntermediateRoot computes the current root hash of the state trie.
+	IntermediateRoot(bool) common.Hash // ##CROSS: istanbul
 }

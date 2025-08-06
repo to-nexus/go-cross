@@ -1482,6 +1482,12 @@ func marshalReceipt(receipt *types.Receipt, blockHash common.Hash, blockNumber u
 		fields["blobGasPrice"] = (*hexutil.Big)(receipt.BlobGasPrice)
 	}
 
+	// ##CROSS: fee delegation
+	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+		fields["feePayer"] = tx.FeePayer()
+	}
+	// ##
+
 	// If the ContractAddress is 20 0x0 bytes, assume it is not a contract creation
 	if receipt.ContractAddress != (common.Address{}) {
 		fields["contractAddress"] = receipt.ContractAddress

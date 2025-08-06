@@ -46,6 +46,8 @@ func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint
 		signer = NewPragueSigner(config.ChainID)
 	case config.IsCancun(blockNumber, blockTime):
 		signer = NewCancunSigner(config.ChainID)
+	case config.IsAdventure(blockNumber, blockTime): // ##CROSS: fork
+		signer = NewAdventureSigner(config.ChainID)
 	case config.IsLondon(blockNumber):
 		signer = NewLondonSigner(config.ChainID)
 	case config.IsBerlin(blockNumber):
@@ -75,6 +77,8 @@ func LatestSigner(config *params.ChainConfig) Signer {
 			signer = NewPragueSigner(config.ChainID)
 		case config.CancunTime != nil:
 			signer = NewCancunSigner(config.ChainID)
+		case config.AdventureTime != nil:
+			signer = NewAdventureSigner(config.ChainID) // ##CROSS: fork
 		case config.LondonBlock != nil:
 			signer = NewLondonSigner(config.ChainID)
 		case config.BerlinBlock != nil:

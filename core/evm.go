@@ -47,9 +47,6 @@ type ChainContext interface {
 
 // NewEVMBlockContext creates a new context for use in the EVM.
 func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common.Address) vm.BlockContext {
-	// ##CROSS: transfer log
-	// Parameter config is added to check if the Adventure fork is enabled
-
 	var (
 		beneficiary common.Address
 		baseFee     *big.Int
