@@ -17,7 +17,6 @@
 package eth
 
 import (
-	"errors"
 	"math/big"
 	"time"
 
@@ -27,11 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
-)
-
-const (
-	forceSyncCycle      = 10 * time.Second // Time interval to force syncs, even if few peers are available
-	defaultMinSyncPeers = 5                // Amount of peers desired to start syncing
 )
 
 // syncTransactions starts sending all currently pending transactions to the given peer.
@@ -47,6 +41,12 @@ func (h *handler) syncTransactions(p *eth.Peer) {
 	}
 	p.AsyncSendPooledTransactionHashes(hashes)
 }
+
+// ##CROSS: legacy sync
+const (
+	forceSyncCycle      = 10 * time.Second // Time interval to force syncs, even if few peers are available
+	defaultMinSyncPeers = 5                // Amount of peers desired to start syncing
+)
 
 // chainSyncer coordinates blockchain sync components.
 type chainSyncer struct {
@@ -108,18 +108,10 @@ func (cs *chainSyncer) loop() {
 		select {
 		case <-cs.peerEventCh:
 			// Peer information changed, recheck.
-		case err := <-cs.doneCh:
+		case <-cs.doneCh:
 			cs.doneCh = nil
 			cs.force.Reset(forceSyncCycle)
 			cs.forced = false
-
-			// If we've reached the merge transition but no beacon client is available, or
-			// it has not yet switched us over, keep warning the user that their infra is
-			// potentially flaky.
-			if errors.Is(err, downloader.ErrMergeTransition) && time.Since(cs.warned) > 10*time.Second {
-				log.Warn("Local chain is post-merge, waiting for beacon client sync switch-over...")
-				cs.warned = time.Now()
-			}
 		case <-cs.force.C:
 			cs.forced = true
 
@@ -142,17 +134,7 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	if cs.doneCh != nil {
 		return nil // Sync already running
 	}
-	// If a beacon client once took over control, disable the entire legacy sync
-	// path from here on end. Note, there is a slight "race" between reaching TTD
-	// and the beacon client taking over. The downloader will enforce that nothing
-	// above the first TTD will be delivered to the chain for import.
-	//
-	// An alternative would be to check the local chain for exceeding the TTD and
-	// avoid triggering a sync in that case, but that could also miss sibling or
-	// other family TTD block being accepted.
-	if cs.handler.chain.Config().TerminalTotalDifficultyPassed || cs.handler.merger.TDDReached() {
-		return nil
-	}
+
 	// Ensure we're at minimum peer count.
 	minPeers := defaultMinSyncPeers
 	if cs.forced {
@@ -172,7 +154,7 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	}
 	mode, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
-	if op.td.Cmp(ourTD) <= 0 {
+	if ourTD != nil && op.td.Cmp(ourTD) <= 0 {
 		// We seem to be in sync according to the legacy rules. In the merge
 		// world, it can also mean we're stuck on the merge block, waiting for
 		// a beacon client. In the latter case, notify the user.
@@ -250,3 +232,5 @@ func (h *handler) doSync(op *chainSyncOp) error {
 	}
 	return nil
 }
+
+// ##

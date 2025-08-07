@@ -44,7 +44,7 @@ func newBlockchainFromConfig(genesis *core.Genesis, nodeKeys []*ecdsa.PrivateKey
 
 	genesis.MustCommit(memDB, triedb.NewDatabase(memDB, triedb.HashDefaults))
 
-	blockchain, err := core.NewBlockChain(memDB, nil, genesis, nil, backend, vm.Config{}, nil, nil)
+	blockchain, err := core.NewBlockChain(memDB, nil, genesis, nil, backend, vm.Config{}, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -114,7 +114,7 @@ func makeBlockWithoutSeal(chain *core.BlockChain, engine *Backend, parent *types
 	header := makeHeader(parent, engine.config)
 	engine.Prepare(chain, header)
 	state, _ := chain.StateAt(parent.Root())
-	block, _ := engine.FinalizeAndAssemble(chain, header, state, nil, nil, nil, nil)
+	block, _ := engine.FinalizeAndAssemble(chain, header, state, nil, nil)
 	return block
 }
 
