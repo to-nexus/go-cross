@@ -23,7 +23,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -572,11 +571,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			beneficiary = *collector
 		}
 	} else {
-		if st.evm.ChainConfig().Clique != nil {
-			// ##CROSS: legacy sync
-			beneficiary = consensus.SystemAddress
-		}
-
 		// Also update effective tip
 		if rules.IsLondon {
 			effectiveTip = new(big.Int).Sub(msg.GasFeeCap, st.evm.Context.BaseFee)

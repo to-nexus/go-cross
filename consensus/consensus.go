@@ -29,10 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-var (
-	SystemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE") // ##CROSS: from bsc
-)
-
 // ChainHeaderReader defines a small collection of methods needed to access the local
 // blockchain during header verification.
 type ChainHeaderReader interface {

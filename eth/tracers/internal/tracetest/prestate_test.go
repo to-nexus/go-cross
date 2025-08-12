@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -94,18 +93,6 @@ func testPrestateTracer(tracerName string, dirPath string, t *testing.T) {
 				state   = tests.MakePreState(rawdb.NewMemoryDatabase(), test.Genesis.Alloc, false, rawdb.HashScheme)
 			)
 			defer state.Close()
-
-			// ##CROSS: legacy sync
-			if test.Genesis.Config.Clique != nil {
-				// If clique is set, mining reward is sent to the consensus.SystemAddress.
-				// Because the tests expect that context.Coinbase is always rewarded,
-				// we override the consensus.SystemAddress to context.Coinbase.
-				consensus.SystemAddress = context.Coinbase
-				defer func() {
-					consensus.SystemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE")
-				}()
-			}
-			// ##
 
 			tracer, err := tracers.DefaultDirectory.New(tracerName, new(tracers.Context), test.TracerConfig, test.Genesis.Config)
 			if err != nil {
