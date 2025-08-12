@@ -157,7 +157,11 @@ type CallMsg struct {
 	BlobGasFeeCap *big.Int
 	BlobHashes    []common.Hash
 
-	// ##fee delegation
+	// For SetCodeTxType
+	AuthorizationList []types.SetCodeAuthorization
+
+	// ##CROSS: fee delegation
+	// For FeeDelegatedDynamicFeeTxType
 	FeePayer *common.Address
 }
 

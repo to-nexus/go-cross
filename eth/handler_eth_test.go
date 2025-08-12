@@ -23,14 +23,13 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -99,8 +98,8 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 		gspecNoFork  = &core.Genesis{Config: configNoFork}
 		gspecProFork = &core.Genesis{Config: configProFork}
 
-		chainNoFork, _  = core.NewBlockChain(dbNoFork, nil, gspecNoFork, nil, engine, vm.Config{}, nil, nil)
-		chainProFork, _ = core.NewBlockChain(dbProFork, nil, gspecProFork, nil, engine, vm.Config{}, nil, nil)
+		chainNoFork, _  = core.NewBlockChain(dbNoFork, nil, gspecNoFork, nil, engine, vm.Config{}, nil)
+		chainProFork, _ = core.NewBlockChain(dbProFork, nil, gspecProFork, nil, engine, vm.Config{}, nil)
 
 		_, blocksNoFork, _  = core.GenerateChainWithGenesis(gspecNoFork, engine, 2, nil)
 		_, blocksProFork, _ = core.GenerateChainWithGenesis(gspecProFork, engine, 2, nil)
@@ -109,18 +108,16 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			Database:   dbNoFork,
 			Chain:      chainNoFork,
 			TxPool:     newTestTxPool(),
-			Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
 			Network:    1,
-			Sync:       downloader.FullSync,
+			Sync:       ethconfig.FullSync,
 			BloomCache: 1,
 		})
 		ethProFork, _ = newHandler(&handlerConfig{
 			Database:   dbProFork,
 			Chain:      chainProFork,
 			TxPool:     newTestTxPool(),
-			Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
 			Network:    1,
-			Sync:       downloader.FullSync,
+			Sync:       ethconfig.FullSync,
 			BloomCache: 1,
 		})
 	)
@@ -263,7 +260,7 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 	var (
 		genesis = handler.chain.Genesis()
 		head    = handler.chain.CurrentBlock()
-		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
+		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64()) // ##CROSS: legacy sync
 	)
 	if err := src.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain)); err != nil {
 		t.Fatalf("failed to run protocol handshake")
@@ -303,8 +300,8 @@ func testSendTransactions(t *testing.T, protocol uint) {
 		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
 		insert[nonce] = tx
 	}
-	go handler.txpool.Add(insert, false, false) // Need goroutine to not block on feed
-	time.Sleep(250 * time.Millisecond)          // Wait until tx events get out of the system (can't use events, tx broadcaster races with peer join)
+	go handler.txpool.Add(insert, false) // Need goroutine to not block on feed
+	time.Sleep(250 * time.Millisecond)   // Wait until tx events get out of the system (can't use events, tx broadcaster races with peer join)
 
 	// Create a source handler to send messages through and a sink peer to receive them
 	p2pSrc, p2pSink := p2p.MsgPipe()
@@ -323,7 +320,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 	var (
 		genesis = handler.chain.Genesis()
 		head    = handler.chain.CurrentBlock()
-		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
+		td      = handler.chain.GetTd(head.Hash(), head.Number.Uint64()) // ##CROSS: legacy sync
 	)
 	if err := sink.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain)); err != nil {
 		t.Fatalf("failed to run protocol handshake")
@@ -393,8 +390,6 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 	}
 	// Interconnect all the sink handlers with the source handler
 	for i, sink := range sinks {
-		sink := sink // Closure for gorotuine below
-
 		sourcePipe, sinkPipe := p2p.MsgPipe()
 		defer sourcePipe.Close()
 		defer sinkPipe.Close()
@@ -426,7 +421,7 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
 		txs[nonce] = tx
 	}
-	source.txpool.Add(txs, false, false)
+	source.txpool.Add(txs, false)
 
 	// Iterate through all the sinks and ensure they all got the transactions
 	for i := range sinks {
@@ -441,6 +436,8 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 		}
 	}
 }
+
+// ##CROSS: legacy sync
 
 // Tests that blocks are broadcast to a sqrt number of peers only.
 func TestBroadcastBlock1Peer(t *testing.T)    { testBroadcastBlock(t, 1, 1) }
@@ -586,7 +583,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 
 	// Try to broadcast all malformations and ensure they all get discarded
 	for _, header := range []*types.Header{malformedUncles, malformedTransactions, malformedEverything} {
-		block := types.NewBlockWithHeader(header).WithBody(block.Transactions(), block.Uncles())
+		block := types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: block.Transactions(), Uncles: block.Uncles()})
 		if err := src.SendNewBlock(block, big.NewInt(131136)); err != nil {
 			t.Fatalf("failed to broadcast block: %v", err)
 		}
@@ -597,3 +594,5 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 		}
 	}
 }
+
+// ##
