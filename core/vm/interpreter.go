@@ -109,6 +109,8 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	case evm.chainRules.IsVerkle:
 		// TODO replace with proper instruction set when fork is specified
 		table = &verkleInstructionSet
+	case evm.chainRules.IsBreakpoint: // ##CROSS: fork breakpoint
+		table = &breakpointInstructionSet
 	case evm.chainRules.IsPrague:
 		table = &pragueInstructionSet
 	case evm.chainRules.IsCancun:

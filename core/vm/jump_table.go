@@ -63,6 +63,7 @@ var (
 	cancunInstructionSet           = newCancunInstructionSet()
 	verkleInstructionSet           = newVerkleInstructionSet()
 	pragueInstructionSet           = newPragueInstructionSet()
+	breakpointInstructionSet       = newBreakpointInstructionSet() // ##CROSS: fork breakpoint
 	eofInstructionSet              = newEOFInstructionSetForTesting()
 )
 
@@ -102,6 +103,14 @@ func newEOFInstructionSetForTesting() JumpTable {
 	enableEOF(&instructionSet)
 	return validate(instructionSet)
 }
+
+// ##CROSS: fork breakpoint
+func newBreakpointInstructionSet() JumpTable {
+	instructionSet := newPragueInstructionSet()
+	return validate(instructionSet)
+}
+
+// ##
 
 func newPragueInstructionSet() JumpTable {
 	instructionSet := newCancunInstructionSet()

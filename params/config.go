@@ -79,6 +79,7 @@ var (
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
 		PragueTime:              nil,
+		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
@@ -141,6 +142,7 @@ var (
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
 		PragueTime:              nil,
+		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
@@ -190,6 +192,7 @@ var (
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
 		PragueTime:              nil,
+		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
@@ -235,6 +238,7 @@ var (
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
 		PragueTime:              nil,
+		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
@@ -425,10 +429,11 @@ var (
 		ArrowGlacierBlock:       big.NewInt(0),
 		GrayGlacierBlock:        big.NewInt(0),
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           nil, // ##CROSS: fork
+		AdventureTime:           newUint64(0), // ##CROSS: fork
 		CancunTime:              newUint64(0),
 		TerminalTotalDifficulty: big.NewInt(0),
 		PragueTime:              newUint64(0),
+		BreakpointTime:          newUint64(0), // ##CROSS: fork breakpoint
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfig,
@@ -519,6 +524,7 @@ var (
 		AdventureTime:           nil, // ##CROSS: fork
 		CancunTime:              newUint64(0),
 		PragueTime:              newUint64(0),
+		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		TerminalTotalDifficulty: big.NewInt(0),
@@ -634,12 +640,13 @@ type ChainConfig struct {
 
 	// Fork scheduling was switched from blocks to timestamps here
 
-	ShanghaiTime  *uint64 `json:"shanghaiTime,omitempty"`  // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	AdventureTime *uint64 `json:"adventureTime,omitempty"` // Adventure switch time (nil = no fork, 0 = already on AdventureTime) ##CROSS: fork
-	CancunTime    *uint64 `json:"cancunTime,omitempty"`    // Cancun switch time (nil = no fork, 0 = already on cancun)
-	PragueTime    *uint64 `json:"pragueTime,omitempty"`    // Prague switch time (nil = no fork, 0 = already on prague)
-	OsakaTime     *uint64 `json:"osakaTime,omitempty"`     // Osaka switch time (nil = no fork, 0 = already on osaka)
-	VerkleTime    *uint64 `json:"verkleTime,omitempty"`    // Verkle switch time (nil = no fork, 0 = already on verkle)
+	ShanghaiTime   *uint64 `json:"shanghaiTime,omitempty"`   // Shanghai switch time (nil = no fork, 0 = already on shanghai)
+	AdventureTime  *uint64 `json:"adventureTime,omitempty"`  // Adventure switch time (nil = no fork, 0 = already on adventure) ##CROSS: fork
+	CancunTime     *uint64 `json:"cancunTime,omitempty"`     // Cancun switch time (nil = no fork, 0 = already on cancun)
+	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
+	BreakpointTime *uint64 `json:"breakpointTime,omitempty"` // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
+	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
+	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
@@ -765,6 +772,11 @@ func (c *ChainConfig) Description() string {
 	if c.PragueTime != nil {
 		banner += fmt.Sprintf(" - Prague:                      @%-10v\n", *c.PragueTime)
 	}
+	// ##CROSS: fork breakpoint
+	if c.BreakpointTime != nil {
+		banner += fmt.Sprintf(" - Breakpoint:                  @%-10v\n", *c.BreakpointTime)
+	}
+	// ##
 	if c.OsakaTime != nil {
 		banner += fmt.Sprintf(" - Osaka:                       @%-10v\n", *c.OsakaTime)
 	}
@@ -874,8 +886,8 @@ func (c *ChainConfig) IsShanghai(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.ShanghaiTime, time)
 }
 
-// IsAdventure returns whether time is either equal to the Adventure fork time or greater. ##CROSS: fork
-func (c *ChainConfig) IsAdventure(num *big.Int, time uint64) bool {
+// IsAdventure returns whether time is either equal to the Adventure fork time or greater.
+func (c *ChainConfig) IsAdventure(num *big.Int, time uint64) bool { // ##CROSS: fork
 	return c.IsLondon(num) && isTimestampForked(c.AdventureTime, time)
 }
 
@@ -887,6 +899,11 @@ func (c *ChainConfig) IsCancun(num *big.Int, time uint64) bool {
 // IsPrague returns whether time is either equal to the Prague fork time or greater.
 func (c *ChainConfig) IsPrague(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.PragueTime, time)
+}
+
+// IsBreakpoint returns whether time is either equal to the Breakpoint fork time or greater.
+func (c *ChainConfig) IsBreakpoint(num *big.Int, time uint64) bool { // ##CROSS: fork breakpoint
+	return c.IsLondon(num) && isTimestampForked(c.BreakpointTime, time)
 }
 
 // IsOsaka returns whether time is either equal to the Osaka fork time or greater.
@@ -983,6 +1000,9 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		// ##
 		{name: "cancunTime", timestamp: c.CancunTime, optional: true},
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
+		// ##CROSS: fork breakpoint
+		{name: "breakpointTime", timestamp: c.BreakpointTime, optional: true},
+		// ##
 		{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
@@ -1133,6 +1153,11 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.PragueTime, newcfg.PragueTime, headTimestamp) {
 		return newTimestampCompatError("Prague fork timestamp", c.PragueTime, newcfg.PragueTime)
 	}
+	// ##CROSS: fork breakpoint
+	if isForkTimestampIncompatible(c.BreakpointTime, newcfg.BreakpointTime, headTimestamp) {
+		return newTimestampCompatError("Breakpoint fork timestamp", c.BreakpointTime, newcfg.BreakpointTime)
+	}
+	// ##
 	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
 		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
 	}
@@ -1160,6 +1185,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	switch {
 	case c.IsOsaka(london, time):
 		return forks.Osaka
+	case c.IsBreakpoint(london, time): // ##CROSS: fork breakpoint
+		return forks.Breakpoint
 	case c.IsPrague(london, time):
 		return forks.Prague
 	case c.IsCancun(london, time):
@@ -1179,6 +1206,8 @@ func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
 	case fork == forks.Osaka:
 		return c.OsakaTime
+	case fork == forks.Breakpoint: // ##CROSS: fork breakpoint
+		return c.BreakpointTime
 	case fork == forks.Prague:
 		return c.PragueTime
 	case fork == forks.Cancun:
@@ -1332,10 +1361,9 @@ type Rules struct {
 	IsEIP2929, IsEIP4762                                    bool
 	IsByzantium, IsConstantinople, IsPetersburg, IsIstanbul bool
 	IsBerlin, IsLondon                                      bool
-	IsMerge, IsShanghai                                     bool
-	IsAdventure                                             bool // ##CROSS: fork
-	IsCancun, IsPrague, IsOsaka                             bool
+	IsMerge, IsShanghai, IsCancun, IsPrague, IsOsaka        bool
 	IsVerkle                                                bool
+	IsAdventure, IsBreakpoint                               bool // ##CROSS: fork
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -1347,6 +1375,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 	// disallow setting Merge out of order
 	isMerge = isMerge && c.IsLondon(num)
 	isVerkle := isMerge && c.IsVerkle(num, timestamp)
+	isAdventure := c.IsAdventure(num, timestamp) // ##CROSS: fork
 	return Rules{
 		ChainID:          new(big.Int).Set(chainID),
 		IsHomestead:      c.IsHomestead(num),
@@ -1361,10 +1390,11 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsEIP2929:        c.IsBerlin(num) && !isVerkle,
 		IsLondon:         c.IsLondon(num),
 		IsMerge:          isMerge,
-		IsShanghai:       isMerge && c.IsShanghai(num, timestamp),
-		IsAdventure:      c.IsAdventure(num, timestamp), // ##CROSS: fork
-		IsCancun:         isMerge && c.IsCancun(num, timestamp),
-		IsPrague:         isMerge && c.IsPrague(num, timestamp),
+		IsShanghai:       (isMerge || isAdventure) && c.IsShanghai(num, timestamp),
+		IsAdventure:      isAdventure, // ##CROSS: fork
+		IsCancun:         (isMerge || isAdventure) && c.IsCancun(num, timestamp),
+		IsPrague:         (isMerge || isAdventure) && c.IsPrague(num, timestamp),
+		IsBreakpoint:     c.IsBreakpoint(num, timestamp), // ##CROSS: fork breakpoint
 		IsOsaka:          isMerge && c.IsOsaka(num, timestamp),
 		IsVerkle:         isVerkle,
 		IsEIP4762:        isVerkle,

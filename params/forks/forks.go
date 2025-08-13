@@ -40,6 +40,7 @@ const (
 	Adventure // ##CROSS: fork
 	Cancun
 	Prague
+	Breakpoint // ##CROSS: fork breakpoint
 	Osaka
 )
 
@@ -73,5 +74,6 @@ var forkToString = map[Fork]string{
 	Adventure:        "Adventure", // ##CROSS: fork
 	Cancun:           "Cancun",
 	Prague:           "Prague",
+	Breakpoint:       "Breakpoint", // ##CROSS: fork breakpoint
 	Osaka:            "Osaka",
 }

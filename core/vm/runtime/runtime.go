@@ -57,9 +57,10 @@ type Config struct {
 func setDefaults(cfg *Config) {
 	if cfg.ChainConfig == nil {
 		var (
-			shanghaiTime  = uint64(0)
-			cancunTime    = uint64(0)
-			adventureTime = uint64(0) // ##CROSS: fork
+			shanghaiTime   = uint64(0)
+			cancunTime     = uint64(0)
+			adventureTime  = uint64(0) // ##CROSS: fork
+			breakpointTime = uint64(0) // ##CROSS: fork breakpoint
 		)
 		cfg.ChainConfig = &params.ChainConfig{
 			ChainID:                 big.NewInt(1),
@@ -82,7 +83,9 @@ func setDefaults(cfg *Config) {
 			MergeNetsplitBlock:      nil,
 			ShanghaiTime:            &shanghaiTime,
 			AdventureTime:           &adventureTime, // ##CROSS: fork
-			CancunTime:              &cancunTime}
+			CancunTime:              &cancunTime,
+			BreakpointTime:          &breakpointTime, // ##CROSS: fork breakpoint
+		}
 	}
 	if cfg.Difficulty == nil {
 		cfg.Difficulty = new(big.Int)

@@ -42,6 +42,8 @@ type sigCache struct {
 func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint64) Signer {
 	var signer Signer
 	switch {
+	case config.IsBreakpoint(blockNumber, blockTime): // ##CROSS: fork breakpoint
+		signer = NewBreakpointSigner(config.ChainID)
 	case config.IsPrague(blockNumber, blockTime):
 		signer = NewPragueSigner(config.ChainID)
 	case config.IsCancun(blockNumber, blockTime):
@@ -73,6 +75,8 @@ func LatestSigner(config *params.ChainConfig) Signer {
 	var signer Signer
 	if config.ChainID != nil {
 		switch {
+		case config.BreakpointTime != nil: // ##CROSS: fork breakpoint
+			signer = NewBreakpointSigner(config.ChainID)
 		case config.PragueTime != nil:
 			signer = NewPragueSigner(config.ChainID)
 		case config.CancunTime != nil:
@@ -348,6 +352,18 @@ func (s *modernSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *bi
 	R, S, _ = decodeSignature(sig)
 	V = big.NewInt(int64(sig[64]))
 	return R, S, V, nil
+}
+
+// ##CROSS: fork breakpoint
+// NewBreakpointSigner returns a signer that accepts
+// - EIP-7702 set code transactions
+// - fee delegated dynamic fee transactions (treats them as normal dynamic fee transactions)
+// - EIP-1559 dynamic fee transactions
+// - EIP-2930 access list transactions,
+// - EIP-155 replay protected transactions, and
+// - legacy Homestead transactions.
+func NewBreakpointSigner(chainId *big.Int) Signer {
+	return newModernSigner(chainId, forks.Breakpoint)
 }
 
 // NewPragueSigner returns a signer that accepts
