@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -10,12 +11,17 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -151,6 +157,42 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return istanbul.ErrInvalidDifficulty
 	}
 
+	// Verify the existence / non-existence of cancun-specific header fields
+	cancun := chain.Config().IsCancun(header.Number, header.Time)
+	if !cancun {
+		switch {
+		case header.ExcessBlobGas != nil:
+			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
+		case header.BlobGasUsed != nil:
+			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
+		case header.WithdrawalsHash != nil && header.Number.Uint64() > 0:
+			// ##CROSS: fork
+			// Withdrawals root was at genesis but not in blocks between genesis and cancun activation.
+			// So we check if withdrawals root exists in block between genesis and cancun activation.
+			return fmt.Errorf("invalid withdrawalsHash: have %x, expected nil", header.WithdrawalsHash)
+		case header.ParentBeaconRoot != nil:
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		}
+	} else {
+		switch {
+		case !header.EmptyWithdrawalsHash():
+			return errors.New("header has wrong WithdrawalsHash")
+		case header.ParentBeaconRoot == nil || *header.ParentBeaconRoot != (common.Hash{}):
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected zero hash", header.ParentBeaconRoot)
+		}
+	}
+
+	prague := chain.Config().IsPrague(header.Number, header.Time)
+	if !prague {
+		if header.RequestsHash != nil {
+			return fmt.Errorf("invalid RequestsHash, have %#x, expected nil", header.RequestsHash)
+		}
+	} else {
+		if header.RequestsHash == nil {
+			return errors.New("header has nil RequestsHash after Prague")
+		}
+	}
+
 	return e.verifyCascadingFields(chain, header, validators, parents)
 }
 
@@ -210,6 +252,26 @@ func (e *Engine) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	// e.g when blockperiod is 1 from block 10 the block period between 9 and 10 is 1
 	if parent.Time+e.cfg.GetConfig(header.Number).BlockPeriod > header.Time {
 		return istanbul.ErrInvalidTimestamp
+	}
+
+	// Verify that the gas limit is <= 2^63-1
+	if header.GasLimit > params.MaxGasLimit {
+		return fmt.Errorf("invalid gasLimit: have %v, max %v", header.GasLimit, params.MaxGasLimit)
+	}
+	// Verify that the gasUsed is <= gasLimit
+	if header.GasUsed > header.GasLimit {
+		return fmt.Errorf("invalid gasUsed: have %d, gasLimit %d", header.GasUsed, header.GasLimit)
+	}
+
+	// Verify the header's EIP-1559 attributes.
+	if err := eip1559.VerifyEIP1559Header(chain.Config(), parent, header); err != nil {
+		return err
+	}
+	if chain.Config().IsCancun(header.Number, header.Time) {
+		// Verify the header's EIP-4844 attributes.
+		if err := eip4844.VerifyEIP4844Header(chain.Config(), parent, header); err != nil {
+			return err
+		}
 	}
 
 	// Verify signer
@@ -400,6 +462,16 @@ func WriteRandomReveal(signature []byte) ApplyExtra {
 // Note, the block header and state database might be updated to reflect any
 // consensus rules that happen at finalization (e.g. block rewards).
 func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
+	// Withdrawals processing.
+	if body != nil {
+		for _, w := range body.Withdrawals {
+			// Convert amount from gwei to wei.
+			amount := new(uint256.Int).SetUint64(w.Amount)
+			amount = amount.Mul(amount, uint256.NewInt(params.GWei))
+			state.AddBalance(w.Address, amount, tracing.BalanceIncreaseWithdrawal)
+		}
+	}
+
 	// Accumulate any block and uncle rewards and commit the final state root
 	e.accumulateRewards(chain, state, header)
 
@@ -410,6 +482,22 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, error) {
+	// ##CROSS: fork
+	// Withdrawals root should be set after Shanghai but it was missing.
+	// So we set it after Cancun here to activate Cancun correctly.
+	if body != nil {
+		if chain.Config().IsCancun(header.Number, header.Time) {
+			if body.Withdrawals == nil {
+				body.Withdrawals = make([]*types.Withdrawal, 0)
+			}
+		} else {
+			if len(body.Withdrawals) > 0 {
+				return nil, errors.New("withdrawals set before Cancun activation")
+			}
+		}
+	}
+	// ##
+
 	e.Finalize(chain, header, state, body)
 	// Assemble and return the final block for sealing
 	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), nil

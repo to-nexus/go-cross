@@ -1724,6 +1724,15 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	if emitHeadEvent {
 		bc.chainHeadFeed.Send(ChainHeadEvent{Header: block.Header()})
 	}
+
+	// ##CROSS: istanbul
+	if bc.chainConfig.Istanbul != nil {
+		// In Istanbul consensus engine, the latest block is always safe and finalized.
+		bc.SetSafe(block.Header())
+		bc.SetFinalized(block.Header())
+	}
+	// ##
+
 	return CanonStatTy, nil
 }
 

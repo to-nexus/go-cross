@@ -429,11 +429,9 @@ var (
 		ArrowGlacierBlock:       big.NewInt(0),
 		GrayGlacierBlock:        big.NewInt(0),
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork
 		CancunTime:              newUint64(0),
 		TerminalTotalDifficulty: big.NewInt(0),
 		PragueTime:              newUint64(0),
-		BreakpointTime:          newUint64(0), // ##CROSS: fork breakpoint
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfig,
@@ -521,10 +519,8 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		MergeNetsplitBlock:      big.NewInt(0),
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           nil, // ##CROSS: fork
 		CancunTime:              newUint64(0),
 		PragueTime:              newUint64(0),
-		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		TerminalTotalDifficulty: big.NewInt(0),

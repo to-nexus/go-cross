@@ -28,11 +28,13 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/testutils"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 )
 
@@ -88,7 +90,7 @@ func copyConfig(config *istanbul.Config) *istanbul.Config {
 	return &cpy
 }
 
-func makeHeader(parent *types.Block, config *istanbul.Config) *types.Header {
+func makeHeader(parent *types.Block, config *istanbul.Config, chainConfig *params.ChainConfig) *types.Header {
 	blockNumber := parent.Number().Add(parent.Number(), common.Big1)
 	header := &types.Header{
 		ParentHash: parent.Hash(),
@@ -97,7 +99,17 @@ func makeHeader(parent *types.Block, config *istanbul.Config) *types.Header {
 		GasUsed:    0,
 		Time:       parent.Time() + config.GetConfig(blockNumber).BlockPeriod,
 		Difficulty: istanbul.DefaultDifficulty,
+		BaseFee:    big.NewInt(1000000000), // EIP-1559 is always active
 	}
+	// ##CROSS: fork
+	if chainConfig.IsLondon(blockNumber) {
+		header.BaseFee = eip1559.CalcBaseFee(chainConfig, parent.Header())
+	}
+	if chainConfig.IsCancun(blockNumber, header.Time) {
+		header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+		header.ParentBeaconRoot = new(common.Hash)
+	}
+	// ##
 	return header
 }
 
@@ -111,7 +123,7 @@ func makeBlock(chain *core.BlockChain, engine *Backend, parent *types.Block) *ty
 }
 
 func makeBlockWithoutSeal(chain *core.BlockChain, engine *Backend, parent *types.Block) *types.Block {
-	header := makeHeader(parent, engine.config)
+	header := makeHeader(parent, engine.config, chain.Config())
 	engine.Prepare(chain, header)
 	state, _ := chain.StateAt(parent.Root())
 	block, _ := engine.FinalizeAndAssemble(chain, header, state, nil, nil)
@@ -121,7 +133,7 @@ func makeBlockWithoutSeal(chain *core.BlockChain, engine *Backend, parent *types
 func TestPrepare(t *testing.T) {
 	chain, engine := newBlockChain(1)
 	defer engine.Stop()
-	header := makeHeader(chain.Genesis(), engine.config)
+	header := makeHeader(chain.Genesis(), engine.config, chain.Config())
 	err := engine.Prepare(chain, header)
 	if err != nil {
 		t.Errorf("error mismatch: have %v, want nil", err)
