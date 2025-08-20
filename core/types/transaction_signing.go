@@ -289,7 +289,9 @@ func newModernSigner(chainID *big.Int, fork forks.Fork) Signer {
 	}
 	if fork >= forks.London {
 		s.txtypes[DynamicFeeTxType] = struct{}{}
-		s.txtypes[FeeDelegatedDynamicFeeTxType] = struct{}{} // ##CROSS: fork
+	}
+	if fork >= forks.Adventure { // ##CROSS: fork
+		s.txtypes[FeeDelegatedDynamicFeeTxType] = struct{}{}
 	}
 	if fork >= forks.Cancun {
 		s.txtypes[BlobTxType] = struct{}{}
