@@ -29,19 +29,20 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// ##CROSS: fee delegation
 // TestFeeDelegationSigning verifies the fee-delegation (gas fee sponsorship) mechanism in EIP-1559 transactions.
 // It demonstrates how an original DynamicFeeTx can be wrapped into a FeeDelegatedDynamicFeeTx,
 // allowing a separate payer address to cover gas fees without changing the original sender.
 func TestFeeDelegationSigning(t *testing.T) {
 	var (
-		senderKey    *ecdsa.PrivateKey
-		sender       common.Address
-		payerKey     *ecdsa.PrivateKey
-		payer        common.Address
-		londonSigner Signer // Replace with your actual type or interface
-		feepaySigner Signer // Replace with your actual type or interface
-		senderTx     *Transaction
-		feepayTx     *Transaction
+		senderKey           *ecdsa.PrivateKey
+		sender              common.Address
+		feePayerKey         *ecdsa.PrivateKey
+		feePayer            common.Address
+		modernSigner        Signer
+		feeDelegationSigner Signer
+		senderTx            *Transaction
+		feeDelegationTx     *Transaction
 	)
 
 	// generate key pairs
@@ -53,16 +54,16 @@ func TestFeeDelegationSigning(t *testing.T) {
 	sender = crypto.PubkeyToAddress(senderKey.PublicKey)
 	t.Log("Sender Address:", sender)
 
-	payerKey, err = crypto.GenerateKey()
+	feePayerKey, err = crypto.GenerateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	payer = crypto.PubkeyToAddress(payerKey.PublicKey)
-	t.Log("Payer Address:", payer)
+	feePayer = crypto.PubkeyToAddress(feePayerKey.PublicKey)
+	t.Log("FeePayer Address:", feePayer)
 
 	// initialize signers (e.g., chain ID 18)
-	londonSigner = NewLondonSigner(big.NewInt(18))
-	feepaySigner = NewFeeDelegationSigner(big.NewInt(18))
+	modernSigner = LatestSignerForChainID(big.NewInt(18))
+	feeDelegationSigner = NewFeeDelegationSigner(big.NewInt(18))
 
 	// Create and sign a DynamicFeeTx by the sender
 	t.Run("Sign sender's EIP-1559 transaction", func(t *testing.T) {
@@ -75,7 +76,7 @@ func TestFeeDelegationSigning(t *testing.T) {
 			To:        nil,
 			Value:     big.NewInt(30),
 			Data:      []byte{},
-		}), londonSigner, senderKey)
+		}), modernSigner, senderKey)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,10 +85,10 @@ func TestFeeDelegationSigning(t *testing.T) {
 	// Wrap the sender's transaction into a FeeDelegatedDynamicFeeTx, set fee payer, and sign
 	t.Run("Sign fee-delegated transaction", func(t *testing.T) {
 		var err error
-		feepayTx, err = SignTx(NewTx(func() *FeeDelegatedDynamicFeeTx {
+		feeDelegationTx, err = SignTx(NewTx(func() *FeeDelegatedDynamicFeeTx {
 			// Copy the original senderTx's inner DynamicFeeTx
-			return NewFeeDelegatedDynamicFeeTx(&payer, *senderTx.inner.(*DynamicFeeTx))
-		}()), feepaySigner, payerKey)
+			return NewFeeDelegatedDynamicFeeTx(&feePayer, *senderTx.inner.(*DynamicFeeTx))
+		}()), feeDelegationSigner, feePayerKey)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,26 +96,36 @@ func TestFeeDelegationSigning(t *testing.T) {
 
 	// Verify that both the original and fee-delegated transactions share the same hash
 	t.Run("Verify transaction hashes match", func(t *testing.T) {
-		if senderTx.Hash() != feepayTx.Hash() {
+		if senderHash, feeDelegationHash := senderTx.Hash(), feeDelegationTx.Hash(); senderHash != feeDelegationHash {
 			t.Fatal("Mismatch in hash:",
-				"senderTx", senderTx.Hash(),
-				"feepayTx", feepayTx.Hash())
+				"senderTx", senderHash,
+				"feeDelegationTx", feeDelegationHash)
 		}
 	})
 
-	// Verify that both the signing feepayer and transaction's feepayer are same
-	t.Run("Verify transaction's feepayer", func(t *testing.T) {
-		if feepayTx.FeePayer() == nil {
-			t.Fatal("feepayTx.FeePayer() == nil")
-		}
-		if *feepayTx.FeePayer() != payer {
-			t.Fatal("Mismatch feepayer tx and signed :", "tx", *feepayTx.FeePayer(), "signed", payer)
+	t.Run("Verify signers' hashes doesn't match", func(t *testing.T) {
+		hash := modernSigner.Hash(senderTx)
+		feeDelegationHash := feeDelegationSigner.Hash(feeDelegationTx)
+		if hash == feeDelegationHash {
+			t.Fatal("ModernSigner.Hash and FeeDelegationSigner.Hash should not be the same",
+				"hash", hash,
+				"feeDelegationHash", feeDelegationHash)
 		}
 	})
 
-	// Check the sender address of the original transaction using the LondonSigner
-	t.Run("Check sender of senderTx with LondonSigner", func(t *testing.T) {
-		got, err := londonSigner.Sender(senderTx)
+	// Verify that both the signing fee payer and transaction's fee payer are same
+	t.Run("Verify transaction's fee payer", func(t *testing.T) {
+		if feeDelegationTx.FeePayer() == nil {
+			t.Fatal("feeDelegationTx.FeePayer() == nil")
+		}
+		if *feeDelegationTx.FeePayer() != feePayer {
+			t.Fatal("Mismatch feeDelegationTx and signed:", "tx", *feeDelegationTx.FeePayer(), "signed", feePayer)
+		}
+	})
+
+	// Check the sender address of the original transaction using the ModernSigner
+	t.Run("Check sender of senderTx with ModernSigner", func(t *testing.T) {
+		got, err := modernSigner.Sender(senderTx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,53 +135,53 @@ func TestFeeDelegationSigning(t *testing.T) {
 	})
 
 	// Check the fee payer of the fee-delegated transaction using FeeDelegationSigner
-	t.Run("Check payer of feepayTx with FeeDelegationSigner", func(t *testing.T) {
-		got, err := feepaySigner.Sender(feepayTx)
+	t.Run("Check payer of feeDelegationTx with FeeDelegationSigner", func(t *testing.T) {
+		got, err := feeDelegationSigner.Sender(feeDelegationTx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != payer {
-			t.Fatalf("Mismatch payer: got %v, want %v", got, payer)
+		if got != feePayer {
+			t.Fatalf("Mismatch payer: got %v, want %v", got, feePayer)
 		}
 	})
 
-	// Compare LondonSigner.Sender(feepayTx) with FeePayer() for feepayTx
-	t.Run("Compare LondonSigner.Sender(feepayTx) with FeePayer()", func(t *testing.T) {
-		expectedSender, err := londonSigner.Sender(feepayTx)
+	// Compare ModernSigner.Sender(feeDelegationTx) with FeePayer() for feeDelegationTx
+	t.Run("Compare ModernSigner.Sender(feeDelegationTx) with FeePayer()", func(t *testing.T) {
+		expectedSender, err := modernSigner.Sender(feeDelegationTx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		expectedPayer, err := FeePayer(londonSigner, feepayTx)
+		expectedFeePayer, err := FeePayer(modernSigner, feeDelegationTx)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if expectedSender != expectedPayer {
-			t.Fatal("Mismatch in payer between londonSigner.Sender and FeePayer:",
+		if expectedSender == expectedFeePayer {
+			t.Fatal("Fee payer and sender should not be the same:",
 				"expectedSender", expectedSender,
-				"expectedPayer", expectedPayer)
+				"expectedPayer", expectedFeePayer)
 		}
 
 		// The actual fee payer should not match the original sender
-		if expectedPayer != sender {
-			t.Fatal("Mismatch payer:", "expectedPayer", expectedPayer, "want", payer)
+		if expectedFeePayer == sender {
+			t.Fatal("Mismatch payer:", "expectedPayer", expectedFeePayer, "want", feePayer)
 		}
 	})
 
 	// Verify the sender of the original senderTx with the FeeDelegationSigner
 	t.Run("Check senderTx with FeeDelegationSigner", func(t *testing.T) {
-		got, err := feepaySigner.Sender(senderTx)
+		got, err := feeDelegationSigner.Sender(senderTx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got != sender {
-			t.Fatalf("Mismatch sender with feepaySigner: got %v, want %v", got, sender)
+			t.Fatalf("Mismatch sender with feeDelegationSigner: got %v, want %v", got, sender)
 		}
 	})
 
-	// Verify the sender of the fee-delegated transaction using the LondonSigner
-	t.Run("Check feepayTx with LondonSigner", func(t *testing.T) {
-		got, err := londonSigner.Sender(feepayTx)
+	// Verify the sender of the fee-delegated transaction using the ModernSigner
+	t.Run("Check feeDelegationTx with ModernSigner", func(t *testing.T) {
+		got, err := modernSigner.Sender(feeDelegationTx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -179,6 +190,8 @@ func TestFeeDelegationSigning(t *testing.T) {
 		}
 	})
 }
+
+// ##
 
 func TestEIP155Signing(t *testing.T) {
 	key, _ := crypto.GenerateKey()
