@@ -481,26 +481,33 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, error) {
+func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
 	// ##CROSS: fork
 	// Withdrawals root should be set after Shanghai but it was missing.
 	// So we set it after Cancun here to activate Cancun correctly.
 	if body != nil {
+		if body.Transactions == nil {
+			body.Transactions = make([]*types.Transaction, 0)
+		}
 		if chain.Config().IsCancun(header.Number, header.Time) {
 			if body.Withdrawals == nil {
 				body.Withdrawals = make([]*types.Withdrawal, 0)
 			}
 		} else {
 			if len(body.Withdrawals) > 0 {
-				return nil, errors.New("withdrawals set before Cancun activation")
+				return nil, nil, errors.New("withdrawals set before Cancun activation")
 			}
 		}
+	}
+	if receipts == nil {
+		receipts = make([]*types.Receipt, 0)
 	}
 	// ##
 
 	e.Finalize(chain, header, state, body)
 	// Assemble and return the final block for sealing
-	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), nil
+	blk := types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
+	return blk, receipts, nil
 }
 
 // Seal generates a new block for the given input block with the local miner's

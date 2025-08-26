@@ -251,7 +251,25 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return h.chain.InsertChain(blocks)
 	}
-	h.blockFetcher = fetcher.NewBlockFetcher(false, nil, h.chain.GetBlockByHash, validator, h.BroadcastBlock, heighter, nil, inserter, h.removePeer)
+
+	broadcastBlockWithCheck := func(block *types.Block, propagate bool) {
+		if propagate {
+			if !(block.Header().WithdrawalsHash == nil && block.Withdrawals() == nil) &&
+				!(block.Header().EmptyWithdrawalsHash() && block.Withdrawals() != nil && len(block.Withdrawals()) == 0) {
+				log.Error("Propagated block has invalid withdrawals")
+				return
+			}
+			// ##CROSS: blob sidecars
+			if err := core.IsDataAvailable(h.chain, block); err != nil {
+				log.Error("Propagating block with invalid sidecars", "number", block.Number(), "hash", block.Hash(), "err", err)
+				return
+			}
+			// ##
+		}
+		h.BroadcastBlock(block, propagate)
+	}
+
+	h.blockFetcher = fetcher.NewBlockFetcher(false, nil, h.chain.GetBlockByHash, validator, broadcastBlockWithCheck, heighter, nil, inserter, h.removePeer)
 	// ##
 
 	fetchTx := func(peer string, hashes []common.Hash) error {

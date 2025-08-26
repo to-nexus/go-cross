@@ -52,6 +52,9 @@ type BlockGen struct {
 	withdrawals []*types.Withdrawal
 
 	engine consensus.Engine
+
+	// extra data of block
+	sidecars types.BlobSidecars // ##CROSS: blob sidecars
 }
 
 // SetCoinbase sets the coinbase of the generated block.
@@ -179,6 +182,11 @@ func (b *BlockGen) AddUncheckedTx(tx *types.Transaction) {
 	b.txs = append(b.txs, tx)
 }
 
+// AddBlobSidecar add block's blob sidecar for DA checking.
+func (b *BlockGen) AddBlobSidecar(sidecar *types.BlobSidecar) { // ##CROSS: blob sidecars
+	b.sidecars = append(b.sidecars, sidecar)
+}
+
 // Number returns the block number of the block being generated.
 func (b *BlockGen) Number() *big.Int {
 	return new(big.Int).Set(b.header.Number)
@@ -192,6 +200,15 @@ func (b *BlockGen) Timestamp() uint64 {
 // BaseFee returns the EIP-1559 base fee of the block being generated.
 func (b *BlockGen) BaseFee() *big.Int {
 	return new(big.Int).Set(b.header.BaseFee)
+}
+
+// ExcessBlobGas returns the EIP-4844 ExcessBlobGas of the block.
+func (b *BlockGen) ExcessBlobGas() uint64 {
+	excessBlobGas := b.header.ExcessBlobGas
+	if excessBlobGas == nil {
+		return 0
+	}
+	return *excessBlobGas
 }
 
 // Gas returns the amount of gas left in the current block.
@@ -413,10 +430,19 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		}
 
 		body := types.Body{Transactions: b.txs, Uncles: b.uncles, Withdrawals: b.withdrawals}
-		block, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, &body, b.receipts)
+		block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, &body, b.receipts)
 		if err != nil {
 			panic(err)
 		}
+		// ##CROSS: blob sidecars
+		if config.IsCancun(block.Number(), block.Time()) {
+			for _, s := range b.sidecars {
+				s.BlockNumber = block.Number()
+				s.BlockHash = block.Hash()
+			}
+			block = block.WithSidecars(b.sidecars)
+		}
+		// ##
 
 		// Write state changes to db
 		root, err := statedb.Commit(b.header.Number.Uint64(), config.IsEIP158(b.header.Number), config.IsCancun(b.header.Number, b.header.Time))
@@ -523,7 +549,7 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 			Uncles:       b.uncles,
 			Withdrawals:  b.withdrawals,
 		}
-		block, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, body, b.receipts)
+		block, _, err := b.engine.FinalizeAndAssemble(cm, b.header, statedb, body, b.receipts)
 		if err != nil {
 			panic(err)
 		}

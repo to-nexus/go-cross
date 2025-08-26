@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -1795,6 +1796,15 @@ func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme s
 		config.SnapshotLimit = 256
 		config.SnapshotWait = true
 	}
+
+	// ##CROSS: additional databse tables
+	if err = db.SetupFreezerEnv(&ethdb.FreezerEnv{
+		ChainCfg:         gspec.Config,
+		BlobExtraReserve: params.DefaultExtraReserveForBlobRequests,
+	}); err != nil {
+		t.Fatalf("Failed to create chain: %v", err)
+	}
+	// ##
 	chain, err := NewBlockChain(db, config, gspec, nil, engine, vm.Config{}, nil)
 	if err != nil {
 		t.Fatalf("Failed to create chain: %v", err)

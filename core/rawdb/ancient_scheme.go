@@ -38,6 +38,9 @@ const (
 
 	// ChainFreezerDifficultyTable indicates the name of the freezer total difficulty table.
 	ChainFreezerDifficultyTable = "diffs" // ##CROSS: legacy sync
+
+	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
+	ChainFreezerBlobSidecarTable = "blobs" // ##CROSS: blob sidecars
 )
 
 // chainFreezerTableConfigs configures the settings for tables in the chain freezer.
@@ -45,12 +48,15 @@ const (
 // tail truncation is disabled for the header and hash tables, as these are intended
 // to be retained long-term.
 var chainFreezerTableConfigs = map[string]freezerTableConfig{
-	ChainFreezerHeaderTable:     {noSnappy: false, prunable: false},
-	ChainFreezerHashTable:       {noSnappy: true, prunable: false},
-	ChainFreezerBodiesTable:     {noSnappy: false, prunable: true},
-	ChainFreezerReceiptTable:    {noSnappy: false, prunable: true},
-	ChainFreezerDifficultyTable: {noSnappy: true, prunable: true}, // ##CROSS: legacy sync
+	ChainFreezerHeaderTable:      {noSnappy: false, prunable: false},
+	ChainFreezerHashTable:        {noSnappy: true, prunable: false},
+	ChainFreezerBodiesTable:      {noSnappy: false, prunable: true},
+	ChainFreezerReceiptTable:     {noSnappy: false, prunable: true},
+	ChainFreezerDifficultyTable:  {noSnappy: true, prunable: true},  // ##CROSS: legacy sync
+	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true}, // ##CROSS: blob sidecars
 }
+
+var additionTables = []string{ChainFreezerBlobSidecarTable} // ##CROSS: additional databse tables
 
 // freezerTableConfig contains the settings for a freezer table.
 type freezerTableConfig struct {

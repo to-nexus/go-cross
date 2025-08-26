@@ -78,6 +78,7 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
+		CancunTime:              nil,
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
@@ -141,6 +142,7 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
+		CancunTime:              nil,
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
@@ -191,6 +193,7 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
+		CancunTime:              nil,
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
@@ -237,6 +240,7 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
+		CancunTime:              nil,
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,

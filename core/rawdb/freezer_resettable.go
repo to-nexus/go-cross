@@ -194,6 +194,25 @@ func (f *resettableFreezer) TruncateTail(tail uint64) (uint64, error) {
 	return f.freezer.TruncateTail(tail)
 }
 
+// ##CROSS: additional databse tables
+// TruncateTableTail will truncate certain table to new tail.
+func (f *resettableFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	return f.freezer.TruncateTableTail(kind, tail)
+}
+
+// ResetTable will reset certain table with new start point.
+func (f *resettableFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	return f.freezer.ResetTable(kind, startAt, onlyEmpty)
+}
+
+// ##
+
 // Sync flushes all data tables to disk.
 func (f *resettableFreezer) Sync() error {
 	f.lock.RLock()

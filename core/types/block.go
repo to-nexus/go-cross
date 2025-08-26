@@ -242,6 +242,9 @@ type Block struct {
 	// inter-peer block relay.
 	ReceivedAt   time.Time
 	ReceivedFrom interface{}
+
+	// sidecars provides DA check
+	sidecars BlobSidecars // ##CROSS: blob sidecars
 }
 
 // "external" block encoding. used for eth protocol, etc.
@@ -470,6 +473,17 @@ func (b *Block) SanityCheck() error {
 	return b.header.SanityCheck()
 }
 
+// ##CROSS: blob sidecars
+func (b *Block) Sidecars() BlobSidecars {
+	return b.sidecars
+}
+
+func (b *Block) CleanSidecars() {
+	b.sidecars = make(BlobSidecars, 0)
+}
+
+// ##
+
 type writeCounter uint64
 
 func (c *writeCounter) Write(b []byte) (int, error) {
@@ -509,12 +523,20 @@ func NewBlockWithHeader(header *Header) *Block {
 // WithSeal returns a new block with the data from b but the header replaced with
 // the sealed one.
 func (b *Block) WithSeal(header *Header) *Block {
+	// ##CROSS: blob sidecars
+	// fill sidecars metadata
+	for _, sidecar := range b.sidecars {
+		sidecar.BlockNumber = header.Number
+		sidecar.BlockHash = header.Hash()
+	}
+	// ##
 	return &Block{
 		header:       CopyHeader(header),
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
 		witness:      b.witness,
+		sidecars:     b.sidecars, // ##CROSS: blob sidecars
 	}
 }
 
@@ -527,6 +549,7 @@ func (b *Block) WithBody(body Body) *Block {
 		uncles:       make([]*Header, len(body.Uncles)),
 		withdrawals:  slices.Clone(body.Withdrawals),
 		witness:      b.witness,
+		sidecars:     b.sidecars, // ##CROSS: blob sidecars
 	}
 	for i := range body.Uncles {
 		block.uncles[i] = CopyHeader(body.Uncles[i])
@@ -541,10 +564,27 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		witness:      b.witness,
+		sidecars:     b.sidecars, // ##CROSS: blob sidecars
 	}
 	if withdrawals != nil {
 		block.withdrawals = make([]*Withdrawal, len(withdrawals))
 		copy(block.withdrawals, withdrawals)
+	}
+	return block
+}
+
+// WithSidecars returns a block containing the given blobs.
+func (b *Block) WithSidecars(sidecars BlobSidecars) *Block { // ##CROSS: blob sidecars
+	block := &Block{
+		header:       b.header,
+		transactions: b.transactions,
+		uncles:       b.uncles,
+		withdrawals:  b.withdrawals,
+		witness:      b.witness,
+	}
+	if sidecars != nil {
+		block.sidecars = make(BlobSidecars, len(sidecars))
+		copy(block.sidecars, sidecars)
 	}
 	return block
 }
@@ -556,6 +596,7 @@ func (b *Block) WithWitness(witness *ExecutionWitness) *Block {
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
 		witness:      witness,
+		sidecars:     b.sidecars, // ##CROSS: blob sidecars
 	}
 }
 

@@ -20,6 +20,8 @@ package ethdb
 import (
 	"errors"
 	"io"
+
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // KeyValueReader wraps the Has and Get method of a backing data store.
@@ -139,8 +141,27 @@ type AncientWriter interface {
 	// Note that data marked as non-prunable will still be retained and remain accessible.
 	TruncateTail(n uint64) (uint64, error)
 
+	// ##CROSS: additional databse tables
+	// TruncateTableTail will truncate certain table to new tail.
+	TruncateTableTail(kind string, tail uint64) (uint64, error)
+
+	// ResetTable will reset certain table with new start point.
+	ResetTable(kind string, startAt uint64, onlyEmpty bool) error
+	// ##
+
 	// Sync flushes all in-memory ancient store data to disk.
 	Sync() error
+}
+
+type FreezerEnv struct {
+	ChainCfg         *params.ChainConfig
+	BlobExtraReserve uint64
+}
+
+// AncientFreezer defines the help functions for freezing ancient data
+type AncientFreezer interface {
+	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
+	SetupFreezerEnv(env *FreezerEnv) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.
@@ -191,6 +212,8 @@ type ResettableAncientStore interface {
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the ancient chain store.
 type Database interface {
+	AncientFreezer // ##CROSS: additional databse tables
+
 	KeyValueStore
 	AncientStore
 }

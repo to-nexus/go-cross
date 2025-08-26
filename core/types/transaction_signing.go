@@ -359,6 +359,7 @@ func (s *modernSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *bi
 // ##CROSS: fork breakpoint
 // NewBreakpointSigner returns a signer that accepts
 // - EIP-7702 set code transactions
+// - EIP-4844 blob transactions
 // - fee delegated dynamic fee transactions (treats them as normal dynamic fee transactions)
 // - EIP-1559 dynamic fee transactions
 // - EIP-2930 access list transactions,

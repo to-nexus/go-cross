@@ -270,6 +270,20 @@ var (
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	// ##CROSS: blob sidecars
+	OverrideMinBlocksForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.minforblobrequest",
+		Usage:    "It keeps blob data available for min blocks in local, only for testing purpose",
+		Value:    params.MinBlocksForBlobRequests,
+		Category: flags.EthCategory,
+	}
+	OverrideDefaultExtraReserveForBlobRequests = &cli.Uint64Flag{
+		Name:     "override.defaultextrareserve",
+		Usage:    "It adds more extra time for expired blobs for some request cases, only for testing purpose",
+		Value:    params.DefaultExtraReserveForBlobRequests,
+		Category: flags.EthCategory,
+	}
+	// ##
 	SyncModeFlag = &cli.StringFlag{
 		Name:     "syncmode",
 		Usage:    `Blockchain sync mode ("snap" or "full")`,
@@ -996,6 +1010,14 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "InfluxDB organization name (v2 only)",
 		Value:    metrics.DefaultConfig.InfluxDBOrganization,
 		Category: flags.MetricsCategory,
+	}
+
+	// ##CROSS: blob sidecars
+	BlobExtraReserveFlag = &cli.Uint64Flag{
+		Name:     "blob.extra-reserve",
+		Usage:    "Extra reserve threshold for blob, blob never expires when 0 is set, default 28800",
+		Value:    params.DefaultExtraReserveForBlobRequests,
+		Category: flags.MiscCategory,
 	}
 )
 
@@ -1946,6 +1968,19 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			Fatalf("Failed to set KZG library implementation to %s: %v", ctx.String(CryptoKZGFlag.Name), err)
 		}
 	}()
+
+	// ##CROSS: blob sidecars
+	if ctx.IsSet(OverrideDefaultExtraReserveForBlobRequests.Name) {
+		cfg.BlobExtraReserve = ctx.Uint64(OverrideDefaultExtraReserveForBlobRequests.Name)
+	}
+	if ctx.IsSet(BlobExtraReserveFlag.Name) {
+		extraReserve := ctx.Uint64(BlobExtraReserveFlag.Name)
+		if extraReserve > 0 && extraReserve < params.DefaultExtraReserveForBlobRequests {
+			extraReserve = params.DefaultExtraReserveForBlobRequests
+		}
+		cfg.BlobExtraReserve = extraReserve
+	}
+	// ##
 
 	// VM tracing config.
 	if ctx.IsSet(VMTraceFlag.Name) {

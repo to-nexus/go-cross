@@ -97,7 +97,7 @@ type environment struct {
 	header   *types.Header
 	txs      []*types.Transaction
 	receipts []*types.Receipt
-	sidecars []*types.BlobTxSidecar
+	sidecars types.BlobSidecars // ##CROSS: blob sidecars
 	blobs    int
 
 	witness *stateless.Witness
@@ -121,7 +121,7 @@ func (env *environment) copy() *environment {
 	copy(cpy.txs, env.txs)
 
 	if env.sidecars != nil {
-		cpy.sidecars = make([]*types.BlobTxSidecar, len(env.sidecars))
+		cpy.sidecars = make(types.BlobSidecars, len(env.sidecars)) // ##CROSS: blob sidecars
 		copy(cpy.sidecars, env.sidecars)
 		cpy.blobs = env.blobs
 	}
@@ -827,7 +827,8 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 }
 
 func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
-	sc := tx.BlobTxSidecar()
+	// ##CROSS: blob sidecars
+	sc := types.NewBlobSidecarFromTx(tx)
 	if sc == nil {
 		panic("blob transaction without blobs in miner")
 	}
@@ -835,13 +836,16 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) 
 	// isn't really a better place right now. The blob gas limit is checked at block validation time
 	// and not during execution. This means core.ApplyTransaction will not return an error if the
 	// tx has too many blobs. So we have to explicitly check it here.
-	if (env.blobs+len(sc.Blobs))*params.BlobTxBlobGasPerBlob > params.MaxBlobGasPerBlock {
+	maxBlobs := eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time)
+	if (env.blobs + len(sc.Blobs)) > maxBlobs {
 		return nil, errors.New("max data blobs reached")
 	}
+
 	receipt, err := w.applyTransaction(env, tx)
 	if err != nil {
 		return nil, err
 	}
+	sc.TxIndex = uint64(len(env.txs))
 	env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
 	env.receipts = append(env.receipts, receipt)
 	env.sidecars = append(env.sidecars, sc)
@@ -888,7 +892,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		}
 		// If we don't have enough blob space for any further blob transactions,
 		// skip that list altogether
-		if !blobTxs.Empty() && env.blobs*params.BlobTxBlobGasPerBlob >= params.MaxBlobGasPerBlock {
+		if !blobTxs.Empty() && env.blobs >= eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time) { // ##CROSS: blob sidecars
 			log.Trace("Not enough blob space for further blob transactions")
 			blobTxs.Clear()
 			// Fall though to pick up any plain txs
@@ -922,11 +926,21 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 			txs.Pop()
 			continue
 		}
-		if left := uint64(params.MaxBlobGasPerBlock - env.blobs*params.BlobTxBlobGasPerBlob); left < ltx.BlobGas {
-			log.Trace("Not enough blob gas left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas)
-			txs.Pop()
-			continue
+
+		// ##CROSS: blob sidecars
+		// Most of the blob gas logic here is agnostic as to if the chain supports
+		// blobs or not, however the max check panics when called on a chain without
+		// a defined schedule, so we need to verify it's safe to call.
+		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) {
+			left := eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time) - env.blobs
+			if left < int(ltx.BlobGas/params.BlobTxBlobGasPerBlob) {
+				log.Trace("Not enough blob space left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas/params.BlobTxBlobGasPerBlob)
+				txs.Pop()
+				continue
+			}
 		}
+		// ##
+
 		// Transaction seems to fit, pull it up from the pool
 		tx := ltx.Resolve()
 		if tx == nil {
@@ -1180,16 +1194,16 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 		work.header.RequestsHash = &reqHash
 	}
 
-	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
+	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
 	return &newPayloadResult{
 		block:    block,
-		fees:     totalFees(block, work.receipts),
-		sidecars: work.sidecars,
+		fees:     totalFees(block, receipts),
+		sidecars: work.sidecars.BlobTxSidecarList(), // ##CROSS: blob sidecars
 		stateDB:  work.state,
-		receipts: work.receipts,
+		receipts: receipts,
 		requests: requests,
 		witness:  work.witness,
 	}
@@ -1271,17 +1285,30 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if interval != nil {
 			interval()
 		}
-		// Create a local environment copy, avoid the data race with snapshot state.
-		// https://github.com/ethereum/go-ethereum/issues/24299
-		env := env.copy()
 		body := types.Body{Transactions: env.txs}
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		block, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &body, env.receipts)
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &body, env.receipts)
 		if err != nil {
 			return err
 		}
+		env.txs = body.Transactions
+		env.receipts = receipts
+
+		// ##CROSS: blob sidecars
+		// If Cancun enabled, sidecars can't be nil then.
+		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
+			env.sidecars = make(types.BlobSidecars, 0)
+		}
+
+		// Create a local environment copy, avoid the data race with snapshot state.
+		// https://github.com/ethereum/go-ethereum/issues/24299
+		env := env.copy()
+
+		block = block.WithSidecars(env.sidecars)
+		// ##
+
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {
 			select {
@@ -1289,7 +1316,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 				fees := totalFees(block, env.receipts)
 				feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-					"txs", env.tcount, "gas", block.GasUsed(), "fees", feesInEther,
+					"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther,
 					"elapsed", common.PrettyDuration(time.Since(start)))
 
 			case <-w.exitCh:

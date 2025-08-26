@@ -169,6 +169,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		networkID = chainConfig.ChainID.Uint64()
 	}
 
+	// ##CROSS: additional databse tables
+	// startup ancient freeze
+	freezeDb := chainDb
+	if err = freezeDb.SetupFreezerEnv(&ethdb.FreezerEnv{
+		ChainCfg:         chainConfig,
+		BlobExtraReserve: config.BlobExtraReserve,
+	}); err != nil {
+		return nil, err
+	}
+	// ##
+
 	// Assemble the Ethereum object.
 	eth := &Ethereum{
 		config:          config,

@@ -114,6 +114,19 @@ func (db *Database) TruncateTail(n uint64) (uint64, error) {
 	panic("not supported")
 }
 
+// ##CROSS: additional databse tables
+// TruncateTableTail will truncate certain table to new tail.
+func (db *Database) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	panic("not supported")
+}
+
+// ResetTable will reset certain table with new start point.
+func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	panic("not supported")
+}
+
+// ##
+
 func (db *Database) Sync() error {
 	return nil
 }
@@ -145,6 +158,10 @@ func (db *Database) Compact(start []byte, limit []byte) error {
 func (db *Database) Close() error {
 	db.remote.Close()
 	return nil
+}
+
+func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error { // ##CROSS: additional databse tables
+	panic("not supported")
 }
 
 func New(client *rpc.Client) ethdb.Database {

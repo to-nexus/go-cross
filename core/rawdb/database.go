@@ -44,6 +44,8 @@ type freezerdb struct {
 
 	readOnly    bool
 	ancientRoot string
+
+	ethdb.AncientFreezer
 }
 
 // AncientDatadir returns the path of root ancient directory.
@@ -80,6 +82,13 @@ func (frdb *freezerdb) Freeze() error {
 	<-trigger
 	return nil
 }
+
+// ##CROSS: additional databse tables
+func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return frdb.AncientFreezer.SetupFreezerEnv(env)
+}
+
+// ##
 
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
@@ -131,6 +140,19 @@ func (db *nofreezedb) TruncateTail(items uint64) (uint64, error) {
 	return 0, errNotSupported
 }
 
+// ##CROSS: additional databse tables
+// TruncateTableTail will truncate certain table to new tail.
+func (db *nofreezedb) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	return 0, errNotSupported
+}
+
+// ResetTable will reset certain table with new start point.
+func (db *nofreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	return errNotSupported
+}
+
+// ##
+
 // Sync returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) Sync() error {
 	return errNotSupported
@@ -156,6 +178,13 @@ func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) 
 func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
+
+// ##CROSS: additional databse tables
+func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return nil
+}
+
+// ##
 
 // NewDatabase creates a high level database on top of a given key-value data
 // store without a freezer moving immutable chain segments into cold storage.
@@ -290,9 +319,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		}()
 	}
 	return &freezerdb{
-		ancientRoot:   ancient,
-		KeyValueStore: db,
-		chainFreezer:  frdb,
+		ancientRoot:    ancient,
+		KeyValueStore:  db,
+		chainFreezer:   frdb,
+		AncientFreezer: frdb,
 	}, nil
 }
 
@@ -359,6 +389,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
+	istanbulSnapshotPrefix := []byte("istanbul-snapshot") // ##CROSS: istanbul
+
 	var (
 		count  int64
 		start  = time.Now()
@@ -369,6 +401,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		bodies             stat
 		receipts           stat
 		tds                stat
+		blobSidecars       stat // ##CROSS: blob sidecars
 		numHashPairings    stat
 		hashNumPairings    stat
 		legacyTries        stat
@@ -382,6 +415,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		preimages          stat
 		beaconHeaders      stat
 		cliqueSnaps        stat
+		istanbulSnaps      stat // ##CROSS: istanbul
 		bloomBits          stat
 		filterMapRows      stat
 		filterMapLastBlock stat
@@ -419,6 +453,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			receipts.Add(size)
 		case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
 			tds.Add(size)
+		case bytes.HasPrefix(key, BlockBlobSidecarsPrefix): // ##CROSS: blob sidecars
+			blobSidecars.Add(size)
 		case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix):
 			numHashPairings.Add(size)
 		case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
@@ -449,6 +485,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			beaconHeaders.Add(size)
 		case bytes.HasPrefix(key, CliqueSnapshotPrefix) && len(key) == 7+common.HashLength:
 			cliqueSnaps.Add(size)
+		case bytes.HasPrefix(key, istanbulSnapshotPrefix) && len(key) == 17+common.HashLength: // ##CROSS: istanbul
+			istanbulSnaps.Add(size)
 
 		// new log index
 		case bytes.HasPrefix(key, filterMapRowPrefix) && len(key) <= len(filterMapRowPrefix)+9:
@@ -507,6 +545,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Bodies", bodies.Size(), bodies.Count()},
 		{"Key-Value store", "Receipt lists", receipts.Size(), receipts.Count()},
 		{"Key-Value store", "Difficulties (deprecated)", tds.Size(), tds.Count()},
+		{"Key-Value store", "BlobSidecars", blobSidecars.Size(), blobSidecars.Count()}, // ##CROSS: blob sidecars
 		{"Key-Value store", "Block number->hash", numHashPairings.Size(), numHashPairings.Count()},
 		{"Key-Value store", "Block hash->number", hashNumPairings.Size(), hashNumPairings.Count()},
 		{"Key-Value store", "Transaction index", txLookups.Size(), txLookups.Count()},
@@ -526,6 +565,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Storage snapshot", storageSnaps.Size(), storageSnaps.Count()},
 		{"Key-Value store", "Beacon sync headers", beaconHeaders.Size(), beaconHeaders.Count()},
 		{"Key-Value store", "Clique snapshots", cliqueSnaps.Size(), cliqueSnaps.Count()},
+		{"Key-Value store", "Istanbul snapshots", istanbulSnaps.Size(), istanbulSnaps.Count()}, // ##CROSS: istanbul
 		{"Key-Value store", "Singleton metadata", metadata.Size(), metadata.Count()},
 	}
 	// Inspect all registered append-only file store then.

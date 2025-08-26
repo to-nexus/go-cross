@@ -48,6 +48,9 @@ func (m *Preprepare) EncodeRLP(w io.Writer) error {
 				m.JustificationRoundChanges,
 				m.JustificationPrepares,
 			},
+			[]interface{}{
+				m.Proposal.Sidecars(), // ##CROSS: blob sidecars
+			},
 		})
 }
 
@@ -65,6 +68,9 @@ func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
 			RoundChanges []*SignedRoundChangePayload
 			Prepares     []*Prepare
 		}
+		Extra struct {
+			Sidecars types.BlobSidecars // ##CROSS: blob sidecars
+		}
 	}
 	if err := stream.Decode(&message); err != nil {
 		return err
@@ -72,7 +78,7 @@ func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
 	m.code = PreprepareCode
 	m.Sequence = message.SignedPayload.Payload.Sequence
 	m.Round = message.SignedPayload.Payload.Round
-	m.Proposal = message.SignedPayload.Payload.Proposal
+	m.Proposal = message.SignedPayload.Payload.Proposal.WithSidecars(message.Extra.Sidecars) // ##CROSS: blob sidecars
 	m.signature = message.SignedPayload.Signature
 	m.JustificationPrepares = message.Justification.Prepares
 	m.JustificationRoundChanges = message.Justification.RoundChanges

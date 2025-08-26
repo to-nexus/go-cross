@@ -70,6 +70,7 @@ type fetchResult struct {
 	Transactions types.Transactions
 	Receipts     types.Receipts
 	Withdrawals  types.Withdrawals
+	Sidecars     types.BlobSidecars // ##CROSS: blob sidecars
 }
 
 func newFetchResult(header *types.Header, fastSync bool) *fetchResult {
@@ -785,6 +786,7 @@ func (q *queue) DeliverHeaders(id string, headers []*types.Header, hashes []comm
 func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListHashes []common.Hash,
 	uncleLists [][]*types.Header, uncleListHashes []common.Hash,
 	withdrawalLists [][]*types.Withdrawal, withdrawalListHashes []common.Hash,
+	sidecars []types.BlobSidecars, // ##CROSS: blob sidecars
 ) (int, error) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -840,6 +842,15 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 				return errInvalidBody
 			}
 		}
+
+		// ##CROSS: blob sidecars
+		// do some sanity check for sidecar
+		for _, sidecar := range sidecars[index] {
+			if err := sidecar.SanityCheck(header.Number, header.Hash()); err != nil {
+				return err
+			}
+		}
+		// ##
 		return nil
 	}
 
@@ -847,6 +858,7 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 		result.Transactions = txLists[index]
 		result.Uncles = uncleLists[index]
 		result.Withdrawals = withdrawalLists[index]
+		result.Sidecars = sidecars[index] // ##CROSS: blob sidecars
 		result.SetBodyDone()
 	}
 	return q.deliver(id, q.blockTaskPool, q.blockTaskQueue, q.blockPendPool,

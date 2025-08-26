@@ -66,6 +66,10 @@ var (
 		utils.SmartCardDaemonPathFlag,
 		utils.OverridePrague,
 		utils.OverrideVerkle,
+		// ##CROSS: blob sidecars
+		utils.OverrideMinBlocksForBlobRequests,
+		utils.OverrideDefaultExtraReserveForBlobRequests,
+		// ##
 		utils.EnablePersonal, // deprecated
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
@@ -150,6 +154,7 @@ var (
 		configFileFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
+		utils.BlobExtraReserveFlag, // ##CROSS: blob sidecars
 		utils.BeaconApiFlag,
 		utils.BeaconApiHeaderFlag,
 		utils.BeaconThresholdFlag,

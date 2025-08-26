@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -192,6 +193,12 @@ func (b *memoryBatch) commit(freezer *MemoryFreezer) (items uint64, writeSize in
 	// Check that count agrees on all batches.
 	items = math.MaxUint64
 	for name, next := range b.next {
+		// ##CROSS: additional databse tables
+		// skip empty addition tables
+		if slices.Contains(additionTables, name) && next == 0 {
+			continue
+		}
+		// ##
 		if items < math.MaxUint64 && next != items {
 			return 0, 0, fmt.Errorf("table %s is at item %d, want %d", name, next, items)
 		}
@@ -394,6 +401,19 @@ func (f *MemoryFreezer) TruncateTail(tail uint64) (uint64, error) {
 	f.tail = tail
 	return old, nil
 }
+
+// ##CROSS: additional databse tables
+func (f *MemoryFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f *MemoryFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	//TODO implement me
+	panic("not supported")
+}
+
+// ##
 
 // Sync flushes all data tables to disk.
 func (f *MemoryFreezer) Sync() error {

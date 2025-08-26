@@ -602,6 +602,17 @@ web3._extend({
 			call: 'eth_getBlockReceipts',
 			params: 1,
 		}),
+		// ##CROSS: blob sidecars
+		new web3._extend.Method({
+			name: 'getBlobSidecars',
+			call: 'eth_getBlobSidecars',
+			params: 2,
+		}),
+		new web3._extend.Method({
+			name: 'getBlobSidecarByTxHash',
+			call: 'eth_getBlobSidecarByTxHash',
+			params: 2,
+		}),
 		// ##CROSS: fee collection
 		new web3._extend.Method({
 			name: 'foundation',
