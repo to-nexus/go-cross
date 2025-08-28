@@ -37,21 +37,23 @@ func (m *Preprepare) EncodePayloadForSigning() ([]byte, error) {
 }
 
 func (m *Preprepare) EncodeRLP(w io.Writer) error {
-	return rlp.Encode(
-		w,
+	val := []interface{}{
 		[]interface{}{
-			[]interface{}{
-				[]interface{}{m.Sequence, m.Round, m.Proposal},
-				m.signature,
-			},
-			[]interface{}{
-				m.JustificationRoundChanges,
-				m.JustificationPrepares,
-			},
-			[]interface{}{
-				m.Proposal.Sidecars(), // ##CROSS: blob sidecars
-			},
-		})
+			[]interface{}{m.Sequence, m.Round, m.Proposal},
+			m.signature,
+		},
+		[]interface{}{
+			m.JustificationRoundChanges,
+			m.JustificationPrepares,
+		},
+	}
+	// encode extra only if there are any data
+	// ##CROSS: blob sidecars
+	if m.Proposal.Sidecars().Len() > 0 {
+		val = append(val, []any{m.Proposal.Sidecars()})
+	}
+	// ##
+	return rlp.Encode(w, val)
 }
 
 func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
@@ -70,7 +72,7 @@ func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
 		}
 		Extra struct {
 			Sidecars types.BlobSidecars // ##CROSS: blob sidecars
-		}
+		} `rlp:"optional"`
 	}
 	if err := stream.Decode(&message); err != nil {
 		return err
