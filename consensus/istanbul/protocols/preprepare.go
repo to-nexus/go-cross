@@ -50,6 +50,7 @@ func (m *Preprepare) EncodeRLP(w io.Writer) error {
 	// encode extra only if there are any data
 	// ##CROSS: blob sidecars
 	if m.Proposal.Sidecars().Len() > 0 {
+		// because rlp encoder omits blob sidecars in blob txs, we need to encode them separately
 		val = append(val, []any{m.Proposal.Sidecars()})
 	}
 	// ##

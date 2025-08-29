@@ -578,6 +578,56 @@ func TestAncientStorage(t *testing.T) {
 	}
 }
 
+func TestWriteAncientHeaderChain(t *testing.T) {
+	frdir := t.TempDir()
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false)
+	// db, err := Open(NewMemoryDatabase(), OpenOptions{Ancient: t.TempDir()})
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend")
+	}
+	defer db.Close()
+
+	// Create a test block
+	var headers []*types.Header
+	headers = append(headers, &types.Header{
+		Number:      big.NewInt(0),
+		Difficulty:  big.NewInt(2),
+		Extra:       []byte("test block"),
+		UncleHash:   types.EmptyUncleHash,
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+	headers = append(headers, &types.Header{
+		Number:      big.NewInt(1),
+		Difficulty:  big.NewInt(2),
+		Extra:       []byte("test block"),
+		UncleHash:   types.EmptyUncleHash,
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+	// Write and verify the header in the database
+	ptd := new(big.Int)
+	WriteAncientHeaderChain(db, headers, ptd)
+
+	for _, header := range headers {
+		if blob := ReadHeaderRLP(db, header.Hash(), header.Number.Uint64()); len(blob) == 0 {
+			t.Fatalf("no header returned")
+		}
+		if h := ReadCanonicalHash(db, header.Number.Uint64()); h != header.Hash() {
+			t.Fatalf("no canonical hash returned")
+		}
+		if blob := ReadBodyRLP(db, header.Hash(), header.Number.Uint64()); len(blob) != 0 {
+			t.Fatalf("unexpected body returned")
+		}
+		if blob := ReadReceiptsRLP(db, header.Hash(), header.Number.Uint64()); len(blob) != 0 {
+			t.Fatalf("unexpected body returned")
+		}
+		if blob := ReadTdRLP(db, header.Hash(), header.Number.Uint64()); len(blob) == 0 {
+			t.Fatalf("unexpected td returned")
+		}
+	}
+}
+
 func TestCanonicalHashIteration(t *testing.T) {
 	var cases = []struct {
 		from, to uint64
@@ -685,7 +735,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 		receipts := batchReceipts[:length]
 		// ##CROSS: blob sidecars
 		for j := 0; j < length; j++ {
-			blocks[i+j] = blocks[i+j].WithSidecars(batchSidecars[j])
+			blocks[j] = blocks[j].WithSidecars(batchSidecars[j])
 		}
 		// ##
 		writeSize, err := WriteAncientBlocks(db, blocks, receipts, big.NewInt(55))

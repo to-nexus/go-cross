@@ -2842,11 +2842,13 @@ func (bc *BlockChain) InsertHeadersBeforeCutoff(headers []*types.Header) (int, e
 
 	// Initialize the ancient store with genesis block if it's empty.
 	var (
-		frozen, _ = bc.db.Ancients()
-		first     = headers[0].Number.Uint64()
+		frozen, _   = bc.db.Ancients()
+		first       = headers[0].Number.Uint64()
+		firstHeader = headers[0]
 	)
 	if first == 1 && frozen == 0 {
-		_, err := rawdb.WriteAncientBlocks(bc.db, []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, big.NewInt(0))
+		td := bc.genesisBlock.Difficulty()
+		_, err := rawdb.WriteAncientBlocks(bc.db, []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
 		if err != nil {
 			log.Error("Error writing genesis to ancients", "err", err)
 			return 0, err
@@ -2858,7 +2860,11 @@ func (bc *BlockChain) InsertHeadersBeforeCutoff(headers []*types.Header) (int, e
 
 	// Write headers to the ancient store, with block bodies and receipts set to nil
 	// to ensure consistency across tables in the freezer.
-	_, err := rawdb.WriteAncientHeaderChain(bc.db, headers)
+	ptd := bc.GetTd(firstHeader.ParentHash, firstHeader.Number.Uint64()-1)
+	if ptd == nil {
+		return 0, consensus.ErrUnknownAncestor
+	}
+	_, err := rawdb.WriteAncientHeaderChain(bc.db, headers, ptd)
 	if err != nil {
 		return 0, err
 	}
