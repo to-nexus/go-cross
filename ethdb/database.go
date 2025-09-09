@@ -141,7 +141,7 @@ type AncientWriter interface {
 	// Note that data marked as non-prunable will still be retained and remain accessible.
 	TruncateTail(n uint64) (uint64, error)
 
-	// ##CROSS: additional databse tables
+	// ##CROSS: additional database tables
 	// TruncateTableTail will truncate certain table to new tail.
 	TruncateTableTail(kind string, tail uint64) (uint64, error)
 
@@ -212,7 +212,7 @@ type ResettableAncientStore interface {
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the ancient chain store.
 type Database interface {
-	AncientFreezer // ##CROSS: additional databse tables
+	AncientFreezer // ##CROSS: additional database tables
 
 	KeyValueStore
 	AncientStore

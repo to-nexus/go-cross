@@ -66,7 +66,7 @@ func (batch *freezerBatch) commit() (item uint64, writeSize int64, err error) {
 	// Check that count agrees on all batches.
 	item = uint64(math.MaxUint64)
 	for name, tb := range batch.tables {
-		// ##CROSS: additional databse tables
+		// ##CROSS: additional database tables
 		// skip empty addition tables
 		if slices.Contains(additionTables, name) && EmptyTable(tb.t) {
 			continue

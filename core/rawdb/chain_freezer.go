@@ -56,7 +56,7 @@ type chainFreezer struct {
 	wg      sync.WaitGroup
 	trigger chan chan struct{} // Manual blocking freeze trigger, test determinism
 
-	// ##CROSS: additional databse tables
+	// ##CROSS: additional database tables
 	freezeEnv    atomic.Value
 	waitEnvTimes int
 	// ##
@@ -202,7 +202,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			continue
 		}
 
-		// ##CROSS: additional databse tables
+		// ##CROSS: additional database tables
 		hash := ReadHeadBlockHash(nfdb)
 		if hash == (common.Hash{}) {
 			log.Debug("Current full block hash unavailable") // new chain, empty database
@@ -498,7 +498,7 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 	return hashes, err
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	f.freezeEnv.Store(env)
 	return nil

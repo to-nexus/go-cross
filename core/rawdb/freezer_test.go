@@ -333,7 +333,7 @@ func TestFreezerConcurrentReadonly(t *testing.T) {
 	}
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 func TestFreezer_AdditionTables(t *testing.T) {
 	dir := t.TempDir()
 	// Open non-readonly freezer and fill individual tables

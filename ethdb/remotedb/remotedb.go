@@ -114,7 +114,7 @@ func (db *Database) TruncateTail(n uint64) (uint64, error) {
 	panic("not supported")
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 // TruncateTableTail will truncate certain table to new tail.
 func (db *Database) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	panic("not supported")
@@ -160,7 +160,7 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error { // ##CROSS: additional databse tables
+func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error { // ##CROSS: additional database tables
 	panic("not supported")
 }
 

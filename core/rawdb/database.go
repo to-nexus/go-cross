@@ -83,7 +83,7 @@ func (frdb *freezerdb) Freeze() error {
 	return nil
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return frdb.AncientFreezer.SetupFreezerEnv(env)
 }
@@ -140,7 +140,7 @@ func (db *nofreezedb) TruncateTail(items uint64) (uint64, error) {
 	return 0, errNotSupported
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 // TruncateTableTail will truncate certain table to new tail.
 func (db *nofreezedb) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	return 0, errNotSupported
@@ -179,7 +179,7 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }

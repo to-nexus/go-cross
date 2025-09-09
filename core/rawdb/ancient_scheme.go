@@ -56,7 +56,7 @@ var chainFreezerTableConfigs = map[string]freezerTableConfig{
 	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true}, // ##CROSS: blob sidecars
 }
 
-var additionTables = []string{ChainFreezerBlobSidecarTable} // ##CROSS: additional databse tables
+var additionTables = []string{ChainFreezerBlobSidecarTable} // ##CROSS: additional database tables
 
 // freezerTableConfig contains the settings for a freezer table.
 type freezerTableConfig struct {

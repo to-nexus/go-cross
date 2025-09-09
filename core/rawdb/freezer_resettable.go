@@ -194,7 +194,7 @@ func (f *resettableFreezer) TruncateTail(tail uint64) (uint64, error) {
 	return f.freezer.TruncateTail(tail)
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 // TruncateTableTail will truncate certain table to new tail.
 func (f *resettableFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	f.lock.RLock()

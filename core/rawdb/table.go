@@ -107,7 +107,7 @@ func (t *table) TruncateTail(items uint64) (uint64, error) {
 	return t.db.TruncateTail(items)
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 // TruncateTableTail will truncate certain table to new tail.
 func (t *table) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	return t.db.TruncateTableTail(kind, tail)
@@ -213,7 +213,7 @@ func (t *table) NewBatchWithSize(size int) ethdb.Batch {
 	return &tableBatch{t.db.NewBatchWithSize(size), t.prefix}
 }
 
-func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv) error { // ##CROSS: additional databse tables
+func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv) error { // ##CROSS: additional database tables
 	return nil
 }
 

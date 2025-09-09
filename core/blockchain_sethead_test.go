@@ -1999,7 +1999,7 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 		config.SnapshotLimit = 256
 		config.SnapshotWait = true
 	}
-	// ##CROSS: additional databse tables
+	// ##CROSS: additional database tables
 	if err = db.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         gspec.Config,
 		BlobExtraReserve: params.DefaultExtraReserveForBlobRequests,

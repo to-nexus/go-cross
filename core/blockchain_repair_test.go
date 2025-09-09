@@ -1797,7 +1797,7 @@ func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme s
 		config.SnapshotWait = true
 	}
 
-	// ##CROSS: additional databse tables
+	// ##CROSS: additional database tables
 	if err = db.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         gspec.Config,
 		BlobExtraReserve: params.DefaultExtraReserveForBlobRequests,

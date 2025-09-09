@@ -123,7 +123,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 
 	// Create the tables.
 	for name, config := range tables {
-		// ##CROSS: additional databse tables
+		// ##CROSS: additional database tables
 		var (
 			table *freezerTable
 			err   error
@@ -167,7 +167,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 	return freezer, nil
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 // openAdditionTable create table, it will auto create new files when it was first initialized
 func openAdditionTable(datadir, name string, readMeter, writeMeter *metrics.Meter, sizeGauge *metrics.Gauge, maxTableSize uint32, config freezerTableConfig, readonly bool) (*freezerTable, error) {
 	if readonly {
@@ -376,7 +376,7 @@ func (f *Freezer) TruncateTail(tail uint64) (uint64, error) {
 	return old, nil
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 // TruncateTableTail will truncate certain table to new tail.
 func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	if f.readonly {
@@ -480,7 +480,7 @@ func (f *Freezer) validate() error {
 		break
 	}
 	for kind, table := range f.tables {
-		// ##CROSS: additional databse tables
+		// ##CROSS: additional database tables
 		// check addition tables, try to align with exist tables
 		if slices.Contains(additionTables, kind) {
 			// if the table is empty, just skip
@@ -536,7 +536,7 @@ func (f *Freezer) repair() error {
 	)
 	// get the minimal head and the maximum tail
 	for kind, table := range f.tables {
-		// ##CROSS: additional databse tables
+		// ##CROSS: additional database tables
 		// addition tables only align head
 		if slices.Contains(additionTables, kind) {
 			if EmptyTable(table) {
@@ -551,7 +551,7 @@ func (f *Freezer) repair() error {
 	}
 	// apply the pruning
 	for kind, table := range f.tables {
-		// ##CROSS: additional databse tables
+		// ##CROSS: additional database tables
 		//  try to align with exist tables, skip empty table
 		if slices.Contains(additionTables, kind) && EmptyTable(table) {
 			continue

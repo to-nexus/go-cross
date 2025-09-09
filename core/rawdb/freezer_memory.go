@@ -193,7 +193,7 @@ func (b *memoryBatch) commit(freezer *MemoryFreezer) (items uint64, writeSize in
 	// Check that count agrees on all batches.
 	items = math.MaxUint64
 	for name, next := range b.next {
-		// ##CROSS: additional databse tables
+		// ##CROSS: additional database tables
 		// skip empty addition tables
 		if slices.Contains(additionTables, name) && next == 0 {
 			continue
@@ -402,7 +402,7 @@ func (f *MemoryFreezer) TruncateTail(tail uint64) (uint64, error) {
 	return old, nil
 }
 
-// ##CROSS: additional databse tables
+// ##CROSS: additional database tables
 func (f *MemoryFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	//TODO implement me
 	panic("implement me")
