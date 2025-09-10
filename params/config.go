@@ -217,7 +217,12 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 		},
-		Transitions: []Transition{},
+		Transitions: []Transition{
+			{
+				Block:    big.NewInt(9188602),
+				GasLimit: newUint64(210000000),
+			},
+		},
 	}
 
 	CrossDevChainConfig = &ChainConfig{
