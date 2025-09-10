@@ -18,6 +18,7 @@ package backend
 
 import (
 	"errors"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -267,4 +268,60 @@ func (api *API) IsValidator(blockNum *rpc.BlockNumber) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+type IstanbulConfig struct {
+	RequestTimeout           uint64           `json:"requestTimeout"`
+	BlockPeriod              uint64           `json:"blockPeriod"`
+	EmptyBlockPeriod         uint64           `json:"emptyBlockPeriod"`
+	ProposerPolicy           uint64           `json:"proposerPolicy"`
+	Epoch                    uint64           `json:"epoch"`
+	AllowedFutureBlockTime   uint64           `json:"allowedFutureBlockTime"`
+	Validators               []common.Address `json:"validators"`
+	MaxRequestTimeout        uint64           `json:"maxRequestTimeout"`
+	Beneficiary              *common.Address  `json:"beneficiary"`
+	GasLimit                 uint64           `json:"gasLimit"`
+	ElasticityMultiplier     uint64           `json:"elasticityMultiplier"`
+	BaseFeeChangeDenominator uint64           `json:"baseFeeChangeDenominator"`
+	MaxBaseFee               *big.Int         `json:"maxBaseFee"`
+	MinBaseFee               *big.Int         `json:"minBaseFee"`
+}
+
+func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
+	var header *types.Header
+	if number == nil || *number == rpc.LatestBlockNumber {
+		header = api.chain.CurrentHeader()
+	} else {
+		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
+	}
+
+	istConfig := api.backend.config.GetConfig(header.Number)
+
+	ret := &IstanbulConfig{
+		RequestTimeout:         istConfig.RequestTimeout,
+		BlockPeriod:            istConfig.BlockPeriod,
+		EmptyBlockPeriod:       istConfig.EmptyBlockPeriod,
+		Epoch:                  istConfig.Epoch,
+		AllowedFutureBlockTime: istConfig.AllowedFutureBlockTime,
+		Validators:             istConfig.Validators,
+		MaxRequestTimeout:      istConfig.MaxRequestTimeoutSeconds,
+	}
+	if istConfig.ProposerPolicy != nil {
+		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)
+	}
+
+	chainConfig := api.chain.Config()
+
+	ret.Beneficiary = chainConfig.GetBeneficiaryAddress(header.Number)
+	if gasLimit := chainConfig.GetGasLimit(header.Number); gasLimit != nil {
+		ret.GasLimit = *gasLimit
+	} else {
+		ret.GasLimit = header.GasLimit
+	}
+	ret.ElasticityMultiplier = chainConfig.GetElasticityMultiplier(header.Number)
+	ret.BaseFeeChangeDenominator = chainConfig.GetBaseFeeChangeDenominator(header.Number)
+	ret.MaxBaseFee = chainConfig.GetMaxBaseFee(header.Number)
+	ret.MinBaseFee = chainConfig.GetMinBaseFee(header.Number)
+
+	return ret, nil
 }
