@@ -37,18 +37,24 @@ func (m *Preprepare) EncodePayloadForSigning() ([]byte, error) {
 }
 
 func (m *Preprepare) EncodeRLP(w io.Writer) error {
-	return rlp.Encode(
-		w,
+	val := []interface{}{
 		[]interface{}{
-			[]interface{}{
-				[]interface{}{m.Sequence, m.Round, m.Proposal},
-				m.signature,
-			},
-			[]interface{}{
-				m.JustificationRoundChanges,
-				m.JustificationPrepares,
-			},
-		})
+			[]interface{}{m.Sequence, m.Round, m.Proposal},
+			m.signature,
+		},
+		[]interface{}{
+			m.JustificationRoundChanges,
+			m.JustificationPrepares,
+		},
+	}
+	// encode extra only if there are any data
+	// ##CROSS: blob sidecars
+	if m.Proposal.Sidecars().Len() > 0 {
+		// because rlp encoder omits blob sidecars in blob txs, we need to encode them separately
+		val = append(val, []any{m.Proposal.Sidecars()})
+	}
+	// ##
+	return rlp.Encode(w, val)
 }
 
 func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
@@ -65,6 +71,9 @@ func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
 			RoundChanges []*SignedRoundChangePayload
 			Prepares     []*Prepare
 		}
+		Extra struct {
+			Sidecars types.BlobSidecars // ##CROSS: blob sidecars
+		} `rlp:"optional"`
 	}
 	if err := stream.Decode(&message); err != nil {
 		return err
@@ -72,7 +81,7 @@ func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
 	m.code = PreprepareCode
 	m.Sequence = message.SignedPayload.Payload.Sequence
 	m.Round = message.SignedPayload.Payload.Round
-	m.Proposal = message.SignedPayload.Payload.Proposal
+	m.Proposal = message.SignedPayload.Payload.Proposal.WithSidecars(message.Extra.Sidecars) // ##CROSS: blob sidecars
 	m.signature = message.SignedPayload.Signature
 	m.JustificationPrepares = message.Justification.Prepares
 	m.JustificationRoundChanges = message.Justification.RoundChanges

@@ -17,7 +17,9 @@
 package rawdb
 
 import (
+	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -39,31 +42,50 @@ const (
 	freezerBatchLimit = 30000
 )
 
-// chainFreezer is a wrapper of freezer with additional chain freezing feature.
-// The background thread will keep moving ancient chain segments from key-value
-// database to flat files for saving space on live database.
-type chainFreezer struct {
-	threshold atomic.Uint64 // Number of recent blocks not to freeze (params.FullImmutabilityThreshold apart from tests)
+var (
+	missFreezerEnvErr = errors.New("missing freezer env error")
+)
 
-	*Freezer
+// chainFreezer is a wrapper of chain ancient store with additional chain freezing
+// feature. The background thread will keep moving ancient chain segments from
+// key-value database to flat files for saving space on live database.
+type chainFreezer struct {
+	ethdb.AncientStore // Ancient store for storing cold chain segment
+
 	quit    chan struct{}
 	wg      sync.WaitGroup
 	trigger chan chan struct{} // Manual blocking freeze trigger, test determinism
+
+	// ##CROSS: additional database tables
+	freezeEnv    atomic.Value
+	waitEnvTimes int
+	// ##
 }
 
-// newChainFreezer initializes the freezer for ancient chain data.
+// newChainFreezer initializes the freezer for ancient chain segment.
+//
+//   - if the empty directory is given, initializes the pure in-memory
+//     state freezer (e.g. dev mode).
+//   - if non-empty directory is given, initializes the regular file-based
+//     state freezer.
 func newChainFreezer(datadir string, namespace string, readonly bool) (*chainFreezer, error) {
-	freezer, err := NewChainFreezer(datadir, namespace, readonly)
+	var (
+		err     error
+		freezer ethdb.AncientStore
+	)
+	if datadir == "" {
+		freezer = NewMemoryFreezer(readonly, chainFreezerTableConfigs)
+	} else {
+		freezer, err = NewFreezer(datadir, namespace, readonly, freezerTableSize, chainFreezerTableConfigs)
+	}
 	if err != nil {
 		return nil, err
 	}
-	cf := chainFreezer{
-		Freezer: freezer,
-		quit:    make(chan struct{}),
-		trigger: make(chan chan struct{}),
-	}
-	cf.threshold.Store(params.FullImmutabilityThreshold)
-	return &cf, nil
+	return &chainFreezer{
+		AncientStore: freezer,
+		quit:         make(chan struct{}),
+		trigger:      make(chan chan struct{}),
+	}, nil
 }
 
 // Close closes the chain freezer instance and terminates the background thread.
@@ -74,7 +96,58 @@ func (f *chainFreezer) Close() error {
 		close(f.quit)
 	}
 	f.wg.Wait()
-	return f.Freezer.Close()
+	return f.AncientStore.Close()
+}
+
+// readHeadNumber returns the number of chain head block. 0 is returned if the
+// block is unknown or not available yet.
+func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
+	hash := ReadHeadBlockHash(db)
+	if hash == (common.Hash{}) {
+		log.Error("Head block is not reachable")
+		return 0
+	}
+	number := ReadHeaderNumber(db, hash)
+	if number == nil {
+		log.Error("Number of head block is missing")
+		return 0
+	}
+	return *number
+}
+
+// readFinalizedNumber returns the number of finalized block. 0 is returned
+// if the block is unknown or not available yet.
+func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
+	hash := ReadFinalizedBlockHash(db)
+	if hash == (common.Hash{}) {
+		return 0
+	}
+	number := ReadHeaderNumber(db, hash)
+	if number == nil {
+		log.Error("Number of finalized block is missing")
+		return 0
+	}
+	return *number
+}
+
+// freezeThreshold returns the threshold for chain freezing. It's determined
+// by formula: max(finality, HEAD-params.FullImmutabilityThreshold).
+func (f *chainFreezer) freezeThreshold(db ethdb.KeyValueReader) (uint64, error) {
+	var (
+		head      = f.readHeadNumber(db)
+		final     = f.readFinalizedNumber(db)
+		headLimit uint64
+	)
+	if head > params.FullImmutabilityThreshold {
+		headLimit = head - params.FullImmutabilityThreshold
+	}
+	if final == 0 && headLimit == 0 {
+		return 0, errors.New("freezing threshold is not available")
+	}
+	if final > headLimit {
+		return final, nil
+	}
+	return headLimit, nil
 }
 
 // freeze is a background thread that periodically checks the blockchain for any
@@ -114,7 +187,22 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 				return
 			}
 		}
-		// Retrieve the freezing threshold.
+		threshold, err := f.freezeThreshold(nfdb)
+		if err != nil {
+			backoff = true
+			log.Debug("Current full block not old enough to freeze", "err", err)
+			continue
+		}
+		frozen, _ := f.Ancients() // no error will occur, safe to ignore
+
+		// Short circuit if the blocks below threshold are already frozen.
+		if frozen != 0 && frozen-1 >= threshold {
+			backoff = true
+			log.Debug("Ancient blocks frozen already", "threshold", threshold, "frozen", frozen)
+			continue
+		}
+
+		// ##CROSS: additional database tables
 		hash := ReadHeadBlockHash(nfdb)
 		if hash == (common.Hash{}) {
 			log.Debug("Current full block hash unavailable") // new chain, empty database
@@ -122,21 +210,8 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			continue
 		}
 		number := ReadHeaderNumber(nfdb, hash)
-		threshold := f.threshold.Load()
-		frozen := f.frozen.Load()
-		switch {
-		case number == nil:
+		if number == nil {
 			log.Error("Current full block number unavailable", "hash", hash)
-			backoff = true
-			continue
-
-		case *number < threshold:
-			log.Debug("Current full block not old enough to freeze", "number", *number, "hash", hash, "delay", threshold)
-			backoff = true
-			continue
-
-		case *number-threshold <= frozen:
-			log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", frozen)
 			backoff = true
 			continue
 		}
@@ -147,27 +222,37 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 			continue
 		}
 
+		// check env first before chain freeze, it must wait when the env is necessary
+		if err := f.checkFreezerEnv(); err != nil {
+			f.waitEnvTimes++
+			if f.waitEnvTimes%30 == 0 {
+				log.Warn("Freezer need related env, may wait for a while, and it's not a issue when non-import block", "err", err)
+				return
+			}
+			backoff = true
+			continue
+		}
+		// ##
+
 		// Seems we have data ready to be frozen, process in usable batches
 		var (
-			start    = time.Now()
-			first, _ = f.Ancients()
-			limit    = *number - threshold
+			start = time.Now()
+			first = frozen    // the first block to freeze
+			last  = threshold // the last block to freeze
 		)
-		if limit-first > freezerBatchLimit {
-			limit = first + freezerBatchLimit
+		if last-first+1 > freezerBatchLimit {
+			last = freezerBatchLimit + first - 1
 		}
-		ancients, err := f.freezeRange(nfdb, first, limit)
+		ancients, err := f.freezeRangeWithBlobs(nfdb, first, last) // ##CROSS: blob sidecars
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)
 			backoff = true
 			continue
 		}
-
-		// Batch of blocks have been frozen, flush them before wiping from leveldb
+		// Batch of blocks have been frozen, flush them before wiping from key-value store
 		if err := f.Sync(); err != nil {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
-
 		// Wipe out all data from the active database
 		batch := db.NewBatch()
 		for i := 0; i < len(ancients); i++ {
@@ -184,7 +269,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 
 		// Wipe out side chains also and track dangling side chains
 		var dangling []common.Hash
-		frozen = f.frozen.Load() // Needs reload after during freezeRange
+		frozen, _ = f.Ancients() // Needs reload after during freezeRange
 		for number := first; number < frozen; number++ {
 			// Always keep the genesis block in active database
 			if number != 0 {
@@ -243,6 +328,14 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		}
 		log.Debug("Deep froze chain segment", context...)
 
+		// ##CROSS: blob sidecars
+		env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
+		// try prune blob data after cancun fork
+		if isCancun(env, head.Number, head.Time) {
+			f.tryPruneBlobAncientTable(env, *number)
+		}
+		// ##
+
 		// Avoid database thrashing with tiny writes
 		if frozen-first < freezerBatchLimit {
 			backoff = true
@@ -250,9 +343,93 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 	}
 }
 
-func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hashes []common.Hash, err error) {
-	hashes = make([]common.Hash, 0, limit-number)
+// ##CROSS: blob sidecars
+func (f *chainFreezer) tryPruneBlobAncientTable(env *ethdb.FreezerEnv, num uint64) {
+	extraReserve := getBlobExtraReserveFromEnv(env)
+	// It means that there is no need for pruning
+	if extraReserve == 0 {
+		return
+	}
+	reserveThreshold := params.MinBlocksForBlobRequests + extraReserve
+	if num <= reserveThreshold {
+		return
+	}
+	expectTail := num - reserveThreshold
+	start := time.Now()
+	if _, err := f.TruncateTableTail(ChainFreezerBlobSidecarTable, expectTail); err != nil {
+		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail, "err", err)
+		return
+	}
+	log.Debug("Chain freezer prune useless blobs, now ancient data is", "from", expectTail, "to", num, "cost", common.PrettyDuration(time.Since(start)))
+}
 
+func getBlobExtraReserveFromEnv(env *ethdb.FreezerEnv) uint64 {
+	if env == nil {
+		return params.DefaultExtraReserveForBlobRequests
+	}
+	return env.BlobExtraReserve
+}
+
+func (f *chainFreezer) freezeRangeWithBlobs(nfdb *nofreezedb, number, limit uint64) (hashes []common.Hash, err error) {
+	defer func() {
+		log.Debug("freezeRangeWithBlobs", "from", number, "to", limit, "err", err)
+	}()
+	lastHash := ReadCanonicalHash(nfdb, limit)
+	if lastHash == (common.Hash{}) {
+		return nil, fmt.Errorf("canonical hash missing, can't freeze block %d", limit)
+	}
+	last, _ := ReadHeaderAndRaw(nfdb, lastHash, limit)
+	if last == nil {
+		return nil, fmt.Errorf("block header missing, can't freeze block %d", limit)
+	}
+	env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
+	if !isCancun(env, last.Number, last.Time) {
+		return f.freezeRange(nfdb, number, limit)
+	}
+
+	var (
+		cancunNumber uint64
+		preHashes    []common.Hash
+	)
+	for i := number; i <= limit; i++ {
+		hash := ReadCanonicalHash(nfdb, i)
+		if hash == (common.Hash{}) {
+			return nil, fmt.Errorf("canonical hash missing, can't freeze block %d", i)
+		}
+		h, header := ReadHeaderAndRaw(nfdb, hash, i)
+		if len(header) == 0 {
+			return nil, fmt.Errorf("block header missing, can't freeze block %d", i)
+		}
+		if isCancun(env, h.Number, h.Time) {
+			cancunNumber = i
+			break
+		}
+	}
+
+	// freeze pre cancun
+	preHashes, err = f.freezeRange(nfdb, number, cancunNumber-1)
+	if err != nil {
+		return preHashes, err
+	}
+
+	if err = ResetEmptyBlobAncientTable(f, cancunNumber); err != nil {
+		return preHashes, err
+	}
+	// freeze post cancun
+	postHashes, err := f.freezeRange(nfdb, cancunNumber, limit)
+	hashes = append(preHashes, postHashes...)
+	return hashes, err
+}
+
+// ##
+
+// freezeRange moves a batch of chain segments from the fast database to the freezer.
+// The parameters (number, limit) specify the relevant block range, both of which
+// are included.
+func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hashes []common.Hash, err error) {
+	hashes = make([]common.Hash, 0, limit-number+1)
+
+	env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv) // ##CROSS: blob sidecars
 	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		for ; number <= limit; number++ {
 			// Retrieve all the components of the canonical block.
@@ -260,7 +437,7 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if hash == (common.Hash{}) {
 				return fmt.Errorf("canonical hash missing, can't freeze block %d", number)
 			}
-			header := ReadHeaderRLP(nfdb, hash, number)
+			h, header := ReadHeaderAndRaw(nfdb, hash, number)
 			if len(header) == 0 {
 				return fmt.Errorf("block header missing, can't freeze block %d", number)
 			}
@@ -272,10 +449,23 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if len(receipts) == 0 {
 				return fmt.Errorf("block receipts missing, can't freeze block %d", number)
 			}
+			// ##CROSS: legacy sync
 			td := ReadTdRLP(nfdb, hash, number)
 			if len(td) == 0 {
 				return fmt.Errorf("total difficulty missing, can't freeze block %d", number)
 			}
+			// ##
+
+			// ##CROSS: blob sidecars
+			// blobs is nil before cancun fork
+			var sidecars rlp.RawValue
+			if isCancun(env, h.Number, h.Time) {
+				sidecars = ReadBlobSidecarsRLP(nfdb, hash, number)
+				if len(sidecars) == 0 {
+					return fmt.Errorf("block blobs missing, can't freeze block %d", number)
+				}
+			}
+			// ##
 
 			// Write to the batch.
 			if err := op.AppendRaw(ChainFreezerHashTable, number, hash[:]); err != nil {
@@ -290,14 +480,49 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if err := op.AppendRaw(ChainFreezerReceiptTable, number, receipts); err != nil {
 				return fmt.Errorf("can't write receipts to Freezer: %v", err)
 			}
-			if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
+			if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil { // ##CROSS: legacy sync
 				return fmt.Errorf("can't write td to Freezer: %v", err)
 			}
+			// ##CROSS: blob sidecars
+			if isCancun(env, h.Number, h.Time) {
+				if err := op.AppendRaw(ChainFreezerBlobSidecarTable, number, sidecars); err != nil {
+					return fmt.Errorf("can't write blobs to Freezer: %v", err)
+				}
+			}
+			// ##
 
 			hashes = append(hashes, hash)
 		}
 		return nil
 	})
-
 	return hashes, err
 }
+
+// ##CROSS: additional database tables
+func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	f.freezeEnv.Store(env)
+	return nil
+}
+
+func (f *chainFreezer) checkFreezerEnv() error {
+	_, exist := f.freezeEnv.Load().(*ethdb.FreezerEnv)
+	if exist {
+		return nil
+	}
+	return missFreezerEnvErr
+}
+
+func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
+	if env == nil || env.ChainCfg == nil {
+		return false
+	}
+
+	return env.ChainCfg.IsCancun(num, time)
+}
+
+// ##CROSS: blob sidecars
+func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {
+	return db.ResetTable(ChainFreezerBlobSidecarTable, next, true)
+}
+
+//##

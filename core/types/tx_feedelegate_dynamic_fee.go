@@ -34,9 +34,9 @@ type FeeDelegatedDynamicFeeTx struct {
 	SenderTx DynamicFeeTx
 	FeePayer *common.Address `rlp:"nil"`
 	// Signature values
-	FV *big.Int `json:"fv" gencodec:"required"` // feePayer V
-	FR *big.Int `json:"fr" gencodec:"required"` // feePayer R
-	FS *big.Int `json:"fs" gencodec:"required"` // feePayer S
+	FV *big.Int // feePayer V
+	FR *big.Int // feePayer R
+	FS *big.Int // feePayer S
 }
 
 func NewFeeDelegatedDynamicFeeTx(feePayer *common.Address, senderTx DynamicFeeTx) *FeeDelegatedDynamicFeeTx {
@@ -145,4 +145,43 @@ func (tx *FeeDelegatedDynamicFeeTx) decode(input []byte) error {
 
 func (tx *FeeDelegatedDynamicFeeTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
 	return tx.SenderTx.effectiveGasPrice(dst, baseFee)
+}
+
+// sigHash returns the hash of the sender's transaction.
+func (tx *FeeDelegatedDynamicFeeTx) sigHash(chainID *big.Int) common.Hash {
+	return prefixedRlpHash(
+		DynamicFeeTxType,
+		[]any{
+			chainID,
+			tx.SenderTx.Nonce,
+			tx.SenderTx.GasTipCap,
+			tx.SenderTx.GasFeeCap,
+			tx.SenderTx.Gas,
+			tx.SenderTx.To,
+			tx.SenderTx.Value,
+			tx.SenderTx.Data,
+			tx.SenderTx.AccessList,
+		})
+}
+
+// sigHashFeeDelegation returns the hash of the entire transaction.
+func (tx *FeeDelegatedDynamicFeeTx) sigHashFeeDelegation(chainID *big.Int) common.Hash {
+	V, R, S := tx.rawSignatureValues()
+	return prefixedRlpHash(
+		FeeDelegatedDynamicFeeTxType,
+		[]any{
+			[]interface{}{
+				chainID,
+				tx.SenderTx.Nonce,
+				tx.SenderTx.GasTipCap,
+				tx.SenderTx.GasFeeCap,
+				tx.SenderTx.Gas,
+				tx.SenderTx.To,
+				tx.SenderTx.Value,
+				tx.SenderTx.Data,
+				tx.SenderTx.AccessList,
+				V, R, S,
+			},
+			tx.FeePayer,
+		})
 }

@@ -29,6 +29,7 @@ const (
 	maxTxPacketSize = 100 * 1024
 )
 
+// ##CROSS: legacy sync
 // blockPropagation is a block propagation event, waiting for its turn in the
 // broadcast queue.
 type blockPropagation struct {
@@ -46,7 +47,7 @@ func (p *Peer) broadcastBlocks() {
 			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
 				return
 			}
-			p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td)
+			p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td, "sidecars", len(prop.block.Sidecars()))
 
 		case block := <-p.queuedBlockAnns:
 			if err := p.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()}); err != nil {
@@ -59,6 +60,8 @@ func (p *Peer) broadcastBlocks() {
 		}
 	}
 }
+
+// ##
 
 // broadcastTransactions is a write loop that schedules transaction broadcasts
 // to the remote peer. The goal is to have an async writer that does not lock up
@@ -149,10 +152,10 @@ func (p *Peer) announceTransactions() {
 				size         common.StorageSize
 			)
 			for count = 0; count < len(queue) && size < maxTxPacketSize; count++ {
-				if tx := p.txpool.Get(queue[count]); tx != nil {
+				if meta := p.txpool.GetMetadata(queue[count]); meta != nil {
 					pending = append(pending, queue[count])
-					pendingTypes = append(pendingTypes, tx.Type())
-					pendingSizes = append(pendingSizes, uint32(tx.Size()))
+					pendingTypes = append(pendingTypes, meta.Type)
+					pendingSizes = append(pendingSizes, uint32(meta.Size))
 					size += common.HashLength
 				}
 			}

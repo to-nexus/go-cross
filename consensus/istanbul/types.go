@@ -37,6 +37,9 @@ type Proposal interface {
 	EncodeRLP(w io.Writer) error
 
 	DecodeRLP(s *rlp.Stream) error
+
+	// Sidecars returns the blob sidecars of the proposal.
+	Sidecars() types.BlobSidecars // ##CROSS: blob sidecars
 }
 
 var _ Proposal = &types.Block{}

@@ -48,16 +48,21 @@ func (st *insertStats) report(chain []*types.Block, index int, snapDiffItems, sn
 	// If we're at the last block of the batch or report period reached, log
 	if index == len(chain)-1 || elapsed >= statsReportLimit {
 		// Count the number of transactions in this segment
-		var txs int
+		var txs, blobs int
 		for _, block := range chain[st.lastIndex : index+1] {
 			txs += len(block.Transactions())
+			// ##CROSS: blob sidecars
+			for _, sidecar := range block.Sidecars() {
+				blobs += len(sidecar.Blobs)
+			}
+			// ##
 		}
 		end := chain[index]
 
 		// Assemble the log context and send it to the logger
 		context := []interface{}{
 			"number", end.Number(), "hash", end.Hash(),
-			"blocks", st.processed, "txs", txs, "mgas", float64(st.usedGas) / 1000000,
+			"blocks", st.processed, "txs", txs, "blobs", blobs, "mgas", float64(st.usedGas) / 1000000,
 			"elapsed", common.PrettyDuration(elapsed), "mgasps", float64(st.usedGas) * 1000 / float64(elapsed),
 		}
 		if timestamp := time.Unix(int64(end.Time()), 0); time.Since(timestamp) > time.Minute {
@@ -170,17 +175,20 @@ func (it *insertIterator) current() *types.Header {
 	return it.chain[it.index].Header()
 }
 
-// first returns the first block in the it.
-func (it *insertIterator) first() *types.Block {
-	return it.chain[0]
-}
-
 // remaining returns the number of remaining blocks.
 func (it *insertIterator) remaining() int {
 	return len(it.chain) - it.index
 }
 
+// ##CROSS: legacy sync
 // processed returns the number of processed blocks.
 func (it *insertIterator) processed() int {
 	return it.index + 1
 }
+
+// first returns the first block in the it.
+func (it *insertIterator) first() *types.Block {
+	return it.chain[0]
+}
+
+// ##

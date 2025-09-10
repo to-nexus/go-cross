@@ -290,8 +290,10 @@ func (c *Core) currentLogger(state bool, msg protocols.Message) log.Logger {
 		logCtx = append(logCtx,
 			"current.round", c.current.Round().Uint64(),
 			"current.sequence", c.current.Sequence().Uint64(),
-			"current.proposer", c.valSet.GetProposer().Address(),
 		)
+		if proposer := c.valSet.GetProposer(); proposer != nil {
+			logCtx = append(logCtx, "current.proposer", c.valSet.GetProposer().Address())
+		}
 	}
 
 	if state {

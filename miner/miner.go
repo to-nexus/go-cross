@@ -58,7 +58,7 @@ type Config struct {
 // DefaultConfig contains default settings for miner.
 var DefaultConfig = Config{
 	GasCeil:  30000000,
-	GasPrice: big.NewInt(params.GWei),
+	GasPrice: big.NewInt(params.GWei), // ##CROSS: min tip
 
 	// The default recommit time is chosen as two seconds since
 	// consensus-layer usually will wait a half slot of time(6s)
@@ -82,6 +82,12 @@ type Miner struct {
 }
 
 func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool) *Miner {
+	// ##CROSS: istanbul
+	initWorker := true
+	if chainConfig.Istanbul != nil {
+		initWorker = false
+	}
+	// ##
 	miner := &Miner{
 		mux:     mux,
 		eth:     eth,
@@ -89,7 +95,7 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		exitCh:  make(chan struct{}),
 		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
-		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
+		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, initWorker),
 	}
 	miner.wg.Add(1)
 	go miner.update()
@@ -132,6 +138,7 @@ func (miner *Miner) update() {
 					log.Info("Mining aborted due to sync")
 				}
 				miner.worker.syncing.Store(true)
+				log.Warn("downloader Start")
 
 			case downloader.FailedEvent:
 				canStart = true
@@ -139,6 +146,7 @@ func (miner *Miner) update() {
 					miner.worker.start()
 				}
 				miner.worker.syncing.Store(false)
+				log.Warn("downloader Failed")
 
 			case downloader.DoneEvent:
 				canStart = true
@@ -149,6 +157,7 @@ func (miner *Miner) update() {
 
 				// Stop reacting to downloader events
 				events.Unsubscribe()
+				log.Warn("downloader Done")
 			}
 		case <-miner.startCh:
 			if canStart {
@@ -182,13 +191,29 @@ func (miner *Miner) Mining() bool {
 	return miner.worker.isRunning()
 }
 
-func (miner *Miner) Hashrate() uint64 {
-	if pow, ok := miner.engine.(consensus.PoW); ok {
-		return uint64(pow.Hashrate())
+// Pending returns the currently pending block and associated receipts, logs
+// and statedb. The returned values can be nil in case the pending block is
+// not initialized.
+func (miner *Miner) Pending() (*types.Block, types.Receipts, *state.StateDB) { // ##CROSS: legacy sync
+	if miner.worker.isRunning() {
+		pendingBlock, pendingReceipts, pendingState := miner.worker.pending()
+		if pendingState != nil && pendingBlock != nil {
+			return pendingBlock, pendingReceipts, pendingState
+		}
 	}
-	return 0
+	// fallback to latest block
+	block := miner.worker.chain.CurrentBlock()
+	if block == nil {
+		return nil, nil, nil
+	}
+	stateDb, err := miner.worker.chain.StateAt(block.Root)
+	if err != nil {
+		return nil, nil, nil
+	}
+	return miner.worker.chain.GetBlockByHash(block.Hash()), miner.worker.chain.GetReceiptsByHash(block.Hash()), stateDb
 }
 
+// SetExtra sets the content used to initialize the block extra field.
 func (miner *Miner) SetExtra(extra []byte) error {
 	if uint64(len(extra)) > params.MaximumExtraDataSize {
 		return fmt.Errorf("extra exceeds max length. %d > %v", len(extra), params.MaximumExtraDataSize)
@@ -205,12 +230,6 @@ func (miner *Miner) SetGasTip(tip *big.Int) error {
 // SetRecommitInterval sets the interval for sealing work resubmitting.
 func (miner *Miner) SetRecommitInterval(interval time.Duration) {
 	miner.worker.setRecommitInterval(interval)
-}
-
-// Pending returns the currently pending block and associated state. The returned
-// values can be nil in case the pending block is not initialized
-func (miner *Miner) Pending() (*types.Block, *state.StateDB) {
-	return miner.worker.pending()
 }
 
 // PendingBlock returns the currently pending block. The returned block can be
@@ -246,6 +265,6 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 }
 
 // BuildPayload builds the payload according to the provided parameters.
-func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
-	return miner.worker.buildPayload(args)
+func (miner *Miner) BuildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
+	return miner.worker.buildPayload(args, witness)
 }

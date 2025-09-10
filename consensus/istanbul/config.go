@@ -112,7 +112,6 @@ func (p *ProposerPolicy) RegisterValidatorSet(valSet ValidatorSet) {
 	} else {
 		p.registry = append(p.registry, valSet)
 
-		// ##CROSS: UPSTREAM PR-1687
 		// Non-validators don't ever call ClearRegistry
 		// Validators cap the registry to MaxValidatorSetInRegistry length to prevent unexpected leaks
 		if len(p.registry) > MaxValidatorSetInRegistry {

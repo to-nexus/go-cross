@@ -1,13 +1,32 @@
+// Copyright 2023 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
 package types
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 // This test verifies that tx.Hash() is not affected by presence of a BlobTxSidecar.
@@ -59,7 +78,7 @@ func TestBlobTxSize(t *testing.T) {
 }
 
 var (
-	emptyBlob          = kzg4844.Blob{}
+	emptyBlob          = new(kzg4844.Blob)
 	emptyBlobCommit, _ = kzg4844.BlobToCommitment(emptyBlob)
 	emptyBlobProof, _  = kzg4844.ComputeBlobProof(emptyBlob, emptyBlobCommit)
 )
@@ -72,7 +91,7 @@ func createEmptyBlobTx(key *ecdsa.PrivateKey, withSidecar bool) *Transaction {
 
 func createEmptyBlobTxInner(withSidecar bool) *BlobTx {
 	sidecar := &BlobTxSidecar{
-		Blobs:       []kzg4844.Blob{emptyBlob},
+		Blobs:       []kzg4844.Blob{*emptyBlob},
 		Commitments: []kzg4844.Commitment{emptyBlobCommit},
 		Proofs:      []kzg4844.Proof{emptyBlobProof},
 	}
@@ -92,4 +111,57 @@ func createEmptyBlobTxInner(withSidecar bool) *BlobTx {
 		blobtx.Sidecar = sidecar
 	}
 	return blobtx
+}
+
+func TestBlobTxSidecars_Encode(t *testing.T) {
+	tests := []struct {
+		raw []*BlobTxSidecar
+		err bool
+	}{
+		{
+			raw: []*BlobTxSidecar{
+				{
+					Blobs:       []kzg4844.Blob{*emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				{
+					Blobs:       []kzg4844.Blob{*emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+			},
+			err: false,
+		},
+		{
+			raw: []*BlobTxSidecar{
+				{
+					Blobs:       []kzg4844.Blob{*emptyBlob},
+					Commitments: []kzg4844.Commitment{emptyBlobCommit},
+					Proofs:      []kzg4844.Proof{emptyBlobProof},
+				},
+				nil,
+			},
+			err: true,
+		},
+		{
+			raw: []*BlobTxSidecar{},
+			err: false,
+		},
+	}
+
+	for i, item := range tests {
+		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
+			enc, err := rlp.EncodeToBytes(item.raw)
+			require.NoError(t, err)
+			var nbs []*BlobTxSidecar
+			err = rlp.DecodeBytes(enc, &nbs)
+			if item.err {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, item.raw, nbs)
+		})
+	}
 }

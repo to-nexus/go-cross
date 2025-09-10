@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// ##CROSS: UPSTREAM PR-1687
 var (
 	addr1    = common.HexToAddress("0xc53f2189bf6d7bf56722731787127f90d319e112")
 	addr2    = common.HexToAddress("0xed2d479591fe2c5626ce09bca4ed2a62e00e5bc2")
@@ -36,8 +35,6 @@ var (
 	addrSet  = []common.Address{addr1, addr2, addr3, addr4, addr5, addr6}
 	addrSet2 = []common.Address{addr7, addr1, addr2, addr3, addr4, addr5}
 )
-
-// ##
 
 func TestProposerPolicy(t *testing.T) {
 	addressSortedByByte := []common.Address{addr6, addr4, addr1, addr3, addr5, addr2}
@@ -59,7 +56,6 @@ func TestProposerPolicy(t *testing.T) {
 	}
 }
 
-// ##CROSS: UPSTREAM PR-1687
 // TestProposerPolicyRegistration verifies that the validator set registration does not exceed the maximum limit defined by istanbul.MaxValidatorSetInRegistry.
 // The test procedure is as follows:
 //  1. Two RoundRobinProposerPolicy instances (pp and pp2) are created along with two different validator sets (valSet and valSet2).

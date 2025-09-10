@@ -1132,6 +1132,16 @@ func (s *skeleton) cleanStales(filled *types.Header) error {
 	if number+1 == s.progress.Subchains[0].Tail {
 		return nil
 	}
+	// If the latest fill was on a different subchain, it means the backfiller
+	// was interrupted before it got to do any meaningful work, no cleanup
+	header := rawdb.ReadSkeletonHeader(s.db, filled.Number.Uint64())
+	if header == nil {
+		log.Debug("Filled header outside of skeleton range", "number", number, "head", s.progress.Subchains[0].Head, "tail", s.progress.Subchains[0].Tail)
+		return nil
+	} else if header.Hash() != filled.Hash() {
+		log.Debug("Filled header on different sidechain", "number", number, "filled", filled.Hash(), "skeleton", header.Hash())
+		return nil
+	}
 	var (
 		start uint64
 		end   uint64
@@ -1140,6 +1150,9 @@ func (s *skeleton) cleanStales(filled *types.Header) error {
 	if number < s.progress.Subchains[0].Head {
 		// The skeleton chain is partially consumed, set the new tail as filled+1.
 		tail := rawdb.ReadSkeletonHeader(s.db, number+1)
+		if tail == nil {
+			return fmt.Errorf("filled header is missing: %d", number+1)
+		}
 		if tail.ParentHash != filled.Hash() {
 			return fmt.Errorf("filled header is discontinuous with subchain: %d %s, please file an issue", number, filled.Hash())
 		}

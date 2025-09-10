@@ -22,7 +22,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -55,6 +54,10 @@ func VerifyEIP1559Header(config *params.ChainConfig, parent, header *types.Heade
 
 // CalcBaseFee calculates the basefee of the header.
 func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
+	if config.Clique != nil { // ##CROSS: for test
+		return new(big.Int).Set(parent.BaseFee)
+	}
+
 	// If the current block is the first EIP-1559 block, return the InitialBaseFee.
 	if !config.IsLondon(parent.Number) {
 		return new(big.Int).SetUint64(params.InitialBaseFee)
@@ -95,14 +98,18 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		num.Mul(num, parent.BaseFee)
 		num.Div(num, denom.SetUint64(parentGasTarget))
 		num.Div(num, denom.SetUint64(baseFeeChangeDenominator))
-		baseFeeDelta := math.BigMax(num, common.Big1)
+		if num.Cmp(common.Big1) < 0 {
+			num.Add(parent.BaseFee, common.Big1)
+		} else {
+			num.Add(parent.BaseFee, num)
+		}
 
-		num.Add(parent.BaseFee, baseFeeDelta)
 		if types.IsIstanbulDigest(parent.MixDigest) {
 			if max := config.GetMaxBaseFee(parent.Number); max != nil && num.Cmp(max) > 0 {
 				num.Set(max)
 			}
 		}
+		return num
 	} else {
 		// Otherwise if the parent block used less gas than its target, the baseFee should decrease.
 		// max(0, parentBaseFee * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator)
@@ -110,15 +117,18 @@ func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		num.Mul(num, parent.BaseFee)
 		num.Div(num, denom.SetUint64(parentGasTarget))
 		num.Div(num, denom.SetUint64(baseFeeChangeDenominator))
-		baseFee := num.Sub(parent.BaseFee, num)
 
-		num = math.BigMax(baseFee, common.Big0)
+		baseFee := num.Sub(parent.BaseFee, num)
+		if baseFee.Sign() < 0 {
+			baseFee = common.Big0
+		}
+
 		if types.IsIstanbulDigest(parent.MixDigest) {
-			if min := config.GetMinBaseFee(parent.Number); min != nil && num.Cmp(min) < 0 {
-				num.Set(min)
+			if min := config.GetMinBaseFee(parent.Number); min != nil && baseFee.Cmp(min) < 0 {
+				baseFee.Set(min)
 			}
 		}
+		return baseFee
 	}
 	// ##
-	return num
 }

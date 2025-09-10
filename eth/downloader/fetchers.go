@@ -72,7 +72,7 @@ func (d *Downloader) fetchHeadersByHash(p *peerConnection, hash common.Hash, amo
 // fetchHeadersByNumber is a blocking version of Peer.RequestHeadersByNumber which
 // handles all the cancellation, interruption and timeout mechanisms of a data
 // retrieval to allow blocking API calls.
-func (d *Downloader) fetchHeadersByNumber(p *peerConnection, number uint64, amount int, skip int, reverse bool) ([]*types.Header, []common.Hash, error) {
+func (d *Downloader) fetchHeadersByNumber(p *peerConnection, number uint64, amount int, skip int, reverse bool) ([]*types.Header, []common.Hash, error) { // ##CROSS: legacy sync
 	// Create the response sink and send the network request
 	start := time.Now()
 	resCh := make(chan *eth.Response)
