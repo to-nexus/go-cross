@@ -31,9 +31,17 @@ import (
 // - gas limit check
 // - basefee check
 func VerifyEIP1559Header(config *params.ChainConfig, parent, header *types.Header) error {
-	// Verify that the gas limit remains within allowed bounds
-	if !types.IsIstanbulDigest(parent.MixDigest) { // ##CROSS: istanbul
-		// if istanbul is activated, this verification is skipped because the gas limit is controlled by its transition config
+	if types.IsIstanbulDigest(parent.MixDigest) { // ##CROSS: istanbul
+		// Verify that the gas limit equals to the value from the last transition or the parent header
+		gasLimit := config.GetGasLimit(header.Number)
+		if gasLimit == nil {
+			gasLimit = &parent.GasLimit
+		}
+		if *gasLimit != header.GasLimit {
+			return fmt.Errorf("invalid gasLimit: have %d, want %d", header.GasLimit, *gasLimit)
+		}
+	} else {
+		// Verify that the gas limit remains within allowed bounds
 		parentGasLimit := parent.GasLimit
 		if !config.IsLondon(parent.Number) {
 			parentGasLimit = parent.GasLimit * config.ElasticityMultiplier()

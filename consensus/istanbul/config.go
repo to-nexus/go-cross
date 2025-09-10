@@ -161,49 +161,24 @@ func (c Config) GetConfig(blockNumber *big.Int) Config {
 	newConfig := c
 
 	c.getTransitionValue(blockNumber, func(transition params.Transition) {
-		onTransition := transition.Block.Cmp(blockNumber) == 0
-		var logCtx []any
-		if onTransition {
-			logCtx = append(logCtx, "number", blockNumber.Uint64())
-		}
-
 		if transition.RequestTimeoutSeconds != 0 {
 			// RequestTimeout is on milliseconds
 			newConfig.RequestTimeout = transition.RequestTimeoutSeconds * 1000
-			if onTransition {
-				logCtx = append(logCtx, "requestTimeout", newConfig.RequestTimeout)
-			}
 		}
 		if transition.EpochLength != 0 {
 			newConfig.Epoch = transition.EpochLength
-			if onTransition {
-				logCtx = append(logCtx, "epoch", newConfig.Epoch)
-			}
 		}
 		if transition.BlockPeriodSeconds != 0 {
 			newConfig.BlockPeriod = transition.BlockPeriodSeconds
-			if onTransition {
-				logCtx = append(logCtx, "blockPeriod", newConfig.BlockPeriod)
-			}
 		}
 		if transition.EmptyBlockPeriodSeconds != nil {
 			newConfig.EmptyBlockPeriod = *transition.EmptyBlockPeriodSeconds
-			if onTransition {
-				logCtx = append(logCtx, "emptyBlockPeriod", newConfig.EmptyBlockPeriod)
-			}
 		}
 		// if len(transition.Validators) > 0 {
 		// 	newConfig.Validators = transition.Validators
 		// }
 		if transition.MaxRequestTimeoutSeconds != nil {
 			newConfig.MaxRequestTimeoutSeconds = *transition.MaxRequestTimeoutSeconds
-			if onTransition {
-				logCtx = append(logCtx, "maxRequestTimeoutSeconds", newConfig.MaxRequestTimeoutSeconds)
-			}
-		}
-
-		if len(logCtx) > 2 {
-			log.Info("Istanbul: applying new transition", logCtx...)
 		}
 	})
 
