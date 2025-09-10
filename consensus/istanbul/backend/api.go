@@ -295,6 +295,10 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
 	}
 
+	if header == nil {
+		return nil, istanbul.ErrUnknownBlock
+	}
+
 	istConfig := api.backend.config.GetConfig(header.Number)
 
 	ret := &IstanbulConfig{
