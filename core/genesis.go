@@ -396,6 +396,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 	// for the scenarios that database is opened in the read-only mode.
 	storedData, _ := json.Marshal(storedCfg)
 	if newData, _ := json.Marshal(newCfg); !bytes.Equal(storedData, newData) {
+		log.Info("Writing chain config", "hash", ghash, "config", string(newData))
 		rawdb.WriteChainConfig(db, ghash, newCfg)
 	}
 	return newCfg, ghash, nil, nil

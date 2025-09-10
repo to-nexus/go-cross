@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // ##CROSS: istanbul
@@ -65,6 +66,9 @@ func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.GasLimit != nil {
 			gasLimit = transition.GasLimit
+			if transition.Block.Cmp(num) == 0 {
+				log.Info("Istanbul: applying new transition", "number", num.Uint64(), "gasLimit", *transition.GasLimit)
+			}
 		}
 	})
 	return
@@ -79,6 +83,9 @@ func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.A
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.Beneficiary != nil {
 			beneficiary = transition.Beneficiary
+			if transition.Block.Cmp(num) == 0 {
+				log.Info("Istanbul: applying new transition", "number", num.Uint64(), "beneficiary", *transition.Beneficiary)
+			}
 		}
 	})
 	return
@@ -92,6 +99,9 @@ func (c *ChainConfig) GetElasticityMultiplier(num *big.Int) (multiplier uint64) 
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.ElasticityMultiplier != nil {
 			multiplier = *transition.ElasticityMultiplier
+			if transition.Block.Cmp(num) == 0 {
+				log.Info("Istanbul: applying new transition", "number", num.Uint64(), "elasticityMultiplier", *transition.ElasticityMultiplier)
+			}
 		}
 	})
 	if multiplier == 0 {
@@ -107,6 +117,9 @@ func (c *ChainConfig) GetBaseFeeChangeDenominator(num *big.Int) (denominator uin
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.BaseFeeChangeDenominator != nil {
 			denominator = *transition.BaseFeeChangeDenominator
+			if transition.Block.Cmp(num) == 0 {
+				log.Info("Istanbul: applying new transition", "number", num.Uint64(), "baseFeeChangeDenominator", *transition.BaseFeeChangeDenominator)
+			}
 		}
 	})
 	if denominator == 0 {
@@ -123,6 +136,9 @@ func (c *ChainConfig) GetMaxBaseFee(num *big.Int) (max *big.Int) {
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.MaxBaseFee != nil {
 			max = (*big.Int)(transition.MaxBaseFee)
+			if transition.Block.Cmp(num) == 0 {
+				log.Info("Istanbul: applying new transition", "number", num.Uint64(), "maxBaseFee", *transition.MaxBaseFee)
+			}
 		}
 	})
 	return
@@ -136,6 +152,9 @@ func (c *ChainConfig) GetMinBaseFee(num *big.Int) (min *big.Int) {
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.MinBaseFee != nil {
 			min = (*big.Int)(transition.MinBaseFee)
+			if transition.Block.Cmp(num) == 0 {
+				log.Info("Istanbul: applying new transition", "number", num.Uint64(), "minBaseFee", *transition.MinBaseFee)
+			}
 		}
 	})
 	return
