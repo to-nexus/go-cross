@@ -13,15 +13,14 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -462,15 +461,13 @@ func WriteRandomReveal(signature []byte) ApplyExtra {
 // Note, the block header and state database might be updated to reflect any
 // consensus rules that happen at finalization (e.g. block rewards).
 func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
-	// Withdrawals processing.
-	if body != nil {
-		for _, w := range body.Withdrawals {
-			// Convert amount from gwei to wei.
-			amount := new(uint256.Int).SetUint64(w.Amount)
-			amount = amount.Mul(amount, uint256.NewInt(params.GWei))
-			state.AddBalance(w.Address, amount, tracing.BalanceIncreaseWithdrawal)
-		}
+	// ##CROSS: contract upgrade
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return
 	}
+	contracts.TryUpdateSystemContract(chain.Config(), header.Number, parent.Time, header.Time, state, false)
+	// ##
 
 	// Accumulate any block and uncle rewards and commit the final state root
 	e.accumulateRewards(chain, state, header)

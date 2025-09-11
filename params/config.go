@@ -45,7 +45,7 @@ var (
 	BeneficiaryCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	BeneficiaryCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 
-	EchoCross = common.HexToAddress("0x0575a1b8e9e8950356b0c682bb270e16905eb108")
+	EcoCross = common.HexToAddress("0x0575a1b8e9e8950356b0c682bb270e16905eb108")
 	// ##
 
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
@@ -198,6 +198,10 @@ var (
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
 			BlockPeriodSeconds:      1,
@@ -218,10 +222,12 @@ var (
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 		},
 		Transitions: []Transition{
+			// ##CROSS: gas limit upgrade
 			{
 				Block:    big.NewInt(9188602),
 				GasLimit: newUint64(210000000),
 			},
+			// ##
 		},
 	}
 
@@ -250,6 +256,10 @@ var (
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
 			BlockPeriodSeconds:      1,
@@ -267,7 +277,14 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 		},
-		Transitions: []Transition{},
+		Transitions: []Transition{
+			// ##CROSS: gas limit upgrade
+			{
+				Block:    big.NewInt(9188602),
+				GasLimit: newUint64(210000000),
+			},
+			// ##
+		},
 	}
 	// ##
 
@@ -870,10 +887,31 @@ func (c *ChainConfig) IsPrague(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.PragueTime, time)
 }
 
+// IsOnPrague returns whether currentBlockTime is either equal to the Prague fork time or greater firstly.
+func (c *ChainConfig) IsOnPrague(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsPrague(lastBlockNumber, lastBlockTime) && c.IsPrague(currentBlockNumber, currentBlockTime)
+}
+
+// ##CROSS: fork breakpoint
 // IsBreakpoint returns whether time is either equal to the Breakpoint fork time or greater.
-func (c *ChainConfig) IsBreakpoint(num *big.Int, time uint64) bool { // ##CROSS: fork breakpoint
+func (c *ChainConfig) IsBreakpoint(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.BreakpointTime, time)
 }
+
+// IsOnBreakpoint returns whether currentBlockTime is either equal to the Breakpoint fork time or greater firstly.
+func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsBreakpoint(lastBlockNumber, lastBlockTime) && c.IsBreakpoint(currentBlockNumber, currentBlockTime)
+}
+
+// ##
 
 // IsOsaka returns whether time is either equal to the Osaka fork time or greater.
 func (c *ChainConfig) IsOsaka(num *big.Int, time uint64) bool {

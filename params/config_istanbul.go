@@ -52,6 +52,10 @@ type Transition struct {
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`               // MinBaseFee
 }
 
+func (c *ChainConfig) IsIstanbulConsensus() bool {
+	return c.Istanbul != nil
+}
+
 // gets value at or after a transition
 func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition Transition)) {
 	if c != nil && num != nil && c.Transitions != nil {

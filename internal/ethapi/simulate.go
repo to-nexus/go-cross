@@ -330,7 +330,7 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	}
 	var requests [][]byte
 	// Process EIP-7685 requests
-	if sim.chainConfig.IsPrague(header.Number, header.Time) {
+	if sim.chainConfig.IsPrague(header.Number, header.Time) && !sim.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
 		requests = [][]byte{}
 		// EIP-6110
 		if err := core.ParseDepositLogs(&requests, allLogs, sim.chainConfig); err != nil {

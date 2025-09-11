@@ -124,8 +124,12 @@ func GetAPIs(apiBackend Backend, nodeConfig *node.Config) []rpc.API {
 			Namespace: "eth",
 			Service:   NewEthereumAccountAPI(apiBackend.AccountManager()),
 		}, {
+			// ##CROSS: cross api
 			Namespace: "cross",
+			Version:   "1.0",
 			Service:   NewCrossAPI(apiBackend),
+			Public:    true,
+			// ##
 		},
 	}
 }

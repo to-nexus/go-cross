@@ -1,12 +1,12 @@
 # 🚀 Go Cross
 
-Go Cross is a **blockchain client based on Ethereum v1.15.11**, integrating ConsenSys Quorum's latest BFT consensus algorithm. It features **Adventure Fork, a custom fork that incorporates elements from the Shanghai and Cancun forks**.
+Go Cross is a **blockchain client based on Ethereum client (geth)**, integrating ConsenSys Quorum's latest BFT consensus algorithm. It features **Breakpoint Fork, a custom fork that incorporates elements from the Prague fork**.
 
 ## 🔢 Version Information
 
 - **Execution Layer: Ethereum**: v1.15.11
 - **Consensus Layer: ConsenSys Quorum**: Latest BFT-based consensus algorithm
-- **Fork Version**: Adventure (Shanghai + partial Cancun features applied)
+- **Fork Version**: Breakpoint (Prague + some unique features)
 
 ## 🛠 Installation and Execution Guide
 
@@ -56,11 +56,11 @@ DataDir = <your-datadir>
 HTTPHost = "0.0.0.0"
 HTTPPort = 22001
 HTTPCors = ["*"]
-HTTPModules = ["net", "web3", "eth", "istanbul"]
+HTTPModules = ["net", "web3", "eth", "istanbul", "cross"]
 WSHost = "0.0.0.0"
 WSPort = 32001
 WSOrigins = ["*"]
-WSModules = ["net", "web3", "eth", "istanbul"]
+WSModules = ["net", "web3", "eth", "istanbul", "cross"]
 
 [Node.P2P]
 ListenAddr = ":30001"

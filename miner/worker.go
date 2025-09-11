@@ -30,6 +30,7 @@ import (
 	istanbulBackend "github.com/ethereum/go-ethereum/consensus/istanbul/backend"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -1081,7 +1082,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
-		if w.chainConfig.Istanbul == nil { // ##CROSS: istanbul
+		if !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
 			header.ParentBeaconRoot = genParams.beaconRoot
 		} else {
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
@@ -1104,6 +1105,11 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
+
+	// ##CROSS: contract upgrade
+	// Handle upgrade built-in system contract code
+	contracts.TryUpdateSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
+	// ##
 
 	if header.ParentBeaconRoot != nil {
 		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)
@@ -1171,10 +1177,10 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
 	}
-	body := types.Body{Transactions: work.txs} //, Withdrawals: params.withdrawals}
+	body := types.Body{Transactions: work.txs, Withdrawals: params.withdrawals}
 	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
-	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && w.chainConfig.Istanbul == nil { // ##CROSS: istanbul
+	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
 		allLogs := make([]*types.Log, 0)
 		for _, r := range work.receipts {
 			allLogs = append(allLogs, r.Logs...)
@@ -1316,7 +1322,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 				fees := totalFees(block, env.receipts)
 				feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-					"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther,
+					"txs", env.tcount, "gas", block.GasUsed(), "fees", feesInEther,
 					"elapsed", common.PrettyDuration(time.Since(start)))
 
 			case <-w.exitCh:
