@@ -84,6 +84,11 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if !rules.IsCancun && tx.Type() == types.BlobTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in Cancun", core.ErrTxTypeNotSupported, tx.Type())
 	}
+	// ##CROSS: istanbul blob tx
+	if opts.Config.Istanbul != nil && tx.Type() == types.BlobTxType {
+		return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support blob transactions", core.ErrTxTypeNotSupported, tx.Type())
+	}
+	// ##
 	if !rules.IsPrague && tx.Type() == types.SetCodeTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in Prague", core.ErrTxTypeNotSupported, tx.Type())
 	}

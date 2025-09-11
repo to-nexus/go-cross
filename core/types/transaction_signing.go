@@ -108,7 +108,7 @@ func LatestSigner(config *params.ChainConfig) Signer {
 func LatestSignerForChainID(chainID *big.Int) Signer {
 	var signer Signer
 	if chainID != nil {
-		signer = NewPragueSigner(chainID)
+		signer = NewBreakpointSigner(chainID) // ##CROSS: fork breakpoint
 	} else {
 		signer = HomesteadSigner{}
 	}
