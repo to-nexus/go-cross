@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // fetchHeadersByHash is a blocking version of Peer.RequestHeadersByHash which
@@ -53,6 +54,7 @@ func (d *Downloader) fetchHeadersByHash(p *peerConnection, hash common.Hash, amo
 		p.log.Debug("Header request timed out", "elapsed", ttl)
 		headerTimeoutMeter.Mark(1)
 
+		log.Warn("Timeout peer", "id", p.id, "method", "fetchHeadersByHash")
 		return nil, nil, errTimeout
 
 	case res := <-resCh:
@@ -98,6 +100,7 @@ func (d *Downloader) fetchHeadersByNumber(p *peerConnection, number uint64, amou
 		p.log.Debug("Header request timed out", "elapsed", ttl)
 		headerTimeoutMeter.Mark(1)
 
+		log.Warn("Timeout peer", "id", p.id, "method", "fetchHeadersByNumber")
 		return nil, nil, errTimeout
 
 	case res := <-resCh:
