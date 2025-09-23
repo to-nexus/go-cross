@@ -163,6 +163,14 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 			cs.warned = time.Now()
 		}
 		return nil // We're in sync
+	} else if op.td.Cmp(new(big.Int).Add(ourTD, common.Big1)) <= 0 {
+		time.Sleep(3 * time.Second)
+
+		// Re-check local head to see if it has caught up
+		if _, latestTD := cs.modeAndLocalHead(); ourTD.Cmp(latestTD) < 0 {
+			log.Trace("The local head is already caught up; synchronization is not required.")
+			return nil
+		}
 	}
 	return op
 }
