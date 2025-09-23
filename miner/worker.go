@@ -30,7 +30,6 @@ import (
 	istanbulBackend "github.com/ethereum/go-ethereum/consensus/istanbul/backend"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
-	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -1105,11 +1104,6 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
-
-	// ##CROSS: contract upgrade
-	// Handle upgrade built-in system contract code
-	contracts.TryUpdateSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
-	// ##
 
 	if header.ParentBeaconRoot != nil {
 		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)

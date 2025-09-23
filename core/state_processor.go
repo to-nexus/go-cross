@@ -17,13 +17,11 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/misc"
-	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -71,15 +69,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(statedb)
 	}
-
-	// ##CROSS: contract upgrade
-	lastBlock := p.chain.GetHeaderByHash(block.ParentHash())
-	if lastBlock == nil {
-		return nil, errors.New("could not get parent block")
-	}
-	// Handle upgrade built-in system contract code
-	contracts.TryUpdateSystemContract(p.config, blockNumber, lastBlock.Time, block.Time(), statedb, true)
-	// ##
 
 	var (
 		context vm.BlockContext

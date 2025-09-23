@@ -2,12 +2,17 @@ package engine
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
+	"slices"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
@@ -18,8 +23,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 	"golang.org/x/crypto/sha3"
 )
@@ -35,13 +43,22 @@ type Engine struct {
 
 	signer common.Address // Ethereum address of the signing key
 	sign   SignerFn       // Signer function to authorize hashes with
+
+	// ##CROSS: consensus system contract
+	ethAPI       *ethapi.BlockChainAPI
+	validatorSet abi.ABI
+	// ##
 }
 
-func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn) *Engine {
+func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, ethAPI *ethapi.BlockChainAPI) *Engine {
 	return &Engine{
 		cfg:    cfg,
 		signer: signer,
 		sign:   sign,
+		// ##CROSS: consensus system contract
+		ethAPI:       ethAPI,
+		validatorSet: contracts.ValidatorSetABI(),
+		// ##
 	}
 }
 
@@ -414,22 +431,24 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		header.Time = uint64(time.Now().Unix())
 	}
 
-	// currentBlockNumber := big.NewInt(0).SetUint64(number - 1)
-	// for _, transition := range e.cfg.Transitions {
-	// 	if transition.Block.Cmp(currentBlockNumber) == 0 && len(transition.Validators) > 0 {
-	// 		toRemove := make([]istanbul.Validator, 0, validators.Size())
-	// 		l := validators.List()
-	// 		toRemove = append(toRemove, l...)
-	// 		for i := range toRemove {
-	// 			validators.RemoveValidator(toRemove[i].Address())
-	// 		}
-	// 		for i := range transition.Validators {
-	// 			validators.AddValidator(transition.Validators[i])
-	// 		}
-	// 		break
-	// 	}
-	// }
-	validatorsList := validator.SortedAddresses(validators.List())
+	var validatorsList []common.Address
+	if chain.Config().IsBreakpoint(header.Number, header.Time) {
+		// ##CROSS: consensus system contract
+		// after breakpoint, validator list is managed by the system contract
+		vlist, err := e.getValidators(rpc.BlockNumberOrHashWithHash(header.ParentHash, false))
+		if err != nil {
+			return err
+		}
+		if vlist != nil {
+			validatorsList = vlist
+		} else {
+			validatorsList = validator.SortedAddresses(validators.List())
+		}
+		// ##
+	} else {
+		validatorsList = validator.SortedAddresses(validators.List())
+	}
+
 	// add validators in snapshot to extraData's validators section
 	return ApplyHeaderIstanbulExtra(
 		header,
@@ -466,7 +485,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if parent == nil {
 		return
 	}
-	contracts.TryUpdateSystemContract(chain.Config(), header.Number, parent.Time, header.Time, state, false)
+	contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
 	// ##
 
 	// Accumulate any block and uncle rewards and commit the final state root
@@ -474,6 +493,14 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	header.UncleHash = nilUncleHash
+
+	// ##CROSS: consensus system contract
+	if chain.Config().IsBreakpoint(header.Number, header.Time) {
+		if err := e.updateValidatorSet(header); err != nil {
+			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
+		}
+	}
+	// ##
 }
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
@@ -535,7 +562,7 @@ func (e *Engine) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, 
 	return new(big.Int)
 }
 
-func (e *Engine) ExtractGenesisValidators(header *types.Header) ([]common.Address, error) {
+func (e *Engine) ExtractValidators(header *types.Header) ([]common.Address, error) {
 	extra, err := types.ExtractIstanbulExtra(header)
 	if err != nil {
 		return nil, err
@@ -667,3 +694,62 @@ func setExtra(h *types.Header, extra *types.IstanbulExtra) error {
 // AccumulateRewards credits the beneficiary of the given block with a reward.
 func (e *Engine) accumulateRewards(chain consensus.ChainHeaderReader, state vm.StateDB, header *types.Header) {
 }
+
+// ##CROSS: consensus system contract
+
+func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address, error) {
+	const method = "getValidators"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	code, err := e.ethAPI.GetCode(ctx, contracts.ValidatorSetAddr, blockNr)
+	if err != nil {
+		log.Error("Failed to get ValidatorSet code", "error", err)
+		return nil, err
+	}
+	if len(code) == 0 {
+		// contract is not deployed
+		return nil, nil
+	}
+
+	data, err := e.validatorSet.Pack(method)
+	if err != nil {
+		log.Error("Failed to pack tx for getValidators", "error", err)
+		return nil, err
+	}
+	msgData := (hexutil.Bytes)(data)
+
+	toAddress := contracts.ValidatorSetAddr
+	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
+
+	result, err := e.ethAPI.Call(ctx, ethapi.TransactionArgs{
+		Gas:  &gas,
+		To:   &toAddress,
+		Data: &msgData,
+	}, &blockNr, nil, nil)
+	if err != nil {
+		log.Error("Failed to call getValidators", "error", err)
+		return nil, err
+	}
+
+	var validators []common.Address
+	if err := e.validatorSet.UnpackIntoInterface(&validators, method, result); err != nil {
+		log.Error("Failed to unpack return value of getValidators", "error", err)
+		return nil, err
+	}
+
+	// sort ascending
+	slices.SortFunc(validators, func(a, b common.Address) int {
+		return bytes.Compare(a[:], b[:])
+	})
+
+	return validators, nil
+}
+
+func (e *Engine) updateValidatorSet(header *types.Header) error {
+	// TODO: implement this
+	return nil
+}
+
+// ##

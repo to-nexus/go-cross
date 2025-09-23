@@ -4,4 +4,7 @@ import _ "embed"
 
 // ##CROSS: contract upgrade
 
-var ()
+var (
+	//go:embed validator_set
+	ValidatorSetCode string // ##CROSS: consensus system contract
+)

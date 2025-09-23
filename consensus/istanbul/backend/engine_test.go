@@ -42,7 +42,7 @@ func newBlockchainFromConfig(genesis *core.Genesis, nodeKeys []*ecdsa.PrivateKey
 	memDB := rawdb.NewMemoryDatabase()
 
 	// Use the first key as private key
-	backend := New(cfg, nodeKeys[0], memDB)
+	backend := New(cfg, nodeKeys[0], memDB, nil)
 
 	genesis.MustCommit(memDB, triedb.NewDatabase(memDB, triedb.HashDefaults))
 

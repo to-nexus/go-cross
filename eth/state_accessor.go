@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -235,8 +234,6 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 	if err != nil {
 		return nil, vm.BlockContext{}, nil, nil, err
 	}
-	// upgrade built-in system contract before normal txs
-	contracts.TryUpdateSystemContract(eth.blockchain.Config(), block.Number(), parent.Time(), block.Time(), statedb, true) // ##CROSS: contract upgrade
 	// Insert parent beacon block root in the state as per EIP-4788.
 	context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil)
 	evm := vm.NewEVM(context, statedb, eth.blockchain.Config(), vm.Config{})

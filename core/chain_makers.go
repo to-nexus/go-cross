@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
-	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -410,8 +409,6 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if config.DAOForkSupport && config.DAOForkBlock != nil && config.DAOForkBlock.Cmp(b.header.Number) == 0 {
 			misc.ApplyDAOHardFork(statedb)
 		}
-
-		contracts.TryUpdateSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true) // ##CROSS: contract upgrade
 
 		if config.IsPrague(b.header.Number, b.header.Time) || config.IsVerkle(b.header.Number, b.header.Time) {
 			// EIP-2935

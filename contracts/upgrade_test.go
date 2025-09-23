@@ -21,5 +21,5 @@ func TestAllCodesHash(t *testing.T) {
 		}
 	}
 	allCodeHash := sha256.Sum256(allCodes)
-	require.Equal(t, allCodeHash[:], common.Hex2Bytes("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
+	require.Equal(t, common.Hex2Bytes("f159fb30b48993083f2a2a09ab8a8f55fbad1905815f348607acdc7c0c4645a7"), allCodeHash[:])
 }
