@@ -88,11 +88,16 @@ type StateDB interface {
 	PointCache() *utils.PointCache
 
 	Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList)
+	// ##CROSS: consensus system contract
+	SetTxContext(thash common.Hash, ti int)
+	TxIndex() int
+	// ##
 
 	RevertToSnapshot(int)
 	Snapshot() int
 
 	AddLog(*types.Log)
+	GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash) []*types.Log // ##CROSS: consensus system contract
 	AddPreimage(common.Hash, []byte)
 
 	Witness() *stateless.Witness

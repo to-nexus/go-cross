@@ -21,6 +21,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -61,7 +62,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		header      = block.Header()
 		blockHash   = block.Hash()
 		blockNumber = block.Number()
-		allLogs     []*types.Log
 		gp          = new(GasPool).AddGas(block.GasLimit())
 	)
 
@@ -90,8 +90,36 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		ProcessParentBlockHash(block.ParentHash(), evm)
 	}
 
+	// ##CROSS: consensus system contract
+	posa, isPoSA := p.chain.engine.(consensus.IstanbulPoSA)
+	if !isPoSA {
+		if engine, ok := p.chain.engine.(interface{ InnerEngine() consensus.Engine }); ok {
+			posa, isPoSA = engine.InnerEngine().(consensus.IstanbulPoSA)
+		}
+	}
+
+	// usually there is only one system tx
+	txs := make([]*types.Transaction, 0, len(block.Transactions()))
+	systemTxs := make([]*types.Transaction, 0, 1)
+	// ##
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
+		// ##CROSS: consensus system contract
+		if isPoSA {
+			if isSystemTx, err := posa.IsSystemTransaction(tx, header); err != nil {
+				return nil, fmt.Errorf("could not check if tx %d [%v] is system tx: %w", i, tx.Hash().Hex(), err)
+			} else if isSystemTx {
+				// system txs will be handled by the consensus engine
+				systemTxs = append(systemTxs, tx)
+				continue
+			}
+		}
+		if len(systemTxs) > 0 {
+			return nil, fmt.Errorf("normal tx %d [%v] after systemTx", i, tx.Hash().Hex())
+		}
+		// ##
+
 		msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
@@ -102,12 +130,16 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		if err != nil {
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
+		txs = append(txs, tx)
 		receipts = append(receipts, receipt)
-		allLogs = append(allLogs, receipt.Logs...)
 	}
 	// Read requests if Prague is enabled.
 	var requests [][]byte
 	if p.config.IsPrague(block.Number(), block.Time()) && !p.config.IsIstanbulConsensus() { // ##CROSS: istanbul
+		var allLogs []*types.Log
+		for _, receipt := range receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
 		requests = [][]byte{}
 		// EIP-6110
 		if err := ParseDepositLogs(&requests, allLogs, p.config); err != nil {
@@ -124,7 +156,17 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.chain.engine.Finalize(p.chain, header, tracingStateDB, block.Body())
+	if err := p.chain.engine.Finalize(p.chain, header, tracingStateDB, block.Body(), &txs, &receipts, &systemTxs, usedGas, cfg.Tracer); err != nil {
+		return nil, err
+	}
+
+	// ##CROSS: consensus system contract
+	// collect all logs (including system txs)
+	var allLogs []*types.Log
+	for _, receipt := range receipts {
+		allLogs = append(allLogs, receipt.Logs...)
+	}
+	// ##
 
 	return &ProcessResult{
 		Receipts: receipts,

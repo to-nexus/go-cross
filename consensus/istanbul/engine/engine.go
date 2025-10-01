@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -19,7 +20,9 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -29,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -37,6 +41,7 @@ var (
 )
 
 type SignerFn func(data []byte) ([]byte, error)
+type SignerTxFn func(accounts.Account, *types.Transaction, *big.Int) (*types.Transaction, error)
 
 type Engine struct {
 	cfg *istanbul.Config
@@ -45,22 +50,61 @@ type Engine struct {
 	sign   SignerFn       // Signer function to authorize hashes with
 
 	// ##CROSS: consensus system contract
+	signTx       SignerTxFn
+	consensus    consensus.Engine
 	ethAPI       *ethapi.BlockChainAPI
 	validatorSet abi.ABI
 	// ##
 }
 
-func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, ethAPI *ethapi.BlockChainAPI) *Engine {
+// ##CROSS: consensus system contract
+var systemContracts = map[common.Address]bool{
+	contracts.ValidatorSetAddr: true,
+}
+
+// ##
+
+func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, ethAPI *ethapi.BlockChainAPI) *Engine {
 	return &Engine{
 		cfg:    cfg,
 		signer: signer,
 		sign:   sign,
 		// ##CROSS: consensus system contract
+		signTx:       signTx,
+		consensus:    ce,
 		ethAPI:       ethAPI,
 		validatorSet: contracts.ValidatorSetABI(),
 		// ##
 	}
 }
+
+// ##CROSS: consensus system contract
+func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	if to := tx.To(); to == nil || !isToSystemContract(*to) {
+		return false, nil
+	}
+	if tx.GasPrice().Sign() != 0 {
+		return false, nil
+	}
+	sender, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	if err != nil {
+		return false, err
+	}
+	return sender == header.Coinbase, nil
+}
+
+func (e *Engine) IsSystemContract(to *common.Address) bool {
+	if to == nil {
+		return false
+	}
+	return isToSystemContract(*to)
+}
+
+func isToSystemContract(to common.Address) bool {
+	return systemContracts[to]
+}
+
+// ##
 
 func (e *Engine) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
@@ -479,20 +523,95 @@ func WriteRandomReveal(signature []byte) ApplyExtra {
 //
 // Note, the block header and state database might be updated to reflect any
 // consensus rules that happen at finalization (e.g. block rewards).
-func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
+func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction, receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	// ##CROSS: contract upgrade
+	cx := &chainContext{Chain: chain, engine: e.consensus}
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
-		return
+		return errors.New("parent not found")
 	}
-	contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+
+	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+	if upgraded {
+		// consume system transactions
+		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
+		if len(initData) > 0 {
+			// all initData should be included in systemTxs, in same order
+			if len(*systemTxs) < len(initData) {
+				return errors.New("systemTxs is not enough")
+			}
+
+			// split transactions into common and system txs
+			for _, data := range initData {
+				log.Info("Initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To)
+				msg := newSystemMessage(header.Coinbase, data.To, data.Data)
+				err := e.applyReceivedSystemTransaction(msg, state, header, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// TODO: slash validator
+	// TODO: penalize for delayed mining
+
 	// ##
 
 	// Accumulate any block and uncle rewards and commit the final state root
-	e.accumulateRewards(chain, state, header)
+	// e.accumulateRewards(chain, state, header)
 
-	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	header.UncleHash = nilUncleHash
+	// ##CROSS: consensus system contract
+	if chain.Config().IsBreakpoint(header.Number, header.Time) {
+		if err := e.updateValidatorSet(header); err != nil {
+			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
+			return err
+		}
+	}
+	// ##
+
+	return nil
+}
+
+// FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
+// nor block rewards given, and returns the final block.
+func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	// ##CROSS: fork
+	if body != nil {
+		if body.Transactions == nil {
+			body.Transactions = make([]*types.Transaction, 0)
+		}
+	}
+	if receipts == nil {
+		receipts = make([]*types.Receipt, 0)
+	}
+	// ##
+
+	// ##CROSS: contract upgrade
+	cx := &chainContext{Chain: chain, engine: e.consensus}
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return nil, nil, errors.New("parent not found")
+	}
+	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+	if upgraded {
+		// init upgraded contracts
+		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
+		for _, data := range initData {
+			msg := newSystemMessage(e.signer, data.To, data.Data)
+			log.Info("Initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To)
+			err := e.applyGeneratedSystemTransaction(msg, state, header, cx, &body.Transactions, &receipts, &header.GasUsed, tracer)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+
+	// TODO: slash validator
+	// TODO: penalize for delayed mining
+
+	// TODO: distribute rewards
+	// ##
 
 	// ##CROSS: consensus system contract
 	if chain.Config().IsBreakpoint(header.Number, header.Time) {
@@ -501,34 +620,15 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 	// ##
-}
 
-// FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
-// nor block rewards given, and returns the final block.
-func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
-	// ##CROSS: fork
-	// Withdrawals root should be set after Shanghai but it was missing.
-	// So we set it after Cancun here to activate Cancun correctly.
-	if body != nil {
-		if body.Transactions == nil {
-			body.Transactions = make([]*types.Transaction, 0)
-		}
-		if chain.Config().IsCancun(header.Number, header.Time) {
-			if body.Withdrawals == nil {
-				body.Withdrawals = make([]*types.Withdrawal, 0)
-			}
-		} else {
-			if len(body.Withdrawals) > 0 {
-				return nil, nil, errors.New("withdrawals set before Cancun activation")
-			}
-		}
+	// should not happen. Once happen, stop the node is better than broadcast the block
+	if header.GasLimit < header.GasUsed {
+		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
-	if receipts == nil {
-		receipts = make([]*types.Receipt, 0)
-	}
-	// ##
 
-	e.Finalize(chain, header, state, body)
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+	header.UncleHash = nilUncleHash
+
 	// Assemble and return the final block for sealing
 	blk := types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
 	return blk, receipts, nil
@@ -750,6 +850,196 @@ func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address,
 func (e *Engine) updateValidatorSet(header *types.Header) error {
 	// TODO: implement this
 	return nil
+}
+
+// applyGeneratedSystemTransaction applies a system transaction to the state.
+// It creates a system transaction from the given message, signs it using the engine's signer function
+// and applies it to the state. The created transaction and receipt is appended to the given slices.
+//
+// This function is called to generate system transactions and append them to the transaction list of the new block.
+func (e *Engine) applyGeneratedSystemTransaction(
+	msg *core.Message,
+	state vm.StateDB,
+	header *types.Header,
+	chainContext core.ChainContext,
+	txs *[]*types.Transaction,
+	receipts *[]*types.Receipt,
+	usedGas *uint64,
+	tracer *tracing.Hooks,
+) (err error) {
+	nonce := state.GetNonce(msg.From)
+	tx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	tx, err = e.signTx(accounts.Account{Address: msg.From}, tx, chainContext.Config().ChainID)
+	if err != nil {
+		return err
+	}
+
+	return e.applySystemTransaction(msg, tx, state, header, chainContext, e.signer, txs, receipts, usedGas, tracer)
+}
+
+// applyReceivedSystemTransaction applies a received system transaction to the state.
+// It assumes that the given message is equal to the first element of systemTxs and applies it to the state.
+// The applied transaction and receipt is appended to the given slices and removes the transaction from systemTxs.
+//
+// This function is called to apply system transactions of the received block to the state.
+func (e *Engine) applyReceivedSystemTransaction(
+	msg *core.Message,
+	state vm.StateDB,
+	header *types.Header,
+	chainContext core.ChainContext,
+	txs *[]*types.Transaction,
+	receipts *[]*types.Receipt,
+	systemTxs *[]*types.Transaction,
+	usedGas *uint64,
+	tracer *tracing.Hooks,
+) error {
+	signer := types.LatestSignerForChainID(chainContext.Config().ChainID)
+	nonce := state.GetNonce(msg.From)
+	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	expectedHash := signer.Hash(expectedTx)
+
+	if systemTxs == nil || len(*systemTxs) == 0 || (*systemTxs)[0] == nil {
+		return errors.New("supposed to get a actual transaction, but get none")
+	}
+	actualTx := (*systemTxs)[0]
+	if !bytes.Equal(signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
+		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s", expectedHash.String(), actualTx.Hash().String(),
+			expectedTx.Nonce(),
+			expectedTx.To().String(),
+			expectedTx.Value().String(),
+			expectedTx.Gas(),
+			expectedTx.GasPrice().String(),
+			hexutil.Bytes(expectedTx.Data()).String(),
+		)
+	}
+	expectedTx = actualTx
+	// move to next
+	*systemTxs = (*systemTxs)[1:]
+
+	return e.applySystemTransaction(msg, expectedTx, state, header, chainContext, header.Coinbase, txs, receipts, usedGas, tracer)
+}
+
+func (e *Engine) applySystemTransaction(
+	msg *core.Message,
+	tx *types.Transaction,
+	state vm.StateDB,
+	header *types.Header,
+	chainContext core.ChainContext,
+	author common.Address,
+	txs *[]*types.Transaction,
+	receipts *[]*types.Receipt,
+	usedGas *uint64,
+	tracer *tracing.Hooks,
+) (err error) {
+	state.SetTxContext(tx.Hash(), len(*txs))
+
+	context := core.NewEVMBlockContext(header, chainContext, &author)
+	evm := vm.NewEVM(context, state, chainContext.Config(), vm.Config{Tracer: tracer})
+	evm.SetTxContext(core.NewEVMTxContext(msg))
+	evm.StateDB.AddAddressToAccessList(*msg.To)
+
+	var receipt *types.Receipt
+	if tracer != nil {
+		onSystemCallStart(tracer, evm.GetVMContext())
+		if tracer.OnTxStart != nil {
+			tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+		}
+		if tracer.OnSystemCallEnd != nil {
+			defer tracer.OnSystemCallEnd()
+		}
+		if tracer.OnTxEnd != nil {
+			defer func() { tracer.OnTxEnd(receipt, err) }()
+		}
+	}
+
+	gasUsed, err := applySystemMessage(msg, evm, state, header)
+	if err != nil {
+		return err
+	}
+	*txs = append(*txs, tx)
+
+	// Update the state with pending changes.
+	var root []byte
+	if evm.ChainConfig().IsByzantium(header.Number) {
+		state.Finalise(true)
+	} else {
+		root = state.IntermediateRoot(evm.ChainConfig().IsEIP158(header.Number)).Bytes()
+	}
+	*usedGas += gasUsed
+
+	if state.AccessEvents() != nil {
+		state.AccessEvents().Merge(evm.AccessEvents)
+	}
+
+	receipt = types.NewReceipt(root, false, *usedGas)
+	receipt.TxHash = tx.Hash()
+	receipt.GasUsed = gasUsed
+	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
+	receipt.Bloom = types.CreateBloom(receipt)
+	receipt.BlockHash = header.Hash()
+	receipt.BlockNumber = header.Number
+	receipt.TransactionIndex = uint(state.TxIndex())
+	*receipts = append(*receipts, receipt)
+	return
+}
+
+func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header *types.Header) (uint64, error) {
+	// Apply the transaction to the current state (included in the env)
+	if evm.ChainConfig().IsCancun(header.Number, header.Time) {
+		rules := evm.ChainConfig().Rules(evm.Context.BlockNumber, evm.Context.Random != nil, evm.Context.Time)
+		state.Prepare(rules, msg.From, evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
+	}
+	// Increment the nonce for the next transaction
+	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
+
+	ret, returnGas, err := evm.Call(
+		msg.From,
+		*msg.To,
+		msg.Data,
+		msg.GasLimit,
+		uint256.MustFromBig(msg.Value),
+	)
+	if err != nil {
+		log.Error("apply message failed", "msg", string(ret), "err", err)
+	}
+	return msg.GasLimit - returnGas, err
+}
+
+func newSystemMessage(from, toAddress common.Address, data []byte) *core.Message {
+	return &core.Message{
+		From:     from,
+		GasLimit: math.MaxUint64 / 2,
+		GasPrice: big.NewInt(0),
+		Value:    common.Big0,
+		To:       &toAddress,
+		Data:     data,
+	}
+}
+
+func onSystemCallStart(tracer *tracing.Hooks, ctx *tracing.VMContext) {
+	if tracer.OnSystemCallStartV2 != nil {
+		tracer.OnSystemCallStartV2(ctx)
+	} else if tracer.OnSystemCallStart != nil {
+		tracer.OnSystemCallStart()
+	}
+}
+
+// chain context
+type chainContext struct {
+	Chain  consensus.ChainHeaderReader
+	engine consensus.Engine
+}
+
+func (c chainContext) Engine() consensus.Engine {
+	return c.engine
+}
+
+func (c chainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
+	return c.Chain.GetHeader(hash, number)
+}
+
+func (c chainContext) Config() *params.ChainConfig {
+	return c.Chain.Config()
 }
 
 // ##

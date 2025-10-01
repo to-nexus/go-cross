@@ -3,7 +3,6 @@ package contracts
 import (
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"reflect"
 	"strings"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/params/forks"
@@ -24,15 +22,20 @@ type (
 	UpgradeConfig struct {
 		Deploy       bool
 		Name         string
-		ContractAddr common.Address
 		Commit       string
-		Code         string
+		ContractAddr common.Address
+		Code         any // string or []byte
 		Storage      map[common.Hash]common.Hash
-		Prepare      func(header *types.Header, cfg *UpgradeConfig) error
+		Init         func(header *types.Header) ([]byte, error)
 	}
 	Upgrade struct {
 		UpgradeName string
 		Configs     []*UpgradeConfig
+	}
+
+	ContractInitData struct {
+		To   common.Address
+		Data []byte
 	}
 )
 
@@ -48,10 +51,7 @@ func init() {
 				Name:         "HistoryStorage",
 				ContractAddr: params.HistoryStorageAddress,
 				Deploy:       true,
-				Prepare: func(header *types.Header, cfg *UpgradeConfig) error {
-					cfg.Code = hex.EncodeToString(params.HistoryStorageCode)
-					return nil
-				},
+				Code:         params.HistoryStorageCode,
 			},
 		},
 	}
@@ -64,28 +64,13 @@ func init() {
 				ContractAddr: ValidatorSetAddr,
 				Code:         breakpoint.ValidatorSetCode,
 				Deploy:       true,
-				Prepare: func(header *types.Header, cfg *UpgradeConfig) error {
-					// Prepare storage of the contract with current validators
+				Init: func(header *types.Header) ([]byte, error) {
 					extra, err := types.ExtractIstanbulExtra(header)
 					if err != nil {
-						return err
+						return nil, err
 					}
-					if cfg.Storage == nil {
-						cfg.Storage = make(map[common.Hash]common.Hash)
-					}
-					arrSlot, _ := new(big.Int).SetString("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563", 16)
-					mapBase := common.LeftPadBytes(common.Big1.Bytes(), 32)
-					for i, addr := range extra.Validators {
-						// validators[i] = addr
-						cfg.Storage[common.BigToHash(arrSlot)] = common.BytesToHash(common.LeftPadBytes(addr.Bytes(), 32))
-						arrSlot = arrSlot.Add(arrSlot, big.NewInt(20))
-
-						// validatorsMap[addr] = i+1
-						mapSlot := crypto.Keccak256(common.LeftPadBytes(addr.Bytes(), 32), mapBase)
-						cfg.Storage[common.BytesToHash(mapSlot)] = common.BytesToHash(common.LeftPadBytes(big.NewInt(int64(i+1)).Bytes(), 32))
-					}
-					cfg.Storage[common.BigToHash(common.Big0)] = common.BigToHash(big.NewInt(int64(len(extra.Validators)))) // set length of 'validators'
-					return nil
+					valSet := ValidatorSetABI()
+					return valSet.Pack("updateValidators", extra.Validators)
 				},
 			},
 			// ##
@@ -94,17 +79,31 @@ func init() {
 }
 
 // TryUpdateSystemContract checks if the block is exactly on the fork and upgrades the system contracts if it is.
-func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, lastBlockTime uint64, statedb vm.StateDB) {
+func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, lastBlockTime uint64, statedb vm.StateDB) (upgraded bool) {
 	if config == nil || header == nil || statedb == nil || reflect.ValueOf(statedb).IsNil() {
 		return
 	}
 
 	if config.IsOnPrague(header.Number, lastBlockTime, header.Time) {
 		applySystemContractUpgrade(upgrades[forks.Prague], header, statedb)
+		upgraded = true
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
 		applySystemContractUpgrade(upgrades[forks.Breakpoint], header, statedb)
+		upgraded = true
 	}
+	return
+}
+
+func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBlockTime uint64) (initData []ContractInitData) {
+	if config == nil || header == nil {
+		return
+	}
+
+	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
+		initData = append(initData, getSystemContractInitialization(upgrades[forks.Breakpoint], header)...)
+	}
+	return
 }
 
 func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb vm.StateDB) {
@@ -121,32 +120,65 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 			log.Info("Upgrade contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		}
 
-		if cfg.Prepare != nil {
-			err := cfg.Prepare(header, cfg)
-			if err != nil {
-				panic(fmt.Errorf("failed to prepare: %s", err.Error()))
-			}
+		exists := statedb.Exist(cfg.ContractAddr)
+
+		// write code
+		code, err := getCode(cfg)
+		if err != nil {
+			panic(fmt.Errorf("failed to parse code: %w", err))
 		}
 
-		if len(cfg.Code) > 0 {
-			code, err := hex.DecodeString(strings.TrimSpace(cfg.Code))
-			if err != nil {
-				panic(fmt.Errorf("failed to decode contract code: %s", err.Error()))
-			}
-			if len(code) > 0 {
-				if cfg.Deploy {
-					if prevCode := statedb.GetCode(cfg.ContractAddr); len(prevCode) > 0 {
-						log.Warn("Contract code already exists", "address", cfg.ContractAddr.String())
-					} else {
-						// If it is the first deployment, we need to set the nonce to 1
-						statedb.SetNonce(cfg.ContractAddr, 1, tracing.NonceChangeNewContract)
-					}
+		if len(code) > 0 {
+			if cfg.Deploy {
+				if prevCode := statedb.GetCode(cfg.ContractAddr); len(prevCode) > 0 {
+					log.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
+				} else {
+					// If it is the first deployment, set the nonce to 1
+					statedb.SetNonce(cfg.ContractAddr, 1, tracing.NonceChangeNewContract)
 				}
-				statedb.SetCode(cfg.ContractAddr, code)
+			} else if !exists {
+				log.Warn("Writing code to non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
+			statedb.SetCode(cfg.ContractAddr, code)
 		}
-		for k, v := range cfg.Storage {
-			statedb.SetState(cfg.ContractAddr, k, v)
+
+		// write storage
+		if len(cfg.Storage) > 0 {
+			if !exists {
+				log.Warn("Writing storage slots of non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
+			}
+			for k, v := range cfg.Storage {
+				statedb.SetState(cfg.ContractAddr, k, v)
+			}
 		}
 	}
+}
+
+func getCode(cfg *UpgradeConfig) (code []byte, err error) {
+	switch v := cfg.Code.(type) {
+	case string:
+		code, err = hex.DecodeString(strings.TrimSpace(v))
+	case []byte:
+		code = v
+	}
+	return
+}
+
+func getSystemContractInitialization(upgrade *Upgrade, header *types.Header) (initData []ContractInitData) {
+	if upgrade == nil {
+		return
+	}
+	for _, cfg := range upgrade.Configs {
+		if cfg.Init != nil {
+			data, err := cfg.Init(header)
+			if err != nil {
+				panic(fmt.Errorf("failed to get init data: %s", err.Error()))
+			}
+			initData = append(initData, ContractInitData{
+				To:   cfg.ContractAddr,
+				Data: data,
+			})
+		}
+	}
+	return
 }

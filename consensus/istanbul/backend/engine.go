@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -39,6 +40,19 @@ const (
 	inmemoryPeers      = 40
 	inmemoryMessages   = 1024
 )
+
+// ##CROSS: consensus system contract
+var _ consensus.IstanbulPoSA = (*Backend)(nil)
+
+func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	return sb.Engine().IsSystemTransaction(tx, header)
+}
+
+func (sb *Backend) IsSystemContract(to *common.Address) bool {
+	return sb.Engine().IsSystemContract(to)
+}
+
+// ##
 
 // Author retrieves the Ethereum address of the account that minted the given
 // block, which may be different from the header's coinbase if a consensus
@@ -170,14 +184,14 @@ func (sb *Backend) Prepare(chain consensus.ChainHeaderReader, header *types.Head
 //
 // Note, the block header and state database might be updated to reflect any
 // consensus rules that happen at finalization (e.g. block rewards).
-func (sb *Backend) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
-	sb.Engine().Finalize(chain, header, state, body)
+func (sb *Backend) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction, receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	return sb.Engine().Finalize(chain, header, state, body, txs, receipts, systemTxs, usedGas, tracer)
 }
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (sb *Backend) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
-	return sb.Engine().FinalizeAndAssemble(chain, header, state, body, receipts)
+func (sb *Backend) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	return sb.Engine().FinalizeAndAssemble(chain, header, state, body, receipts, tracer)
 }
 
 // Seal generates a new block for the given input block with the local miner's

@@ -1380,7 +1380,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		chainID = new(big.Int)
 	}
 	// disallow setting Merge out of order
-	isMerge = isMerge && c.IsLondon(num)
+	isMerge = isMerge && c.IsLondon(num) && c.Istanbul == nil // ##CROSS: istanbul
 	isVerkle := isMerge && c.IsVerkle(num, timestamp)
 	isAdventure := c.IsAdventure(num, timestamp) // ##CROSS: fork
 	return Rules{

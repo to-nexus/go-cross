@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -90,14 +91,15 @@ type Engine interface {
 	//
 	// Note: The state database might be updated to reflect any consensus rules
 	// that happen at finalization (e.g. block rewards).
-	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body)
+	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction,
+		receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error
 
 	// FinalizeAndAssemble runs any post-transaction state modifications (e.g. block
 	// rewards or process withdrawals) and assembles the final block.
 	//
 	// Note: The block header and state database might be updated to reflect any
 	// consensus rules that happen at finalization (e.g. block rewards).
-	FinalizeAndAssemble(chain ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error)
+	FinalizeAndAssemble(chain ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
 
 	// Seal generates a new sealing request for the given input block and pushes
 	// the result into the given channel.
@@ -151,4 +153,10 @@ type IstanbulPeer interface {
 
 	// SendIstanbulConsensus is used to send consensus subprotocol messages from an "eth" peer without encoding the payload
 	SendIstanbulConsensus(msgcode uint64, payload []byte) error
+}
+
+// ##CROSS: consensus system contract
+type IstanbulPoSA interface {
+	IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error)
+	IsSystemContract(to *common.Address) bool
 }

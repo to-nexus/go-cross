@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -106,7 +107,7 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Databas
 		knownMessages:    knownMessages,
 	}
 
-	sb.engine = engine.NewEngine(sb.config, sb.address, sb.Sign, ethAPI)
+	sb.engine = engine.NewEngine(sb.config, sb.address, sb.Sign, sb.SignTx, sb, ethAPI)
 	return sb
 }
 
@@ -261,6 +262,14 @@ func (sb *Backend) Sign(data []byte) ([]byte, error) {
 func (sb *Backend) SignWithoutHashing(data []byte) ([]byte, error) {
 	return crypto.Sign(data, sb.privateKey)
 }
+
+// ##CROSS: consensus system contract
+func (sb *Backend) SignTx(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+	signer := types.LatestSignerForChainID(chainID)
+	return types.SignTx(tx, signer, sb.privateKey)
+}
+
+// ##
 
 // CheckSignature implements istanbul.Backend.CheckSignature
 func (sb *Backend) CheckSignature(data []byte, address common.Address, sig []byte) error {

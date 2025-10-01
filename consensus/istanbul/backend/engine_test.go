@@ -126,7 +126,7 @@ func makeBlockWithoutSeal(chain *core.BlockChain, engine *Backend, parent *types
 	header := makeHeader(parent, engine.config, chain.Config())
 	engine.Prepare(chain, header)
 	state, _ := chain.StateAt(parent.Root())
-	block, _, _ := engine.FinalizeAndAssemble(chain, header, state, nil, nil)
+	block, _, _ := engine.FinalizeAndAssemble(chain, header, state, nil, nil, nil)
 	return block
 }
 
@@ -180,6 +180,13 @@ func TestSealCommittedOtherHash(t *testing.T) {
 	chain, engine := newBlockChain(1)
 	defer engine.Stop()
 	block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
+	// ##CROSS: contract upgrade
+	// FinalizeAndAssemble requires the parent block, so we need to write new block to the chain
+	state, _ := chain.State()
+	if _, err := chain.WriteBlockAndSetHead(block, nil, nil, state, false, false); err != nil {
+		t.Fatalf("failed to write block: %v", err)
+	}
+	// ##
 	otherBlock := makeBlockWithoutSeal(chain, engine, block)
 	expectedCommittedSeal := append([]byte{1, 2, 3}, bytes.Repeat([]byte{0x00}, types.IstanbulExtraSeal-3)...)
 
@@ -350,6 +357,7 @@ func TestVerifyHeaders(t *testing.T) {
 	blocks := []*types.Block{}
 	size := 100
 
+	state, _ := chain.State()
 	for i := 0; i < size; i++ {
 		var b *types.Block
 		if i == 0 {
@@ -361,6 +369,11 @@ func TestVerifyHeaders(t *testing.T) {
 		}
 		blocks = append(blocks, b)
 		headers = append(headers, blocks[i].Header())
+		// ##CROSS: contract upgrade
+		if _, err := chain.WriteBlockAndSetHead(b, nil, nil, state, false, false); err != nil {
+			t.Fatalf("failed to insert block: %v", err)
+		}
+		// ##
 	}
 	// now = func() time.Time {
 	// 	return time.Unix(int64(headers[size-1].Time), 0)
