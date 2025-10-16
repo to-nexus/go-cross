@@ -73,6 +73,16 @@ func init() {
 					return valSet.Pack("updateValidators", extra.Validators)
 				},
 			},
+			{
+				Name:         "StakeHub",
+				ContractAddr: StakeHubAddr,
+				Code:         breakpoint.StakeHubCode,
+				Deploy:       true,
+				Init: func(header *types.Header) ([]byte, error) {
+					stakeHub := StakeHubABI()
+					return stakeHub.Pack("initialize", common.Address{})
+				},
+			},
 			// ##
 		},
 	}

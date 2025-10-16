@@ -14,5 +14,8 @@ var (
 	Multicall3Addr = common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11")
 
 	// breakpoint
-	ValidatorSetAddr = common.HexToAddress("0x0000000000000000000000000000000000001001") // ##CROSS: consensus system contract
+	// ##CROSS: consensus system contract
+	ValidatorSetAddr = common.HexToAddress("0x0000000000000000000000000000000000001001")
+	StakeHubAddr     = common.HexToAddress("0x0000000000000000000000000000000000001002")
+	// ##
 )

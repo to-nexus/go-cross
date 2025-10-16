@@ -667,6 +667,7 @@ type ChainConfig struct {
 	CancunTime     *uint64 `json:"cancunTime,omitempty"`     // Cancun switch time (nil = no fork, 0 = already on cancun)
 	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
 	BreakpointTime *uint64 `json:"breakpointTime,omitempty"` // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
+	CrosswayTime   *uint64 `json:"crosswayTime,omitempty"`   // Crossway switch time (nil = no fork, 0 = already on crossway) ##CROSS: fork crossway
 	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
@@ -909,6 +910,23 @@ func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime 
 		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
 	}
 	return !c.IsBreakpoint(lastBlockNumber, lastBlockTime) && c.IsBreakpoint(currentBlockNumber, currentBlockTime)
+}
+
+// ##
+
+// ##CROSS: fork crossway
+// IsCrossway returns whether time is either equal to the Crossway fork time or greater.
+func (c *ChainConfig) IsCrossway(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.CrosswayTime, time)
+}
+
+// IsOnCrossway returns whether currentBlockTime is either equal to the Crossway fork time or greater firstly.
+func (c *ChainConfig) IsOnCrossway(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsCrossway(lastBlockNumber, lastBlockTime) && c.IsCrossway(currentBlockNumber, currentBlockTime)
 }
 
 // ##

@@ -212,3 +212,8 @@ func (c *Config) getTransitionValue(num *big.Int, callback func(transition param
 func (c *Config) String() string {
 	return "istanbul"
 }
+
+func (c *Config) OnNewEpoch(blockNumber *big.Int) bool {
+	epoch := c.GetConfig(blockNumber).Epoch
+	return blockNumber.Uint64()%epoch == 0
+}

@@ -2,12 +2,10 @@ package engine
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"math"
 	"math/big"
-	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -54,12 +52,14 @@ type Engine struct {
 	consensus    consensus.Engine
 	ethAPI       *ethapi.BlockChainAPI
 	validatorSet abi.ABI
+	stakeHub     abi.ABI
 	// ##
 }
 
 // ##CROSS: consensus system contract
 var systemContracts = map[common.Address]bool{
 	contracts.ValidatorSetAddr: true,
+	contracts.StakeHubAddr:     true,
 }
 
 // ##
@@ -74,6 +74,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		consensus:    ce,
 		ethAPI:       ethAPI,
 		validatorSet: contracts.ValidatorSetABI(),
+		stakeHub:     contracts.StakeHubABI(),
 		// ##
 	}
 }
@@ -476,9 +477,9 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 
 	var validatorsList []common.Address
-	if chain.Config().IsBreakpoint(header.Number, header.Time) {
+	if chain.Config().IsCrossway(header.Number, header.Time) {
 		// ##CROSS: consensus system contract
-		// after breakpoint, validator list is managed by the system contract
+		// after crossway, validator list is managed by the system contract
 		vlist, err := e.getValidators(rpc.BlockNumberOrHashWithHash(header.ParentHash, false))
 		if err != nil {
 			return err
@@ -523,6 +524,8 @@ func WriteRandomReveal(signature []byte) ApplyExtra {
 //
 // Note, the block header and state database might be updated to reflect any
 // consensus rules that happen at finalization (e.g. block rewards).
+//
+// All system transactions will be consumed in this function.
 func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction, receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	// ##CROSS: contract upgrade
 	cx := &chainContext{Chain: chain, engine: e.consensus}
@@ -543,7 +546,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 			// split transactions into common and system txs
 			for _, data := range initData {
-				log.Info("Initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To)
+				log.Info("Finalize: initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
 				msg := newSystemMessage(header.Coinbase, data.To, data.Data)
 				err := e.applyReceivedSystemTransaction(msg, state, header, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer)
 				if err != nil {
@@ -554,7 +557,6 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	// TODO: slash validator
-	// TODO: penalize for delayed mining
 
 	// ##
 
@@ -562,8 +564,9 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// e.accumulateRewards(chain, state, header)
 
 	// ##CROSS: consensus system contract
-	if chain.Config().IsBreakpoint(header.Number, header.Time) {
-		if err := e.updateValidatorSet(header); err != nil {
+	if chain.Config().IsCrossway(header.Number, header.Time) {
+		// log.Info("Finalize: updating validator set", "blockNumber", header.Number.Uint64())
+		if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
 			return err
 		}
@@ -575,6 +578,8 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
+//
+// All system transactions will be created and executed in this function.
 func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
 	// ##CROSS: fork
 	if body != nil {
@@ -599,7 +604,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
 		for _, data := range initData {
 			msg := newSystemMessage(e.signer, data.To, data.Data)
-			log.Info("Initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To)
+			log.Info("FinalizeAndAssemble: initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
 			err := e.applyGeneratedSystemTransaction(msg, state, header, cx, &body.Transactions, &receipts, &header.GasUsed, tracer)
 			if err != nil {
 				return nil, nil, err
@@ -608,20 +613,20 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	}
 
 	// TODO: slash validator
-	// TODO: penalize for delayed mining
-
 	// TODO: distribute rewards
 	// ##
 
 	// ##CROSS: consensus system contract
-	if chain.Config().IsBreakpoint(header.Number, header.Time) {
-		if err := e.updateValidatorSet(header); err != nil {
+	if chain.Config().IsCrossway(header.Number, header.Time) && e.cfg.OnNewEpoch(header.Number) {
+		// log.Info("FinalizeAndAssemble: updating validator set", "blockNumber", header.Number.Uint64())
+		if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
+			return nil, nil, err
 		}
 	}
 	// ##
 
-	// should not happen. Once happen, stop the node is better than broadcast the block
+	// should not happen. Once happen, stopping the node is better than broadcasting the block
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
@@ -797,61 +802,6 @@ func (e *Engine) accumulateRewards(chain consensus.ChainHeaderReader, state vm.S
 
 // ##CROSS: consensus system contract
 
-func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address, error) {
-	const method = "getValidators"
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	code, err := e.ethAPI.GetCode(ctx, contracts.ValidatorSetAddr, blockNr)
-	if err != nil {
-		log.Error("Failed to get ValidatorSet code", "error", err)
-		return nil, err
-	}
-	if len(code) == 0 {
-		// contract is not deployed
-		return nil, nil
-	}
-
-	data, err := e.validatorSet.Pack(method)
-	if err != nil {
-		log.Error("Failed to pack tx for getValidators", "error", err)
-		return nil, err
-	}
-	msgData := (hexutil.Bytes)(data)
-
-	toAddress := contracts.ValidatorSetAddr
-	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
-
-	result, err := e.ethAPI.Call(ctx, ethapi.TransactionArgs{
-		Gas:  &gas,
-		To:   &toAddress,
-		Data: &msgData,
-	}, &blockNr, nil, nil)
-	if err != nil {
-		log.Error("Failed to call getValidators", "error", err)
-		return nil, err
-	}
-
-	var validators []common.Address
-	if err := e.validatorSet.UnpackIntoInterface(&validators, method, result); err != nil {
-		log.Error("Failed to unpack return value of getValidators", "error", err)
-		return nil, err
-	}
-
-	// sort ascending
-	slices.SortFunc(validators, func(a, b common.Address) int {
-		return bytes.Compare(a[:], b[:])
-	})
-
-	return validators, nil
-}
-
-func (e *Engine) updateValidatorSet(header *types.Header) error {
-	// TODO: implement this
-	return nil
-}
-
 // applyGeneratedSystemTransaction applies a system transaction to the state.
 // It creates a system transaction from the given message, signs it using the engine's signer function
 // and applies it to the state. The created transaction and receipt is appended to the given slices.
@@ -903,7 +853,9 @@ func (e *Engine) applyReceivedSystemTransaction(
 	}
 	actualTx := (*systemTxs)[0]
 	if !bytes.Equal(signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
-		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s", expectedHash.String(), actualTx.Hash().String(),
+		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
+			expectedHash.String(),
+			actualTx.Hash().String(),
 			expectedTx.Nonce(),
 			expectedTx.To().String(),
 			expectedTx.Value().String(),
@@ -912,11 +864,10 @@ func (e *Engine) applyReceivedSystemTransaction(
 			hexutil.Bytes(expectedTx.Data()).String(),
 		)
 	}
-	expectedTx = actualTx
 	// move to next
 	*systemTxs = (*systemTxs)[1:]
 
-	return e.applySystemTransaction(msg, expectedTx, state, header, chainContext, header.Coinbase, txs, receipts, usedGas, tracer)
+	return e.applySystemTransaction(msg, actualTx, state, header, chainContext, header.Coinbase, txs, receipts, usedGas, tracer)
 }
 
 func (e *Engine) applySystemTransaction(
@@ -1010,7 +961,7 @@ func newSystemMessage(from, toAddress common.Address, data []byte) *core.Message
 		From:     from,
 		GasLimit: math.MaxUint64 / 2,
 		GasPrice: big.NewInt(0),
-		Value:    common.Big0,
+		Value:    big.NewInt(0),
 		To:       &toAddress,
 		Data:     data,
 	}
