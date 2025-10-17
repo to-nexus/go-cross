@@ -99,17 +99,29 @@ func (t *prestateTracer) CaptureStart(env *vm.EVM, from common.Address, to commo
 	t.lookupAccount(to)
 	t.lookupAccount(env.Context.Coinbase)
 
+	// ##CROSS: fee delegation
+	if env.TxContext.FeePayer != (common.Address{}) {
+		t.lookupAccount(env.TxContext.FeePayer)
+	}
+	// ##
+
 	// The recipient balance includes the value transferred.
 	toBal := new(big.Int).Sub(t.pre[to].Balance, value)
 	t.pre[to].Balance = toBal
 
 	// The sender balance is after reducing: value and gasLimit.
 	// We need to re-add them to get the pre-tx balance.
-	fromBal := new(big.Int).Set(t.pre[from].Balance)
 	gasPrice := env.TxContext.GasPrice
 	consumedGas := new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(t.gasLimit))
-	fromBal.Add(fromBal, new(big.Int).Add(value, consumedGas))
-	t.pre[from].Balance = fromBal
+	// ##CROSS: fee delegation
+	payer := from
+	if env.TxContext.FeePayer != (common.Address{}) {
+		payer = env.TxContext.FeePayer
+	}
+	payerBal := new(big.Int).Set(t.pre[payer].Balance)
+	payerBal.Add(payerBal, new(big.Int).Add(value, consumedGas))
+	t.pre[payer].Balance = payerBal
+	// ##
 	t.pre[from].Nonce--
 
 	if create && t.config.DiffMode {

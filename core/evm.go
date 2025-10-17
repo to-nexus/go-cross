@@ -102,6 +102,11 @@ func NewEVMTxContext(msg *Message) vm.TxContext {
 	if msg.BlobGasFeeCap != nil {
 		ctx.BlobFeeCap = new(big.Int).Set(msg.BlobGasFeeCap)
 	}
+	// ##CROSS: fee delegation
+	if msg.FeePayer != nil {
+		ctx.FeePayer = *msg.FeePayer
+	}
+	// ##
 	return ctx
 }
 
