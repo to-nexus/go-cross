@@ -33,8 +33,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
@@ -183,7 +183,7 @@ type Config struct {
 // CreateConsensusEngine creates a consensus engine for the given chain config.
 // Clique is allowed for now to live standalone, but ethash is forbidden and can
 // only exist on already merged networks.
-func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Config, stack *node.Node, db ethdb.Database, ethAPI *ethapi.BlockChainAPI) (consensus.Engine, error) {
+func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Config, stack *node.Node, db ethdb.Database) (consensus.Engine, error) {
 	if config.TerminalTotalDifficulty == nil {
 		log.Error("Geth only supports PoS networks. Please transition legacy networks using Geth v1.13.x.")
 		return nil, fmt.Errorf("'terminalTotalDifficulty' is not set in genesis block")
@@ -224,7 +224,8 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 		istanbulCfg.Transitions = config.Transitions
 		//	istanbulCfg.Client = ethclient.NewClient(stack.Attach())
 
-		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), db, ethAPI)), nil
+		ethClient := ethclient.NewClient(stack.Attach())
+		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), db, ethClient)), nil
 	}
 
 	return beacon.New(ethash.NewFaker()), nil

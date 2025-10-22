@@ -214,6 +214,7 @@ func (c *Config) String() string {
 }
 
 func (c *Config) OnNewEpoch(blockNumber *big.Int) bool {
-	epoch := c.GetConfig(blockNumber).Epoch
-	return blockNumber.Uint64()%epoch == 0
+	// epoch := c.GetConfig(blockNumber).Epoch
+	// return blockNumber.Uint64()%epoch == 0
+	return true
 }

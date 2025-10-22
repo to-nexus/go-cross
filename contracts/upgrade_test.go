@@ -45,7 +45,7 @@ func TestTryUpdateSystemContract(t *testing.T) {
 
 	t.Run("Breakpoint upgrade", func(t *testing.T) {
 		code := statedb.GetCode(ValidatorSetAddr)
-		assert.Equal(t, common.FromHex(breakpoint.ValidatorSetCode), code)
+		assert.Equal(t, common.FromHex(breakpoint.ValidatorSetMetaData.BinRuntime), code)
 		nonce := statedb.GetNonce(ValidatorSetAddr)
 		assert.Equal(t, uint64(1), nonce)
 	})
@@ -79,6 +79,14 @@ func TestInitSystemContract(t *testing.T) {
 			{
 				To:   ValidatorSetAddr,
 				Data: common.FromHex("e71731e400000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000aaaa000000000000000000000000000000000000000000000000000000000000bbbb000000000000000000000000000000000000000000000000000000000000cccc"),
+			},
+			{
+				To:   StakeHubAddr,
+				Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"),
+			},
+			{
+				To:   GovernanceTokenAddr,
+				Data: common.FromHex("8129fc1c"),
 			},
 		}
 

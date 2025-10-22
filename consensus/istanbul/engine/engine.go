@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -18,13 +17,14 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -48,33 +48,37 @@ type Engine struct {
 	sign   SignerFn       // Signer function to authorize hashes with
 
 	// ##CROSS: consensus system contract
+	ethClient    *ethclient.Client
 	signTx       SignerTxFn
 	consensus    consensus.Engine
-	ethAPI       *ethapi.BlockChainAPI
-	validatorSet abi.ABI
-	stakeHub     abi.ABI
+	validatorSet *breakpoint.ValidatorSet
+	stakeHub     *breakpoint.StakeHub
 	// ##
 }
 
 // ##CROSS: consensus system contract
 var systemContracts = map[common.Address]bool{
-	contracts.ValidatorSetAddr: true,
-	contracts.StakeHubAddr:     true,
+	contracts.ValidatorSetAddr:       true,
+	contracts.StakeHubAddr:           true,
+	contracts.GovernorAddr:           true,
+	contracts.GovernanceTokenAddr:    true,
+	contracts.GovernanceTimelockAddr: true,
+	contracts.GovernanceExecutorAddr: true,
 }
 
 // ##
 
-func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, ethAPI *ethapi.BlockChainAPI) *Engine {
+func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, ethClient *ethclient.Client) *Engine {
 	return &Engine{
 		cfg:    cfg,
 		signer: signer,
 		sign:   sign,
 		// ##CROSS: consensus system contract
+		ethClient:    ethClient,
 		signTx:       signTx,
 		consensus:    ce,
-		ethAPI:       ethAPI,
-		validatorSet: contracts.ValidatorSetABI(),
-		stakeHub:     contracts.StakeHubABI(),
+		validatorSet: breakpoint.NewValidatorSet(),
+		stakeHub:     breakpoint.NewStakeHub(),
 		// ##
 	}
 }
@@ -544,7 +548,6 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 				return errors.New("systemTxs is not enough")
 			}
 
-			// split transactions into common and system txs
 			for _, data := range initData {
 				log.Info("Finalize: initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
 				msg := newSystemMessage(header.Coinbase, data.To, data.Data)
@@ -564,8 +567,8 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// e.accumulateRewards(chain, state, header)
 
 	// ##CROSS: consensus system contract
-	if chain.Config().IsCrossway(header.Number, header.Time) {
-		// log.Info("Finalize: updating validator set", "blockNumber", header.Number.Uint64())
+	if chain.Config().IsCrossway(header.Number, header.Time) && e.cfg.OnNewEpoch(header.Number) {
+		log.Info("Finalize: updating validator set", "blockNumber", header.Number.Uint64())
 		if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
 			return err
@@ -602,9 +605,10 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if upgraded {
 		// init upgraded contracts
 		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
+
 		for _, data := range initData {
-			msg := newSystemMessage(e.signer, data.To, data.Data)
 			log.Info("FinalizeAndAssemble: initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
+			msg := newSystemMessage(e.signer, data.To, data.Data)
 			err := e.applyGeneratedSystemTransaction(msg, state, header, cx, &body.Transactions, &receipts, &header.GasUsed, tracer)
 			if err != nil {
 				return nil, nil, err
@@ -618,7 +622,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 
 	// ##CROSS: consensus system contract
 	if chain.Config().IsCrossway(header.Number, header.Time) && e.cfg.OnNewEpoch(header.Number) {
-		// log.Info("FinalizeAndAssemble: updating validator set", "blockNumber", header.Number.Uint64())
+		log.Info("FinalizeAndAssemble: updating validator set", "blockNumber", header.Number.Uint64())
 		if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
 			return nil, nil, err
@@ -849,7 +853,7 @@ func (e *Engine) applyReceivedSystemTransaction(
 	expectedHash := signer.Hash(expectedTx)
 
 	if systemTxs == nil || len(*systemTxs) == 0 || (*systemTxs)[0] == nil {
-		return errors.New("supposed to get a actual transaction, but get none")
+		return errors.New("supposed to get an actual transaction, but got none")
 	}
 	actualTx := (*systemTxs)[0]
 	if !bytes.Equal(signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {

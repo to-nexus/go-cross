@@ -1,12 +1,11 @@
 package contracts
 
 import (
-	"encoding/hex"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -62,25 +61,32 @@ func init() {
 			{
 				Name:         "ValidatorSet",
 				ContractAddr: ValidatorSetAddr,
-				Code:         breakpoint.ValidatorSetCode,
+				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(header *types.Header) ([]byte, error) {
 					extra, err := types.ExtractIstanbulExtra(header)
 					if err != nil {
 						return nil, err
 					}
-					valSet := ValidatorSetABI()
-					return valSet.Pack("updateValidators", extra.Validators)
+					return breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators), nil
 				},
 			},
 			{
 				Name:         "StakeHub",
 				ContractAddr: StakeHubAddr,
-				Code:         breakpoint.StakeHubCode,
+				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(header *types.Header) ([]byte, error) {
-					stakeHub := StakeHubABI()
-					return stakeHub.Pack("initialize", common.Address{})
+					return breakpoint.NewStakeHub().PackInitialize(common.Address{}), nil
+				},
+			},
+			{
+				Name:         "GovernanceToken",
+				ContractAddr: GovernanceTokenAddr,
+				Code:         breakpoint.GovernanceTokenMetaData.BinRuntime,
+				Deploy:       true,
+				Init: func(header *types.Header) ([]byte, error) {
+					return breakpoint.NewGovernanceToken().PackInitialize(), nil
 				},
 			},
 			// ##
@@ -167,7 +173,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 func getCode(cfg *UpgradeConfig) (code []byte, err error) {
 	switch v := cfg.Code.(type) {
 	case string:
-		code, err = hex.DecodeString(strings.TrimSpace(v))
+		code, err = hexutil.Decode(v)
 	case []byte:
 		code = v
 	}

@@ -110,12 +110,13 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			if isSystemTx, err := posa.IsSystemTransaction(tx, header); err != nil {
 				return nil, fmt.Errorf("could not check if tx %d [%v] is system tx: %w", i, tx.Hash().Hex(), err)
 			} else if isSystemTx {
-				// system txs will be handled by the consensus engine
+				// system txs will be handled by the consensus engine, so skip here
 				systemTxs = append(systemTxs, tx)
 				continue
 			}
 		}
 		if len(systemTxs) > 0 {
+			// all system txs should be after normal txs
 			return nil, fmt.Errorf("normal tx %d [%v] after systemTx", i, tx.Hash().Hex())
 		}
 		// ##

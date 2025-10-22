@@ -196,8 +196,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if eth.APIBackend.allowUnprotectedTxs {
 		log.Info("Unprotected transactions allowed")
 	}
-	ethAPI := ethapi.NewBlockChainAPI(eth.APIBackend)
-	eth.engine, err = ethconfig.CreateConsensusEngine(chainConfig, &config.Istanbul, stack, chainDb, ethAPI)
+	eth.engine, err = ethconfig.CreateConsensusEngine(chainConfig, &config.Istanbul, stack, chainDb)
 	if err != nil {
 		return nil, err
 	}
