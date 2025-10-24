@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -57,9 +56,9 @@ func TestInitSystemContract(t *testing.T) {
 		extra := &types.IstanbulExtra{
 			VanityData: []byte{},
 			Validators: []common.Address{
-				common.BytesToAddress(hexutil.MustDecode("0x000000000000000000000000000000000000aaaa")),
-				common.BytesToAddress(hexutil.MustDecode("0x000000000000000000000000000000000000bbbb")),
-				common.BytesToAddress(hexutil.MustDecode("0x000000000000000000000000000000000000cccc")),
+				common.HexToAddress("0x000000000000000000000000000000000000aaaa"),
+				common.HexToAddress("0x000000000000000000000000000000000000bbbb"),
+				common.HexToAddress("0x000000000000000000000000000000000000cccc"),
 			},
 			CommittedSeal: [][]byte{},
 			Round:         0,
@@ -69,6 +68,12 @@ func TestInitSystemContract(t *testing.T) {
 		payload, err := rlp.EncodeToBytes(extra)
 		require.NoError(t, err)
 
+		beneficiary := common.HexToAddress("0x000000000000000000000000000000000000aaaa")
+		config := &params.ChainConfig{
+			Istanbul: &params.IstanbulConfig{
+				Beneficiary: &beneficiary,
+			},
+		}
 		header := &types.Header{
 			Number: big.NewInt(100),
 			Time:   uint64(time.Now().Unix()),
@@ -76,6 +81,10 @@ func TestInitSystemContract(t *testing.T) {
 		}
 
 		expected := []ContractInitData{
+			{
+				To:   IstanbulParamAddr,
+				Data: common.FromHex("c4d66de8000000000000000000000000000000000000000000000000000000000000aaaa"),
+			},
 			{
 				To:   ValidatorSetAddr,
 				Data: common.FromHex("e71731e400000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000aaaa000000000000000000000000000000000000000000000000000000000000bbbb000000000000000000000000000000000000000000000000000000000000cccc"),
@@ -90,7 +99,7 @@ func TestInitSystemContract(t *testing.T) {
 			},
 		}
 
-		initData := getSystemContractInitialization(upgrades[forks.Breakpoint], header)
+		initData := getSystemContractInitialization(upgrades[forks.Breakpoint], config, header)
 		assert.Equal(t, expected, initData)
 	})
 	// ##

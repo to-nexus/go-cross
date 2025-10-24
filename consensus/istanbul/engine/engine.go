@@ -48,16 +48,18 @@ type Engine struct {
 	sign   SignerFn       // Signer function to authorize hashes with
 
 	// ##CROSS: consensus system contract
-	ethClient    *ethclient.Client
-	signTx       SignerTxFn
-	consensus    consensus.Engine
-	validatorSet *breakpoint.ValidatorSet
-	stakeHub     *breakpoint.StakeHub
+	ethClient     *ethclient.Client
+	signTx        SignerTxFn
+	consensus     consensus.Engine
+	istanbulParam *breakpoint.IstanbulParam
+	validatorSet  *breakpoint.ValidatorSet
+	stakeHub      *breakpoint.StakeHub
 	// ##
 }
 
 // ##CROSS: consensus system contract
 var systemContracts = map[common.Address]bool{
+	contracts.IstanbulParamAddr:      true,
 	contracts.ValidatorSetAddr:       true,
 	contracts.StakeHubAddr:           true,
 	contracts.GovernorAddr:           true,
@@ -74,11 +76,12 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		signer: signer,
 		sign:   sign,
 		// ##CROSS: consensus system contract
-		ethClient:    ethClient,
-		signTx:       signTx,
-		consensus:    ce,
-		validatorSet: breakpoint.NewValidatorSet(),
-		stakeHub:     breakpoint.NewStakeHub(),
+		ethClient:     ethClient,
+		signTx:        signTx,
+		consensus:     ce,
+		istanbulParam: breakpoint.NewIstanbulParam(),
+		validatorSet:  breakpoint.NewValidatorSet(),
+		stakeHub:      breakpoint.NewStakeHub(),
 		// ##
 	}
 }

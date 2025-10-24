@@ -25,7 +25,7 @@ type (
 		ContractAddr common.Address
 		Code         any // string or []byte
 		Storage      map[common.Hash]common.Hash
-		Init         func(header *types.Header) ([]byte, error)
+		Init         func(*params.ChainConfig, *types.Header) ([]byte, error)
 	}
 	Upgrade struct {
 		UpgradeName string
@@ -59,11 +59,24 @@ func init() {
 		Configs: []*UpgradeConfig{
 			// ##CROSS: consensus system contract
 			{
+				Name:         "IstanbulParam",
+				ContractAddr: IstanbulParamAddr,
+				Code:         breakpoint.IstanbulParamMetaData.BinRuntime,
+				Deploy:       true,
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					beneficiary := common.Address{}
+					if config.Istanbul != nil && config.Istanbul.Beneficiary != nil {
+						beneficiary = *config.Istanbul.Beneficiary
+					}
+					return breakpoint.NewIstanbulParam().PackInitialize(beneficiary), nil
+				},
+			},
+			{
 				Name:         "ValidatorSet",
 				ContractAddr: ValidatorSetAddr,
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
 				Deploy:       true,
-				Init: func(header *types.Header) ([]byte, error) {
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					extra, err := types.ExtractIstanbulExtra(header)
 					if err != nil {
 						return nil, err
@@ -76,7 +89,7 @@ func init() {
 				ContractAddr: StakeHubAddr,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
-				Init: func(header *types.Header) ([]byte, error) {
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					return breakpoint.NewStakeHub().PackInitialize(common.Address{}), nil
 				},
 			},
@@ -85,7 +98,7 @@ func init() {
 				ContractAddr: GovernanceTokenAddr,
 				Code:         breakpoint.GovernanceTokenMetaData.BinRuntime,
 				Deploy:       true,
-				Init: func(header *types.Header) ([]byte, error) {
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					return breakpoint.NewGovernanceToken().PackInitialize(), nil
 				},
 			},
@@ -117,7 +130,7 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 	}
 
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		initData = append(initData, getSystemContractInitialization(upgrades[forks.Breakpoint], header)...)
+		initData = append(initData, getSystemContractInitialization(upgrades[forks.Breakpoint], config, header)...)
 	}
 	return
 }
@@ -180,13 +193,13 @@ func getCode(cfg *UpgradeConfig) (code []byte, err error) {
 	return
 }
 
-func getSystemContractInitialization(upgrade *Upgrade, header *types.Header) (initData []ContractInitData) {
+func getSystemContractInitialization(upgrade *Upgrade, config *params.ChainConfig, header *types.Header) (initData []ContractInitData) {
 	if upgrade == nil {
 		return
 	}
 	for _, cfg := range upgrade.Configs {
 		if cfg.Init != nil {
-			data, err := cfg.Init(header)
+			data, err := cfg.Init(config, header)
 			if err != nil {
 				panic(fmt.Errorf("failed to get init data: %s", err.Error()))
 			}

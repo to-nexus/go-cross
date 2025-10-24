@@ -159,4 +159,5 @@ type IstanbulPeer interface {
 type IstanbulPoSA interface {
 	IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error)
 	IsSystemContract(to *common.Address) bool
+	SyncParams(header *types.Header, state *state.StateDB) error
 }

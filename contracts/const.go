@@ -15,6 +15,7 @@ var (
 
 	// breakpoint
 	// ##CROSS: consensus system contract
+	IstanbulParamAddr      = common.HexToAddress("0x0000000000000000000000000000000000001000")
 	ValidatorSetAddr       = common.HexToAddress("0x0000000000000000000000000000000000001001")
 	StakeHubAddr           = common.HexToAddress("0x0000000000000000000000000000000000001002")
 	GovernorAddr           = common.HexToAddress("0x0000000000000000000000000000000000001005")
