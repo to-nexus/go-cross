@@ -323,7 +323,6 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error { 
 
 				if master {
 					d.cancel()
-					log.Warn("Timeout peer", "id", peer.id, "method", "concurrentFetch")
 					return errTimeout
 				}
 			}

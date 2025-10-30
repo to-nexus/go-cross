@@ -164,6 +164,7 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 		}
 		return nil // We're in sync
 	} else if op.td.Cmp(new(big.Int).Add(ourTD, common.Big1)) <= 0 {
+		// ##CROSS: performance
 		time.Sleep(3 * time.Second)
 
 		// Re-check local head to see if it has caught up
@@ -171,6 +172,7 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 			log.Trace("The local head is already caught up; synchronization is not required.")
 			return nil
 		}
+		// ##
 	}
 	return op
 }
