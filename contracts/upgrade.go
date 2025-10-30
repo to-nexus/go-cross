@@ -94,6 +94,15 @@ func init() {
 				},
 			},
 			{
+				Name:         "CrossGovernor",
+				ContractAddr: GovernorAddr,
+				Code:         breakpoint.CrossGovernorMetaData.BinRuntime,
+				Deploy:       true,
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					return breakpoint.NewCrossGovernor().PackInitialize(common.Address{}), nil
+				},
+			},
+			{
 				Name:         "GovernanceToken",
 				ContractAddr: GovernanceTokenAddr,
 				Code:         breakpoint.GovernanceTokenMetaData.BinRuntime,
@@ -101,6 +110,21 @@ func init() {
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					return breakpoint.NewGovernanceToken().PackInitialize(), nil
 				},
+			},
+			{
+				Name:         "GovernanceTimelock",
+				ContractAddr: GovernanceTimelockAddr,
+				Code:         breakpoint.GovernanceTimelockMetaData.BinRuntime,
+				Deploy:       true,
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					return breakpoint.NewGovernanceTimelock().PackInitialize(), nil
+				},
+			},
+			{
+				Name:         "GovernanceExecutor",
+				ContractAddr: GovernanceExecutorAddr,
+				Code:         breakpoint.GovernanceExecutorMetaData.BinRuntime,
+				Deploy:       true,
 			},
 			// ##
 		},

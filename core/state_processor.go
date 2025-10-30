@@ -70,6 +70,18 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		misc.ApplyDAOHardFork(statedb)
 	}
 
+	posEngine, isPoS := consensus.ToIstanbulPoS(p.chain.engine) // ##CROSS: consensus system contract
+	// ##CROSS: istanbul param
+	parent := p.chain.GetHeaderByHash(block.ParentHash())
+	if isPoS && p.config.IsBreakpoint(block.Number(), block.Time()) &&
+		parent != nil && !p.config.IsOnBreakpoint(block.Number(), parent.Time, block.Time()) {
+		// sync istanbul parameter after breakpoint + 1 block
+		if err := posEngine.SyncIstanbulParam(header); err != nil {
+			return nil, err
+		}
+	}
+	// ##
+
 	var (
 		context vm.BlockContext
 		signer  = types.MakeSigner(p.config, header.Number, header.Time)
@@ -91,23 +103,16 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// ##CROSS: consensus system contract
-	posa, isPoSA := p.chain.engine.(consensus.IstanbulPoSA)
-	if !isPoSA {
-		if engine, ok := p.chain.engine.(interface{ InnerEngine() consensus.Engine }); ok {
-			posa, isPoSA = engine.InnerEngine().(consensus.IstanbulPoSA)
-		}
-	}
-
 	// usually there is only one system tx
 	txs := make([]*types.Transaction, 0, len(block.Transactions()))
 	systemTxs := make([]*types.Transaction, 0, 1)
 	// ##
 
-	// Iterate over and process the individual transactions
+	// iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
 		// ##CROSS: consensus system contract
-		if isPoSA {
-			if isSystemTx, err := posa.IsSystemTransaction(tx, header); err != nil {
+		if isPoS {
+			if isSystemTx, err := posEngine.IsSystemTransaction(tx, header); err != nil {
 				return nil, fmt.Errorf("could not check if tx %d [%v] is system tx: %w", i, tx.Hash().Hex(), err)
 			} else if isSystemTx {
 				// system txs will be handled by the consensus engine, so skip here

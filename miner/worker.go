@@ -1055,6 +1055,21 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		Coinbase: genParams.coinbase,
 	}
 
+	// ##CROSS: istanbul param
+	if w.chainConfig.IsBreakpoint(header.Number, header.Time) &&
+		!w.chainConfig.IsOnBreakpoint(header.Number, parent.Time, header.Time) {
+		// sync istanbul parameter after breakpoint + 1 block
+		if posEngine, ok := consensus.ToIstanbulPoS(w.engine); ok {
+			if err := posEngine.SyncIstanbulParam(header); err != nil {
+				return nil, err
+			}
+			if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
+				header.GasLimit = *gasLimit
+			}
+		}
+	}
+	// ##
+
 	// Set the extra field.
 	if len(w.extra) != 0 {
 		header.Extra = w.extra

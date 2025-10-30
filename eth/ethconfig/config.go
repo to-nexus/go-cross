@@ -222,7 +222,6 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 			istanbulCfg.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
 		}
 		istanbulCfg.Transitions = config.Transitions
-		//	istanbulCfg.Client = ethclient.NewClient(stack.Attach())
 
 		ethClient := ethclient.NewClient(stack.Attach())
 		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), db, ethClient)), nil

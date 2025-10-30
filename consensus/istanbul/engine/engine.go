@@ -48,27 +48,16 @@ type Engine struct {
 	sign   SignerFn       // Signer function to authorize hashes with
 
 	// ##CROSS: consensus system contract
-	ethClient     *ethclient.Client
-	signTx        SignerTxFn
-	consensus     consensus.Engine
+	ethClient *ethclient.Client
+	signTx    SignerTxFn
+	consensus consensus.Engine
+
+	// system contracts
 	istanbulParam *breakpoint.IstanbulParam
 	validatorSet  *breakpoint.ValidatorSet
 	stakeHub      *breakpoint.StakeHub
 	// ##
 }
-
-// ##CROSS: consensus system contract
-var systemContracts = map[common.Address]bool{
-	contracts.IstanbulParamAddr:      true,
-	contracts.ValidatorSetAddr:       true,
-	contracts.StakeHubAddr:           true,
-	contracts.GovernorAddr:           true,
-	contracts.GovernanceTokenAddr:    true,
-	contracts.GovernanceTimelockAddr: true,
-	contracts.GovernanceExecutorAddr: true,
-}
-
-// ##
 
 func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, ethClient *ethclient.Client) *Engine {
 	return &Engine{
@@ -87,8 +76,11 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 }
 
 // ##CROSS: consensus system contract
+
+// IsSystemTransaction checks if the transaction is a system transaction.
+// A system transaction is a transaction to a system contract with gas price 0 and sender is the block proposer.
 func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	if to := tx.To(); to == nil || !isToSystemContract(*to) {
+	if to := tx.To(); to == nil || !contracts.IsSystemContract(*to) {
 		return false, nil
 	}
 	if tx.GasPrice().Sign() != 0 {
@@ -101,23 +93,22 @@ func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	return sender == header.Coinbase, nil
 }
 
+// IsSystemContract checks if the address is a system contract.
 func (e *Engine) IsSystemContract(to *common.Address) bool {
 	if to == nil {
 		return false
 	}
-	return isToSystemContract(*to)
-}
-
-func isToSystemContract(to common.Address) bool {
-	return systemContracts[to]
+	return contracts.IsSystemContract(*to)
 }
 
 // ##
 
+// Author returns the author of the block, which is the block proposer.
 func (e *Engine) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
 }
 
+// CommitHeader commits the header with given seals and round number.
 func (e *Engine) CommitHeader(header *types.Header, seals [][]byte, round *big.Int) error {
 	return ApplyHeaderIstanbulExtra(
 		header,
@@ -154,6 +145,7 @@ func writeRoundNumber(round *big.Int) ApplyExtra {
 	}
 }
 
+// VerifyBlockProposal verifies the block proposal.
 func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *types.Block, validators istanbul.ValidatorSet) (time.Duration, error) {
 	// check block body
 	txnHash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil))
@@ -187,11 +179,12 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 	return 0, err
 }
 
+// VerifyHeader verifies the header of the block.
 func (e *Engine) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {
 	return e.verifyHeader(chain, header, parents, validators)
 }
 
-// verifyHeader checks whether a header conforms to the consensus rules.The
+// verifyHeader checks whether a header conforms to the consensus rules. The
 // caller may optionally pass in a batch of parents (ascending order) to avoid
 // looking those up from the database. This is useful for concurrently verifying
 // a batch of new headers.
@@ -264,6 +257,7 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	return e.verifyCascadingFields(chain, header, validators, parents)
 }
 
+// VerifyHeaders verifies the headers of the block.
 func (e *Engine) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool, validators istanbul.ValidatorSet) (chan<- struct{}, <-chan error) {
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))

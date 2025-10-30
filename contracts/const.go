@@ -24,3 +24,18 @@ var (
 	GovernanceExecutorAddr = common.HexToAddress("0x0000000000000000000000000000000000001008")
 	// ##
 )
+
+var systemContracts = map[common.Address]bool{
+	IstanbulParamAddr:      true,
+	ValidatorSetAddr:       true,
+	StakeHubAddr:           true,
+	GovernorAddr:           true,
+	GovernanceTokenAddr:    true,
+	GovernanceTimelockAddr: true,
+	GovernanceExecutorAddr: true,
+}
+
+// IsSystemContract checks if the address is a system contract.
+func IsSystemContract(addr common.Address) bool {
+	return systemContracts[addr]
+}

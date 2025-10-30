@@ -94,7 +94,15 @@ func TestInitSystemContract(t *testing.T) {
 				Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"),
 			},
 			{
+				To:   GovernorAddr,
+				Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"),
+			},
+			{
 				To:   GovernanceTokenAddr,
+				Data: common.FromHex("8129fc1c"),
+			},
+			{
+				To:   GovernanceTimelockAddr,
 				Data: common.FromHex("8129fc1c"),
 			},
 		}

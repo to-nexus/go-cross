@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -234,6 +235,19 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 	if err != nil {
 		return nil, vm.BlockContext{}, nil, nil, err
 	}
+
+	// ##CROSS: istanbul param
+	if eth.blockchain.Config().IsBreakpoint(block.Number(), block.Time()) &&
+		!eth.blockchain.Config().IsOnBreakpoint(block.Number(), parent.Time(), block.Time()) {
+		// sync istanbul parameter after breakpoint + 1 block
+		if posEngine, isPoS := consensus.ToIstanbulPoS(eth.engine); isPoS {
+			if err := posEngine.SyncIstanbulParam(block.Header()); err != nil {
+				return nil, vm.BlockContext{}, nil, nil, err
+			}
+		}
+	}
+	// ##
+
 	// Insert parent beacon block root in the state as per EIP-4788.
 	context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil)
 	evm := vm.NewEVM(context, statedb, eth.blockchain.Config(), vm.Config{})

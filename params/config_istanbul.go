@@ -22,11 +22,15 @@ type IstanbulConfig struct {
 
 	// ##CROSS: fee collection
 	Beneficiary *common.Address `json:"beneficiary"` // Cross Beneficiary address
+
 	// ##CROSS: basefee
 	ElasticityMultiplier     *uint64               `json:"elasticitymultiplier"`     // Bounds the maximum gas limit an EIP-1559 block may have.
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator"` // Bounds the amount the base fee can change between blocks.
 	MaxBaseFee               *math.HexOrDecimal256 `json:"maxbasefee,omitempty"`     // MaxBaseFee
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`     // MinBaseFee
+
+	// ##CROSS: fee collection
+	GasLimit *uint64 `json:"gaslimit,omitempty"` // Block gas limit
 }
 
 func (c IstanbulConfig) String() string {
@@ -66,6 +70,15 @@ func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition 
 }
 
 func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.GasLimit != nil {
+		return cfg.GasLimit
+	}
+	// ##
+
+	if c.Istanbul != nil && c.Istanbul.GasLimit != nil {
+		gasLimit = c.Istanbul.GasLimit
+	}
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.GasLimit != nil {
 			gasLimit = transition.GasLimit
@@ -76,10 +89,15 @@ func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
 
 // ##CROSS: fee collection
 func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.Address) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.Beneficiary != nil {
+		return cfg.Beneficiary
+	}
+	// ##
+
 	if c.Istanbul != nil && c.Istanbul.Beneficiary != nil {
 		beneficiary = c.Istanbul.Beneficiary
 	}
-
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.Beneficiary != nil {
 			beneficiary = transition.Beneficiary
@@ -90,6 +108,12 @@ func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.A
 
 // ##CROSS: basefee
 func (c *ChainConfig) GetElasticityMultiplier(num *big.Int) (multiplier uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.ElasticityMultiplier != nil {
+		return *cfg.ElasticityMultiplier
+	}
+	// ##
+
 	if c.Istanbul != nil && c.Istanbul.ElasticityMultiplier != nil {
 		multiplier = *c.Istanbul.ElasticityMultiplier
 	}
@@ -105,6 +129,12 @@ func (c *ChainConfig) GetElasticityMultiplier(num *big.Int) (multiplier uint64) 
 }
 
 func (c *ChainConfig) GetBaseFeeChangeDenominator(num *big.Int) (denominator uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.BaseFeeChangeDenominator != nil {
+		return *cfg.BaseFeeChangeDenominator
+	}
+	// ##
+
 	if c.Istanbul != nil && c.Istanbul.BaseFeeChangeDenominator != nil {
 		denominator = *c.Istanbul.BaseFeeChangeDenominator
 	}
@@ -120,6 +150,12 @@ func (c *ChainConfig) GetBaseFeeChangeDenominator(num *big.Int) (denominator uin
 }
 
 func (c *ChainConfig) GetMaxBaseFee(num *big.Int) (max *big.Int) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MaxBaseFee != nil {
+		return (*big.Int)(cfg.MaxBaseFee)
+	}
+	// ##
+
 	if c.Istanbul != nil && c.Istanbul.MaxBaseFee != nil {
 		max = (*big.Int)(c.Istanbul.MaxBaseFee)
 	}
@@ -133,6 +169,12 @@ func (c *ChainConfig) GetMaxBaseFee(num *big.Int) (max *big.Int) {
 }
 
 func (c *ChainConfig) GetMinBaseFee(num *big.Int) (min *big.Int) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MinBaseFee != nil {
+		return (*big.Int)(cfg.MinBaseFee)
+	}
+	// ##
+
 	if c.Istanbul != nil && c.Istanbul.MinBaseFee != nil {
 		min = (*big.Int)(c.Istanbul.MinBaseFee)
 	}

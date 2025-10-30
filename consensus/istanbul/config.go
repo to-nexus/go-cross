@@ -160,6 +160,29 @@ var DefaultConfig = &Config{
 func (c Config) GetConfig(blockNumber *big.Int) Config {
 	newConfig := c
 
+	// ##CROSS: istanbul param
+	if blockNumber != nil {
+		if cfg := params.IstanbulConfigAt(blockNumber.Uint64()); cfg != nil {
+			if cfg.RequestTimeoutSeconds != 0 {
+				newConfig.RequestTimeout = cfg.RequestTimeoutSeconds
+			}
+			if cfg.BlockPeriodSeconds != 0 {
+				newConfig.BlockPeriod = cfg.BlockPeriodSeconds
+			}
+			if cfg.EmptyBlockPeriodSeconds != 0 {
+				newConfig.EmptyBlockPeriod = cfg.EmptyBlockPeriodSeconds
+			}
+			if cfg.EpochLength != 0 {
+				newConfig.Epoch = cfg.EpochLength
+			}
+			if cfg.MaxRequestTimeoutSeconds != nil {
+				newConfig.MaxRequestTimeoutSeconds = *cfg.MaxRequestTimeoutSeconds
+			}
+			return newConfig
+		}
+	}
+	// ##
+
 	c.getTransitionValue(blockNumber, func(transition params.Transition) {
 		if transition.RequestTimeoutSeconds != 0 {
 			// RequestTimeout is on milliseconds
@@ -213,8 +236,8 @@ func (c *Config) String() string {
 	return "istanbul"
 }
 
+// OnNewEpoch checks if the given block number is on the beginning of a new epoch
 func (c *Config) OnNewEpoch(blockNumber *big.Int) bool {
-	// epoch := c.GetConfig(blockNumber).Epoch
-	// return blockNumber.Uint64()%epoch == 0
-	return true
+	epoch := c.GetConfig(blockNumber).Epoch
+	return blockNumber.Uint64()%epoch == 0
 }

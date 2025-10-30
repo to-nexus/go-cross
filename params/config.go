@@ -764,6 +764,11 @@ func (c *ChainConfig) Description() string {
 		banner += fmt.Sprintf(" - Breakpoint:                  @%-10v\n", *c.BreakpointTime)
 	}
 	// ##
+	// ##CROSS: fork crossway
+	if c.CrosswayTime != nil {
+		banner += fmt.Sprintf(" - Crossway:                    @%-10v\n", *c.CrosswayTime)
+	}
+	// ##
 	if c.OsakaTime != nil {
 		banner += fmt.Sprintf(" - Osaka:                       @%-10v\n", *c.OsakaTime)
 	}

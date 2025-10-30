@@ -42,7 +42,7 @@ const (
 )
 
 // ##CROSS: consensus system contract
-var _ consensus.IstanbulPoSA = (*Backend)(nil)
+var _ consensus.IstanbulPoS = (*Backend)(nil)
 
 func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	return sb.Engine().IsSystemTransaction(tx, header)
@@ -50,6 +50,10 @@ func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Head
 
 func (sb *Backend) IsSystemContract(to *common.Address) bool {
 	return sb.Engine().IsSystemContract(to)
+}
+
+func (sb *Backend) SyncIstanbulParam(header *types.Header) error { // ##CROSS: istanbul param
+	return sb.Engine().SyncIstanbulParam(header)
 }
 
 // ##

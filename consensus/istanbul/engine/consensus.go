@@ -8,14 +8,101 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
+
+// ##CROSS: istanbul param
+
+// SyncIstanbulParam reads the istanbul parameters from the IstanbulParam contract.
+// It reads all checkpoints up to the given timepoint and caches them.
+func (e *Engine) SyncIstanbulParam(header *types.Header) error {
+	timepoint := header.Number
+	istanbulParamInstance := e.istanbulParam.Instance(e.ethClient, contracts.IstanbulParamAddr)
+
+	length, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackNumCheckpoints(), e.istanbulParam.UnpackNumCheckpoints)
+	if err != nil {
+		log.Error("Failed to call numCheckpoints", "error", err)
+		return err
+	}
+	if length == 0 {
+		return nil
+	}
+
+	// get the latest param index at this timepoint
+	latestIndex, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamIndex(timepoint), e.istanbulParam.UnpackGetParamIndex)
+	if err != nil {
+		if errors.Is(err, bind.ErrNoCode) {
+			// contract is not deployed
+			return nil
+		}
+		log.Error("Failed to call getParamIndex", "error", err)
+		return err
+	}
+
+	// if no params exist yet, nothing to sync
+	if latestIndex == length {
+		return nil
+	}
+
+	// iterate through all param indices to latestIndex
+	for index := uint64(0); index <= latestIndex; index++ {
+		if params.IstanbulConfigByIndex(index) != nil {
+			// already cached
+			continue
+		}
+
+		// read the config from the contract and cache it
+		result, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamsByIndex(index), e.istanbulParam.UnpackGetParamsByIndex)
+		if err != nil {
+			log.Error("Failed to call getParamsByIndex", "index", index, "error", err)
+			return err
+		}
+
+		log.Info("Syncing istanbul param", "index", index, "blockNumber", result.Timepoint, "config", result)
+
+		config := params.IstanbulConfig{
+			EpochLength:             result.EpochLength,
+			BlockPeriodSeconds:      result.BlockPeriod,
+			EmptyBlockPeriodSeconds: result.EmptyBlockPeriod,
+			RequestTimeoutSeconds:   result.RequestTimeout,
+			ProposerPolicy:          result.ProposerPolicy,
+		}
+		if result.MaxRequestTimeout != 0 {
+			config.MaxRequestTimeoutSeconds = &result.MaxRequestTimeout
+		}
+		if result.Beneficiary != (common.Address{}) {
+			config.Beneficiary = &result.Beneficiary
+		}
+		if result.GasLimit != 0 {
+			config.GasLimit = &result.GasLimit
+		}
+		if result.ElasticityMultiplier != 0 {
+			config.ElasticityMultiplier = &result.ElasticityMultiplier
+		}
+		if result.BaseFeeChangeDenominator != 0 {
+			config.BaseFeeChangeDenominator = &result.BaseFeeChangeDenominator
+		}
+		if result.MaxBaseFee != nil && result.MaxBaseFee.Sign() > 0 {
+			config.MaxBaseFee = (*math.HexOrDecimal256)(result.MaxBaseFee)
+		}
+		if result.MinBaseFee != nil && result.MinBaseFee.Sign() > 0 {
+			config.MinBaseFee = (*math.HexOrDecimal256)(result.MinBaseFee)
+		}
+
+		params.SetIstanbulConfig(index, &config, result.Timepoint)
+	}
+	return nil
+}
+
+// ##
 
 // ##CROSS: consensus system contract
 
@@ -34,6 +121,7 @@ func withBlockNumberOrHash(blockNr rpc.BlockNumberOrHash) *bind.CallOpts {
 	return &callOpts
 }
 
+// getValidators reads the active validators from the ValidatorSet contract.
 func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address, error) {
 	validatorSetInstance := e.validatorSet.Instance(e.ethClient, contracts.ValidatorSetAddr)
 
@@ -57,6 +145,10 @@ func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address,
 	return validators, nil
 }
 
+// updateValidatorSet creates a new validator set and updates the ValidatorSet contract.
+// It reads all staked validators from the StakeHub contract and sorts them by their staking amount,
+// then it selects the top N validators as the active validators.
+// Finally, it creates a system transaction and applies it to the given state.
 func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	blockNr := rpc.BlockNumberOrHashWithHash(header.ParentHash, false)
 
@@ -104,6 +196,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	return err
 }
 
+// getValidatorInfo reads all staked validators from the StakeHub contract.
 func (e *Engine) getValidatorInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorInfo, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.ethClient, contracts.StakeHubAddr)
 
@@ -134,6 +227,7 @@ func (e *Engine) getValidatorInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorInf
 	return validatorInfos, nil
 }
 
+// getValidatorThreshold reads the active validator threshold from the StakeHub contract.
 func (e *Engine) getValidatorThreshold(blockNr rpc.BlockNumberOrHash) (uint64, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.ethClient, contracts.StakeHubAddr)
 
