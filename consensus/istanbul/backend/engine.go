@@ -481,11 +481,11 @@ func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, chain cons
 	// Sanity check that the headers can be applied
 	for i := 0; i < len(headers)-1; i++ {
 		if headers[i+1].Number.Uint64() != headers[i].Number.Uint64()+1 {
-			return nil, istanbul.ErrOutOfRangeChain
+			return nil, istanbul.ErrInvalidVotingChain
 		}
 	}
 	if headers[0].Number.Uint64() != snap.Number+1 {
-		return nil, istanbul.ErrOutOfRangeChain
+		return nil, istanbul.ErrInvalidVotingChain
 	}
 	// Iterate through the headers and create a new snapshot
 	snapCpy := snap.copy()

@@ -51,7 +51,6 @@ func (p *istanbulParams) setConfig(index uint64, config *IstanbulConfig, timepoi
 	if config == nil {
 		return
 	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -61,17 +60,28 @@ func (p *istanbulParams) setConfig(index uint64, config *IstanbulConfig, timepoi
 	}
 }
 
-// IstanbulConfigAt returns the IstanbulConfig closest to the given timepoint
+func (p *istanbulParams) clear() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.params = make(map[uint64]*istanbulParamEntry)
+}
+
+// IstanbulConfigAt returns the IstanbulConfig closest to the given timepoint.
 func IstanbulConfigAt(timepoint uint64) *IstanbulConfig {
 	return istanbulParamsInst.config(timepoint)
 }
 
-// IstanbulConfigByIndex returns the IstanbulConfig at the given index
+// IstanbulConfigByIndex returns the IstanbulConfig at the given index.
 func IstanbulConfigByIndex(index uint64) *IstanbulConfig {
 	return istanbulParamsInst.configByIndex(index)
 }
 
-// SetIstanbulConfig adds the IstanbulConfig of the given index
+// SetIstanbulConfig adds the IstanbulConfig of the given index.
 func SetIstanbulConfig(index uint64, config *IstanbulConfig, timepoint uint64) {
 	istanbulParamsInst.setConfig(index, config, timepoint)
+}
+
+// ClearCachedIstanbulConfigs clears the cached Istanbul configs.
+func ClearCachedIstanbulConfigs() {
+	istanbulParamsInst.clear()
 }

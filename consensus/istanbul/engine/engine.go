@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -24,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -48,9 +48,9 @@ type Engine struct {
 	sign   SignerFn       // Signer function to authorize hashes with
 
 	// ##CROSS: consensus system contract
-	ethClient *ethclient.Client
-	signTx    SignerTxFn
-	consensus consensus.Engine
+	contactBackend bind.ContractBackend
+	signTx         SignerTxFn
+	consensus      consensus.Engine
 
 	// system contracts
 	istanbulParam *breakpoint.IstanbulParam
@@ -59,18 +59,18 @@ type Engine struct {
 	// ##
 }
 
-func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, ethClient *ethclient.Client) *Engine {
+func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, contractBackend bind.ContractBackend) *Engine {
 	return &Engine{
 		cfg:    cfg,
 		signer: signer,
 		sign:   sign,
 		// ##CROSS: consensus system contract
-		ethClient:     ethClient,
-		signTx:        signTx,
-		consensus:     ce,
-		istanbulParam: breakpoint.NewIstanbulParam(),
-		validatorSet:  breakpoint.NewValidatorSet(),
-		stakeHub:      breakpoint.NewStakeHub(),
+		contactBackend: contractBackend,
+		signTx:         signTx,
+		consensus:      ce,
+		istanbulParam:  breakpoint.NewIstanbulParam(),
+		validatorSet:   breakpoint.NewValidatorSet(),
+		stakeHub:       breakpoint.NewStakeHub(),
 		// ##
 	}
 }

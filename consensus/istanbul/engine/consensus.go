@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 )
 
 // ##CROSS: istanbul param
@@ -25,7 +26,7 @@ import (
 // It reads all checkpoints up to the given timepoint and caches them.
 func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 	timepoint := header.Number
-	istanbulParamInstance := e.istanbulParam.Instance(e.ethClient, contracts.IstanbulParamAddr)
+	istanbulParamInstance := e.istanbulParam.Instance(e.contactBackend, contracts.IstanbulParamAddr)
 
 	length, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackNumCheckpoints(), e.istanbulParam.UnpackNumCheckpoints)
 	if err != nil {
@@ -108,7 +109,7 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 
 type ValidatorInfo struct {
 	address common.Address
-	amount  int64
+	amount  *uint256.Int
 }
 
 func withBlockNumberOrHash(blockNr rpc.BlockNumberOrHash) *bind.CallOpts {
@@ -123,7 +124,7 @@ func withBlockNumberOrHash(blockNr rpc.BlockNumberOrHash) *bind.CallOpts {
 
 // getValidators reads the active validators from the ValidatorSet contract.
 func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address, error) {
-	validatorSetInstance := e.validatorSet.Instance(e.ethClient, contracts.ValidatorSetAddr)
+	validatorSetInstance := e.validatorSet.Instance(e.contactBackend, contracts.ValidatorSetAddr)
 
 	callopts := withBlockNumberOrHash(blockNr)
 	calldata := e.validatorSet.PackGetValidators()
@@ -171,12 +172,12 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 
 	// cut top N validators by their staking amount
 	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
-		return int(a.amount - b.amount)
+		return b.amount.Cmp(a.amount)
 	})
 
 	validators := make([]common.Address, 0, threshold)
 	for _, validator := range validatorInfos {
-		if validator.amount <= 0 || len(validators) >= int(threshold) {
+		if validator.amount.IsZero() || len(validators) >= int(threshold) {
 			// no more active validators or enough validators are collected
 			break
 		}
@@ -198,7 +199,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 
 // getValidatorInfo reads all staked validators from the StakeHub contract.
 func (e *Engine) getValidatorInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorInfo, error) {
-	stakeHubInstance := e.stakeHub.Instance(e.ethClient, contracts.StakeHubAddr)
+	stakeHubInstance := e.stakeHub.Instance(e.contactBackend, contracts.StakeHubAddr)
 
 	callopts := withBlockNumberOrHash(blockNr)
 	calldata := e.stakeHub.PackGetValidators(big.NewInt(0), big.NewInt(0))
@@ -220,7 +221,7 @@ func (e *Engine) getValidatorInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorInf
 	for i, validator := range result.ValidatorAddrs {
 		validatorInfos[i] = ValidatorInfo{
 			address: validator,
-			amount:  result.Amounts[i].Int64(),
+			amount:  uint256.MustFromBig(result.Amounts[i]),
 		}
 	}
 
@@ -229,7 +230,7 @@ func (e *Engine) getValidatorInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorInf
 
 // getValidatorThreshold reads the active validator threshold from the StakeHub contract.
 func (e *Engine) getValidatorThreshold(blockNr rpc.BlockNumberOrHash) (uint64, error) {
-	stakeHubInstance := e.stakeHub.Instance(e.ethClient, contracts.StakeHubAddr)
+	stakeHubInstance := e.stakeHub.Instance(e.contactBackend, contracts.StakeHubAddr)
 
 	callopts := withBlockNumberOrHash(blockNr)
 	calldata := e.stakeHub.PackValidatorThreshold()

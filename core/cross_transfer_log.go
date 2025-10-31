@@ -33,7 +33,8 @@ func AddTransferLog(
 
 	var data []byte
 	for _, v := range dataInputs {
-		data = append(data, common.LeftPadBytes(v.Bytes(), 32)...)
+		b := v.Bytes32()
+		data = append(data, b[:]...)
 	}
 
 	// add transfer log
