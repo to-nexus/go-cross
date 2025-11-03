@@ -162,10 +162,10 @@ var DefaultConfig = Config{
 	PriceBump:  10,
 
 	// ##CROSS: performance
-	AccountSlots: 128,
-	GlobalSlots:  8192 + 2048, // urgent + floating queue capacity with 4:1 ratio
-	AccountQueue: 256,
-	GlobalQueue:  32768,
+	AccountSlots: 200,
+	GlobalSlots:  8000,
+	AccountQueue: 200,
+	GlobalQueue:  4000,
 	Lifetime:     30 * time.Second,
 	// ##
 }
