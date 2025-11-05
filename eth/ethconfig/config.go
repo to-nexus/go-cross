@@ -194,37 +194,14 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 	}
 
 	// ##CROSS: istanbul
-	if len(config.Transitions) > 0 {
-		istanbulCfg.Transitions = config.Transitions
-	}
-
 	if config.Istanbul != nil {
-		*istanbulCfg = *istanbul.DefaultConfig
-
-		if config.Istanbul.EpochLength != 0 {
-			istanbulCfg.Epoch = config.Istanbul.EpochLength
-		}
-		if config.Istanbul.BlockPeriodSeconds != 0 {
-			istanbulCfg.BlockPeriod = config.Istanbul.BlockPeriodSeconds
-		}
-		if config.Istanbul.EmptyBlockPeriodSeconds != 0 {
-			istanbulCfg.EmptyBlockPeriod = config.Istanbul.EmptyBlockPeriodSeconds
-		}
-		if config.Istanbul.RequestTimeoutSeconds != 0 {
-			istanbulCfg.RequestTimeout = config.Istanbul.RequestTimeoutSeconds * 1000
-		}
-		if config.Istanbul.ProposerPolicy != 0 {
-			istanbulCfg.ProposerPolicy = istanbul.NewProposerPolicy(istanbul.ProposerPolicyId(config.Istanbul.ProposerPolicy))
-		}
-		istanbulCfg.Validators = config.Istanbul.Validators
-
-		if config.Istanbul.MaxRequestTimeoutSeconds != nil && *config.Istanbul.MaxRequestTimeoutSeconds > 0 {
-			istanbulCfg.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
-		}
-		istanbulCfg.Transitions = config.Transitions
-
+		*istanbulCfg = *istanbul.NewConfig(config)
 		ethClient := ethclient.NewClient(stack.Attach())
 		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), db, ethClient)), nil
+	}
+
+	if len(config.Transitions) > 0 && istanbulCfg != nil {
+		istanbulCfg.Transitions = config.Transitions
 	}
 
 	return beacon.New(ethash.NewFaker()), nil

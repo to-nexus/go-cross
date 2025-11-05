@@ -21,16 +21,14 @@ type IstanbulConfig struct {
 	MaxRequestTimeoutSeconds *uint64          `json:"maxRequestTimeoutSeconds"`          // The max round time
 
 	// ##CROSS: fee collection
-	Beneficiary *common.Address `json:"beneficiary"` // Cross Beneficiary address
+	Beneficiary *common.Address `json:"beneficiary"`        // Cross Beneficiary address
+	GasLimit    *uint64         `json:"gaslimit,omitempty"` // Block gas limit
 
 	// ##CROSS: basefee
 	ElasticityMultiplier     *uint64               `json:"elasticitymultiplier"`     // Bounds the maximum gas limit an EIP-1559 block may have.
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator"` // Bounds the amount the base fee can change between blocks.
 	MaxBaseFee               *math.HexOrDecimal256 `json:"maxbasefee,omitempty"`     // MaxBaseFee
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`     // MinBaseFee
-
-	// ##CROSS: fee collection
-	GasLimit *uint64 `json:"gaslimit,omitempty"` // Block gas limit
 }
 
 func (c IstanbulConfig) String() string {
@@ -49,6 +47,7 @@ type Transition struct {
 	// ##CROSS: fee collection
 	Beneficiary *common.Address `json:"Beneficiary,omitempty"` // Cross Beneficiary address
 	GasLimit    *uint64         `json:"gaslimit,omitempty"`    // gas limit
+
 	// ##CROSS: basefee
 	ElasticityMultiplier     *uint64               `json:"elasticitymultiplier,omitempty"`     // Bounds the maximum gas limit an EIP-1559 block may have.
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator,omitempty"` // Bounds the amount the base fee can change between blocks.
@@ -60,13 +59,139 @@ func (c *ChainConfig) IsIstanbulConsensus() bool {
 	return c.Istanbul != nil
 }
 
-// gets value at or after a transition
+// GetTransitionValue iterates over the transitions and calls the callback for each transition
+// that is less than or equal to the given block number.
 func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition Transition)) {
 	if c != nil && num != nil && c.Transitions != nil {
 		for i := 0; i < len(c.Transitions) && c.Transitions[i].Block.Cmp(num) <= 0; i++ {
 			callback(c.Transitions[i])
 		}
 	}
+}
+
+func (c *ChainConfig) GetEpochLength(num *big.Int) (epochLength uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.EpochLength != 0 {
+		return cfg.EpochLength
+	}
+	// ##
+
+	if c.Istanbul != nil {
+		epochLength = c.Istanbul.EpochLength
+	}
+	c.GetTransitionValue(num, func(transition Transition) {
+		if transition.EpochLength != 0 {
+			epochLength = transition.EpochLength
+		}
+	})
+	if epochLength == 0 {
+		epochLength = 30000
+	}
+	return
+}
+
+func (c *ChainConfig) GetBlockPeriodSeconds(num *big.Int) (blockPeriod uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.BlockPeriodSeconds != 0 {
+		return cfg.BlockPeriodSeconds
+	}
+	// ##
+
+	if c.Istanbul != nil {
+		blockPeriod = c.Istanbul.BlockPeriodSeconds
+	}
+	c.GetTransitionValue(num, func(transition Transition) {
+		if transition.BlockPeriodSeconds != 0 {
+			blockPeriod = transition.BlockPeriodSeconds
+		}
+	})
+	if blockPeriod == 0 {
+		blockPeriod = 1
+	}
+	return
+}
+
+func (c *ChainConfig) GetEmptyBlockPeriodSeconds(num *big.Int) (emptyBlockPeriods uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil {
+		return cfg.EmptyBlockPeriodSeconds
+	}
+	// ##
+
+	if c.Istanbul != nil {
+		emptyBlockPeriods = c.Istanbul.EmptyBlockPeriodSeconds
+	}
+	c.GetTransitionValue(num, func(transition Transition) {
+		if transition.EmptyBlockPeriodSeconds != nil {
+			emptyBlockPeriods = *transition.EmptyBlockPeriodSeconds
+		}
+	})
+	return
+}
+
+func (c *ChainConfig) GetRequestTimeoutSeconds(num *big.Int) (requestTimeout uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.RequestTimeoutSeconds != 0 {
+		return cfg.RequestTimeoutSeconds
+	}
+	// ##
+
+	if c.Istanbul != nil {
+		requestTimeout = c.Istanbul.RequestTimeoutSeconds
+	}
+	c.GetTransitionValue(num, func(transition Transition) {
+		if transition.RequestTimeoutSeconds != 0 {
+			requestTimeout = transition.RequestTimeoutSeconds
+		}
+	})
+	if requestTimeout == 0 {
+		requestTimeout = 10
+	}
+	return
+}
+
+func (c *ChainConfig) GetMaxRequestTimeoutSeconds(num *big.Int) (maxRequestTimeout uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MaxRequestTimeoutSeconds != nil {
+		return *cfg.MaxRequestTimeoutSeconds
+	}
+	// ##
+
+	if c.Istanbul != nil && c.Istanbul.MaxRequestTimeoutSeconds != nil {
+		maxRequestTimeout = *c.Istanbul.MaxRequestTimeoutSeconds
+	}
+	c.GetTransitionValue(num, func(transition Transition) {
+		if transition.MaxRequestTimeoutSeconds != nil {
+			maxRequestTimeout = *transition.MaxRequestTimeoutSeconds
+		}
+	})
+	return
+}
+
+func (c *ChainConfig) GetProposerPolicy(num *big.Int) (policy uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil {
+		return cfg.ProposerPolicy
+	}
+	// ##
+
+	if c.Istanbul != nil {
+		policy = c.Istanbul.ProposerPolicy
+	}
+	return
+}
+
+// ##CROSS: fee collection
+func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.Address) {
+	if c.Istanbul != nil && c.Istanbul.Beneficiary != nil {
+		beneficiary = c.Istanbul.Beneficiary
+	}
+	c.GetTransitionValue(num, func(transition Transition) {
+		if transition.Beneficiary != nil {
+			beneficiary = transition.Beneficiary
+		}
+	})
+	return
 }
 
 func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
@@ -82,25 +207,6 @@ func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
 	c.GetTransitionValue(num, func(transition Transition) {
 		if transition.GasLimit != nil {
 			gasLimit = transition.GasLimit
-		}
-	})
-	return
-}
-
-// ##CROSS: fee collection
-func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.Address) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.Beneficiary != nil {
-		return cfg.Beneficiary
-	}
-	// ##
-
-	if c.Istanbul != nil && c.Istanbul.Beneficiary != nil {
-		beneficiary = c.Istanbul.Beneficiary
-	}
-	c.GetTransitionValue(num, func(transition Transition) {
-		if transition.Beneficiary != nil {
-			beneficiary = transition.Beneficiary
 		}
 	})
 	return

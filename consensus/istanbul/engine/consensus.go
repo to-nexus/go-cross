@@ -79,9 +79,6 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 		if result.MaxRequestTimeout != 0 {
 			config.MaxRequestTimeoutSeconds = &result.MaxRequestTimeout
 		}
-		if result.Beneficiary != (common.Address{}) {
-			config.Beneficiary = &result.Beneficiary
-		}
 		if result.GasLimit != 0 {
 			config.GasLimit = &result.GasLimit
 		}

@@ -410,7 +410,8 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 			}
 			//	}
 
-			snap = newSnapshot(sb.config.GetConfig(new(big.Int).SetUint64(number)).Epoch, 0, genesis.Hash(), validator.NewSet(validators, sb.config.ProposerPolicy))
+			cfg := sb.config.GetConfig(new(big.Int).SetUint64(number)) // ##CROSS: istanbul param
+			snap = newSnapshot(cfg.Epoch, 0, genesis.Hash(), validator.NewSet(validators, cfg.ProposerPolicy))
 			if err := sb.storeSnap(snap); err != nil {
 				return nil, err
 			}
@@ -454,7 +455,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 		//Note! we only want to set this once at this block height. Subsequent blocks will be propagated with the same
 		// 		validator as they are copied into the block header on the next block. Then normal voting can take place
 		// 		again.
-		valSet := validator.NewSet(validatorsFromTransitions, sb.config.ProposerPolicy)
+		valSet := validator.NewSet(validatorsFromTransitions, sb.config.GetConfig(targetBlockHeight).ProposerPolicy) // ##CROSS: istanbul param
 		snap.ValSet = valSet
 	}
 
@@ -596,7 +597,7 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		if err != nil {
 			return err
 		}
-		snap.ValSet = validator.NewSet(validators, sb.config.ProposerPolicy)
+		snap.ValSet = validator.NewSet(validators, sb.config.GetConfig(header.Number).ProposerPolicy) // ##CROSS: istanbul param
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -64,11 +65,39 @@ func init() {
 				Code:         breakpoint.IstanbulParamMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					beneficiary := common.Address{}
-					if config.Istanbul != nil && config.Istanbul.Beneficiary != nil {
-						beneficiary = *config.Istanbul.Beneficiary
+					epochLength := config.GetEpochLength(header.Number)
+					blockPeriod := config.GetBlockPeriodSeconds(header.Number)
+					emptyBlockPeriod := config.GetEmptyBlockPeriodSeconds(header.Number)
+					requestTimeout := config.GetRequestTimeoutSeconds(header.Number)
+					maxRequestTimeout := config.GetMaxRequestTimeoutSeconds(header.Number)
+					baseFeeChangeDenominator := config.GetBaseFeeChangeDenominator(header.Number)
+					elasticityMultiplier := config.GetElasticityMultiplier(header.Number)
+					maxBaseFee := config.GetMaxBaseFee(header.Number)
+					if maxBaseFee == nil {
+						maxBaseFee = big.NewInt(0)
 					}
-					return breakpoint.NewIstanbulParam().PackInitialize(beneficiary), nil
+					minBaseFee := config.GetMinBaseFee(header.Number)
+					if minBaseFee == nil {
+						minBaseFee = big.NewInt(0)
+					}
+					proposerPolicy := config.GetProposerPolicy(header.Number)
+					gasLimit := header.GasLimit
+					if limit := config.GetGasLimit(header.Number); limit != nil {
+						gasLimit = *limit
+					}
+					return breakpoint.NewIstanbulParam().PackInitialize(
+						epochLength,
+						blockPeriod,
+						emptyBlockPeriod,
+						requestTimeout,
+						maxRequestTimeout,
+						elasticityMultiplier,
+						baseFeeChangeDenominator,
+						maxBaseFee,
+						minBaseFee,
+						proposerPolicy,
+						gasLimit,
+					), nil
 				},
 			},
 			{

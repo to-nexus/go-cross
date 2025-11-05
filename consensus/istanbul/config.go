@@ -125,8 +125,6 @@ func (p *ProposerPolicy) GetRegistrySize() int {
 	return len(p.registry)
 }
 
-// ##
-
 // ClearRegistry removes any ValidatorSet from the ProposerPolicy registry
 func (p *ProposerPolicy) ClearRegistry() {
 	p.registryMU.Lock()
@@ -150,11 +148,43 @@ type Config struct {
 
 var DefaultConfig = &Config{
 	RequestTimeout:         10000,
-	BlockPeriod:            5,
+	BlockPeriod:            1,
 	EmptyBlockPeriod:       0,
 	ProposerPolicy:         NewRoundRobinProposerPolicy(),
 	Epoch:                  30000,
 	AllowedFutureBlockTime: 0,
+}
+
+func NewConfig(config *params.ChainConfig) *Config {
+	if config == nil || config.Istanbul == nil {
+		return nil
+	}
+
+	c := *DefaultConfig
+
+	if config.Istanbul.EpochLength != 0 {
+		c.Epoch = config.Istanbul.EpochLength
+	}
+	if config.Istanbul.BlockPeriodSeconds != 0 {
+		c.BlockPeriod = config.Istanbul.BlockPeriodSeconds
+	}
+	if config.Istanbul.EmptyBlockPeriodSeconds != 0 {
+		c.EmptyBlockPeriod = config.Istanbul.EmptyBlockPeriodSeconds
+	}
+	if config.Istanbul.RequestTimeoutSeconds != 0 {
+		c.RequestTimeout = config.Istanbul.RequestTimeoutSeconds * 1000
+	}
+	if config.Istanbul.ProposerPolicy != 0 {
+		c.ProposerPolicy = NewProposerPolicy(ProposerPolicyId(config.Istanbul.ProposerPolicy))
+	}
+	c.Validators = config.Istanbul.Validators
+
+	if config.Istanbul.MaxRequestTimeoutSeconds != nil && *config.Istanbul.MaxRequestTimeoutSeconds > 0 {
+		c.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
+	}
+	c.Transitions = config.Transitions
+
+	return &c
 }
 
 func (c Config) GetConfig(blockNumber *big.Int) Config {
@@ -164,13 +194,17 @@ func (c Config) GetConfig(blockNumber *big.Int) Config {
 	if blockNumber != nil {
 		if cfg := params.IstanbulConfigAt(blockNumber.Uint64()); cfg != nil {
 			if cfg.RequestTimeoutSeconds != 0 {
-				newConfig.RequestTimeout = cfg.RequestTimeoutSeconds
+				newConfig.RequestTimeout = cfg.RequestTimeoutSeconds * 1000
 			}
 			if cfg.BlockPeriodSeconds != 0 {
 				newConfig.BlockPeriod = cfg.BlockPeriodSeconds
 			}
 			if cfg.EmptyBlockPeriodSeconds != 0 {
 				newConfig.EmptyBlockPeriod = cfg.EmptyBlockPeriodSeconds
+			}
+			if newConfig.ProposerPolicy != nil && newConfig.ProposerPolicy.Id != ProposerPolicyId(cfg.ProposerPolicy) {
+				// swap policy id only
+				newConfig.ProposerPolicy.Id = ProposerPolicyId(cfg.ProposerPolicy)
 			}
 			if cfg.EpochLength != 0 {
 				newConfig.Epoch = cfg.EpochLength

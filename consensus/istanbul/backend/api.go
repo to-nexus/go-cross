@@ -279,7 +279,6 @@ type IstanbulConfig struct {
 	AllowedFutureBlockTime   uint64           `json:"allowedFutureBlockTime"`
 	Validators               []common.Address `json:"validators"`
 	MaxRequestTimeout        uint64           `json:"maxRequestTimeout"`
-	Beneficiary              *common.Address  `json:"beneficiary"`
 	GasLimit                 uint64           `json:"gasLimit"`
 	ElasticityMultiplier     uint64           `json:"elasticityMultiplier"`
 	BaseFeeChangeDenominator uint64           `json:"baseFeeChangeDenominator"`
@@ -307,16 +306,17 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 		EmptyBlockPeriod:       istConfig.EmptyBlockPeriod,
 		Epoch:                  istConfig.Epoch,
 		AllowedFutureBlockTime: istConfig.AllowedFutureBlockTime,
-		Validators:             istConfig.Validators,
 		MaxRequestTimeout:      istConfig.MaxRequestTimeoutSeconds,
 	}
 	if istConfig.ProposerPolicy != nil {
 		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)
 	}
+	if extra, _ := types.ExtractIstanbulExtra(header); extra != nil {
+		ret.Validators = extra.Validators
+	}
 
 	chainConfig := api.chain.Config()
 
-	ret.Beneficiary = chainConfig.GetBeneficiaryAddress(header.Number)
 	if gasLimit := chainConfig.GetGasLimit(header.Number); gasLimit != nil {
 		ret.GasLimit = *gasLimit
 	} else {
