@@ -83,7 +83,7 @@ func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTim
 func CalcBlobFee(config *params.ChainConfig, header *types.Header) *big.Int {
 	var frac uint64
 	switch config.LatestFork(header.Time) {
-	case forks.Osaka:
+	case forks.Osaka, forks.Crossway: // ##CROSS: fork crossway
 		frac = config.BlobScheduleConfig.Osaka.UpdateFraction
 	case forks.Prague, forks.Breakpoint: // ##CROSS: fork breakpoint
 		frac = config.BlobScheduleConfig.Prague.UpdateFraction

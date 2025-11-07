@@ -115,7 +115,7 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 		table = &pragueInstructionSet
 	case evm.chainRules.IsCancun:
 		table = &cancunInstructionSet
-	case evm.chainRules.IsAdventure: // ##CROSS: fork
+	case evm.chainRules.IsAdventure: // ##CROSS: fork adventure
 		table = &adventureInstructionSet
 	case evm.chainRules.IsShanghai:
 		table = &shanghaiInstructionSet

@@ -59,7 +59,7 @@ var (
 	londonInstructionSet           = newLondonInstructionSet()
 	mergeInstructionSet            = newMergeInstructionSet()
 	shanghaiInstructionSet         = newShanghaiInstructionSet()
-	adventureInstructionSet        = newAdventureInstructionSet() // ##CROSS: fork
+	adventureInstructionSet        = newAdventureInstructionSet() // ##CROSS: fork adventure
 	cancunInstructionSet           = newCancunInstructionSet()
 	verkleInstructionSet           = newVerkleInstructionSet()
 	pragueInstructionSet           = newPragueInstructionSet()
@@ -128,7 +128,7 @@ func newCancunInstructionSet() JumpTable {
 	return validate(instructionSet)
 }
 
-// ##CROSS: fork
+// ##CROSS: fork adventure
 func newAdventureInstructionSet() JumpTable {
 	instructionSet := newShanghaiInstructionSet()
 	enable1153(&instructionSet) // EIP-1153 "Transient Storage"

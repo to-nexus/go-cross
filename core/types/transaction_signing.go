@@ -48,7 +48,7 @@ func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint
 		signer = NewPragueSigner(config.ChainID)
 	case config.IsCancun(blockNumber, blockTime):
 		signer = NewCancunSigner(config.ChainID)
-	case config.IsAdventure(blockNumber, blockTime): // ##CROSS: fork
+	case config.IsAdventure(blockNumber, blockTime): // ##CROSS: fork adventure
 		signer = NewAdventureSigner(config.ChainID)
 	case config.IsLondon(blockNumber):
 		signer = NewLondonSigner(config.ChainID)
@@ -82,7 +82,7 @@ func LatestSigner(config *params.ChainConfig) Signer {
 		case config.CancunTime != nil:
 			signer = NewCancunSigner(config.ChainID)
 		case config.AdventureTime != nil:
-			signer = NewAdventureSigner(config.ChainID) // ##CROSS: fork
+			signer = NewAdventureSigner(config.ChainID) // ##CROSS: fork adventure
 		case config.LondonBlock != nil:
 			signer = NewLondonSigner(config.ChainID)
 		case config.BerlinBlock != nil:
@@ -290,7 +290,7 @@ func newModernSigner(chainID *big.Int, fork forks.Fork) Signer {
 	if fork >= forks.London {
 		s.txtypes[DynamicFeeTxType] = struct{}{}
 	}
-	if fork >= forks.Adventure { // ##CROSS: fork
+	if fork >= forks.Adventure { // ##CROSS: fork adventure
 		s.txtypes[FeeDelegatedDynamicFeeTxType] = struct{}{}
 	}
 	if fork >= forks.Cancun {
@@ -392,7 +392,7 @@ func NewCancunSigner(chainId *big.Int) Signer {
 	return newModernSigner(chainId, forks.Cancun)
 }
 
-// ##CROSS: fork
+// ##CROSS: fork adventure
 // NewAdventureSigner returns a signer that accepts
 // - fee delegated dynamic fee transactions (treats them as normal dynamic fee transactions)
 // - EIP-1559 dynamic fee transactions

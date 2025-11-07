@@ -37,11 +37,12 @@ const (
 	GrayGlacier
 	Paris
 	Shanghai
-	Adventure // ##CROSS: fork
+	Adventure // ##CROSS: fork adventure
 	Cancun
 	Prague
 	Breakpoint // ##CROSS: fork breakpoint
 	Osaka
+	Crossway // ##CROSS: fork crossway
 )
 
 // String implements fmt.Stringer.
@@ -71,9 +72,10 @@ var forkToString = map[Fork]string{
 	GrayGlacier:      "Gray Glacier",
 	Paris:            "Paris",
 	Shanghai:         "Shanghai",
-	Adventure:        "Adventure", // ##CROSS: fork
+	Adventure:        "Adventure", // ##CROSS: fork adventure
 	Cancun:           "Cancun",
 	Prague:           "Prague",
 	Breakpoint:       "Breakpoint", // ##CROSS: fork breakpoint
 	Osaka:            "Osaka",
+	Crossway:         "Crossway", // ##CROSS: fork crossway
 }
