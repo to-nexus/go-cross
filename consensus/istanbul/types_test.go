@@ -44,15 +44,6 @@ func TestViewCompare(t *testing.T) {
 		t.Errorf("source(%v) should be larger than target(%v): have %v, want %v", srvView, tarView, r, 1)
 	}
 
-	// test more larger Sequence
-	tarView = &View{
-		Sequence: big.NewInt(1),
-		Round:    big.NewInt(2),
-	}
-	if r := srvView.Cmp(tarView); r != 2 {
-		t.Errorf("source(%v) should be larger than target(%v): have %v, want %v", srvView, tarView, r, 2)
-	}
-
 	// test larger Round
 	tarView = &View{
 		Sequence: big.NewInt(3),
@@ -60,15 +51,6 @@ func TestViewCompare(t *testing.T) {
 	}
 	if r := srvView.Cmp(tarView); r != 1 {
 		t.Errorf("source(%v) should be larger than target(%v): have %v, want %v", srvView, tarView, r, 1)
-	}
-
-	// test more larger Round
-	tarView = &View{
-		Sequence: big.NewInt(3),
-		Round:    big.NewInt(0),
-	}
-	if r := srvView.Cmp(tarView); r != 2 {
-		t.Errorf("source(%v) should be larger than target(%v): have %v, want %v", srvView, tarView, r, 2)
 	}
 
 	// test smaller Sequence

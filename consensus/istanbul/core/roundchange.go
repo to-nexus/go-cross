@@ -133,7 +133,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 	logger = logger.New("higherRoundChanges.count", num, "currentRoundChanges.count", currentRoundMessages)
 
 	if num == c.valSet.F()+1 {
-		// We received F+1 ROUND-CHANGE messages (this may happen before our timeout exprired)
+		// We received F+1 ROUND-CHANGE messages (this may happen before our timeout expired)
 		// we start new round and broadcast ROUND-CHANGE message
 		newRound := c.roundChangeSet.getMinRoundChange(currentRound)
 
