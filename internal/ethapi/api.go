@@ -1898,33 +1898,45 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	}
 
 	// ##CROSS: gas abstraction
-	if s.gasAbs != nil && tx.Type() == types.DynamicFeeTxType {
+	if s.gasAbs != nil {
 		to := common.Address{}
 		if tx.To() != nil {
 			to = *tx.To()
 		}
 
-		approved := s.gasAbs.IsApprovedTo(ctx, to)
-		if !approved {
-			from, err := s.signer.Sender(tx)
-			if err != nil {
-				return common.Hash{}, err
-			}
-			approved = s.gasAbs.IsApprovedFrom(ctx, from)
+		from, err := s.signer.Sender(tx)
+		if err != nil {
+			return common.Hash{}, err
 		}
 
-		if approved {
-			logger := log.New("to", to, "tx", tx.Hash().Hex())
-			logger.Info("Request GasAbstraction")
-			if tx, err = s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
-				errlog := logger.Warn
-				if errors.Is(err, syscall.ECONNREFUSED) {
-					errlog = logger.Error
-				}
-				errlog("Failed to request GasAbstraction", "error", err)
-				return tx.Hash(), err
+		if s.gasAbs.IsBlacklistedFrom(ctx, from) {
+			log.Root().Warn("Transaction rejected: from address is blacklisted", "from", from, "tx", tx.Hash().Hex())
+			return common.Hash{}, errors.New("not allowed")
+		} else if s.gasAbs.IsBlacklistedTo(ctx, to) {
+			log.Root().Warn("Transaction rejected: to address is blacklisted", "to", to, "tx", tx.Hash().Hex())
+			return common.Hash{}, errors.New("not allowed")
+		}
+
+		if tx.Type() == types.DynamicFeeTxType {
+			approved := s.gasAbs.IsApprovedTo(ctx, to)
+			if !approved {
+				approved = s.gasAbs.IsApprovedFrom(ctx, from)
 			}
-			logger.Info("Successfully requested GasAbstraction")
+
+			if approved {
+				logger := log.New("to", to, "tx", tx.Hash().Hex())
+				logger.Info("Request GasAbstraction")
+				var err error
+				if tx, err = s.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+					errlog := logger.Warn
+					if errors.Is(err, syscall.ECONNREFUSED) {
+						errlog = logger.Error
+					}
+					errlog("Failed to request GasAbstraction", "error", err)
+					return tx.Hash(), err
+				}
+				logger.Info("Successfully requested GasAbstraction")
+			}
 		}
 	}
 
