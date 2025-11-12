@@ -174,20 +174,22 @@ func (c *Core) processBacklog() {
 			view = msg.View()
 			event.msg = msg
 
+			logger := logger.New("code", code, "source", msg.Source(), "round", view.Round.Uint64(), "sequence", view.Sequence.Uint64())
+
 			// Push back if it's a future message
 			err := c.checkMessage(code, &view)
 			if err != nil {
 				if err == errFutureMessage {
 					// this is still a future message
-					logger.Trace("Istanbul: stop processing backlog", "msg", msg)
+					logger.Trace("Istanbul: stop processing backlog")
 					backlog.Push(msg, prio)
 					isFuture = true
 					break
 				}
-				logger.Trace("Istanbul: skip backlog message", "msg", msg, "err", err)
+				logger.Trace("Istanbul: skip backlog message", "err", err)
 				continue
 			}
-			logger.Trace("Istanbul: post backlog event", "msg", msg)
+			logger.Info("Istanbul: post backlog event")
 
 			event.src = src
 			go c.sendEvent(event)
