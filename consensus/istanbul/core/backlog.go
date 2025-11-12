@@ -61,6 +61,12 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 		// - sequence matches our current sequence
 		// - round is in the future
 		if view.Sequence.Cmp(c.currentView().Sequence) > 0 {
+			// ##CROSS: istanbul far future message
+			if new(big.Int).Add(c.currentView().Sequence, farFutureSequenceDiff).Cmp(view.Sequence) < 0 {
+				// sequence > current sequence + 1
+				return errFarFutureMessage
+			}
+			// ##
 			return errFutureMessage
 		} else if view.Cmp(c.currentView()) < 0 {
 			return errOldMessage
@@ -73,10 +79,16 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 	currentView := c.currentView()
 	if cmp := view.Cmp(currentView); cmp > 0 {
 		// ##CROSS: istanbul far future message
-		if new(big.Int).Add(currentView.Sequence, farFutureSequenceDiff).Cmp(view.Sequence) < 0 ||
-			new(big.Int).Add(currentView.Round, farFutureRoundDiff).Cmp(view.Round) < 0 {
-			// sequence > current sequence + 1 or round > current round + 12
+		seqDiff := new(big.Int).Sub(view.Sequence, currentView.Sequence)
+		if seqDiff.Cmp(farFutureSequenceDiff) > 0 {
+			// sequence > current sequence + 1
 			return errFarFutureMessage
+		}
+		if seqDiff.Cmp(big.NewInt(0)) == 0 {
+			if new(big.Int).Add(currentView.Round, farFutureRoundDiff).Cmp(view.Round) < 0 {
+				// round > current round + 12
+				return errFarFutureMessage
+			}
 		}
 		// ##
 		return errFutureMessage

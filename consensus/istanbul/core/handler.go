@@ -197,7 +197,6 @@ func (c *Core) handleDecodedMessage(m protocols.Message) error {
 		case errFarFutureMessage: // ##CROSS: istanbul far future message
 			c.currentLogger(true, m).Warn("Istanbul: dropping far future message")
 		case errFutureMessage:
-			c.currentLogger(true, m).Trace("Istanbul: adding future message to backlog")
 			c.addToBacklog(m)
 		}
 		return err

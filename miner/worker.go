@@ -516,7 +516,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		case <-timer.C:
 			// ##CROSS: istanbul
 			if w.chainConfig.Istanbul != nil {
-				log.Info("Istanbul engine is active, skipping recommit timer")
+				log.Trace("Istanbul engine is active, skipping recommit timer")
 				continue
 			}
 			// ##
