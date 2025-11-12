@@ -193,8 +193,11 @@ func (c *Core) handleDecodedMessage(m protocols.Message) error {
 	view := m.View()
 	if err := c.checkMessage(m.Code(), &view); err != nil {
 		// Store in the backlog if it's a future message
-		if err == errFutureMessage {
-			c.currentLogger(true, m).Warn("Istanbul: failed to check message", "err", err)
+		switch err {
+		case errFarFutureMessage: // ##CROSS: istanbul far future message
+			c.currentLogger(true, m).Warn("Istanbul: dropping far future message")
+		case errFutureMessage:
+			c.currentLogger(true, m).Trace("Istanbul: adding future message to backlog")
 			c.addToBacklog(m)
 		}
 		return err
