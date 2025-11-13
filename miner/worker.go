@@ -514,12 +514,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(commitInterruptNewHead)
 
 		case <-timer.C:
-			// ##CROSS: istanbul
-			if w.chainConfig.Istanbul != nil {
-				log.Trace("Istanbul engine is active, skipping recommit timer")
-				continue
-			}
-			// ##
 
 			// If sealing is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
