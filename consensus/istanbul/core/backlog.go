@@ -19,7 +19,6 @@ package core
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
@@ -35,6 +34,11 @@ var (
 	}
 )
 
+var (
+	farFutureSequenceDiff = big.NewInt(1)
+	farFutureRoundDiff    = big.NewInt(12)
+)
+
 // checkMessage checks that a message matches our current QBFT state
 //
 // In particular it ensures that
@@ -43,8 +47,8 @@ var (
 // - message type is expected given our current state
 
 // return errInvalidMessage if the message is invalid
-// return errFutureMessage if the message view is 1 round/sequence larger than current view
-// return errFarFutureMessage if the message view is more than 1+ round/sequence larger than current view
+// return errFutureMessage if the message view is larger than current view
+// return errFarFutureMessage if the message view is too larger than current view
 // return errOldMessage if the message view is smaller than current view
 func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 	if view == nil || view.Sequence == nil || view.Round == nil {
@@ -57,9 +61,12 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 		// - sequence matches our current sequence
 		// - round is in the future
 		if view.Sequence.Cmp(c.currentView().Sequence) > 0 {
-			if new(big.Int).Add(c.currentView().Sequence, common.Big1).Cmp(view.Sequence) < 0 {
+			// ##CROSS: istanbul far future message
+			if new(big.Int).Add(c.currentView().Sequence, farFutureSequenceDiff).Cmp(view.Sequence) < 0 {
+				// sequence > current sequence + 1
 				return errFarFutureMessage
 			}
+			// ##
 			return errFutureMessage
 		} else if view.Cmp(c.currentView()) < 0 {
 			return errOldMessage
@@ -69,14 +76,23 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 
 	// If not ROUND-CHANGE
 	// check that round and sequence equals our current round and sequence
-	if cmp := view.Cmp(c.currentView()); cmp > 0 {
-		if cmp > 1 {
+	currentView := c.currentView()
+	if cmp := view.Cmp(currentView); cmp > 0 {
+		// ##CROSS: istanbul far future message
+		seqDiff := new(big.Int).Sub(view.Sequence, currentView.Sequence)
+		if seqDiff.Cmp(farFutureSequenceDiff) > 0 {
+			// sequence > current sequence + 1
 			return errFarFutureMessage
 		}
+		if seqDiff.Cmp(big.NewInt(0)) == 0 {
+			if new(big.Int).Add(currentView.Round, farFutureRoundDiff).Cmp(view.Round) < 0 {
+				// round > current round + 12
+				return errFarFutureMessage
+			}
+		}
+		// ##
 		return errFutureMessage
-	}
-
-	if view.Cmp(c.currentView()) < 0 {
+	} else if cmp < 0 {
 		return errOldMessage
 	}
 
@@ -174,20 +190,22 @@ func (c *Core) processBacklog() {
 			view = msg.View()
 			event.msg = msg
 
+			logger := logger.New("code", code, "source", msg.Source(), "round", view.Round.Uint64(), "sequence", view.Sequence.Uint64())
+
 			// Push back if it's a future message
 			err := c.checkMessage(code, &view)
 			if err != nil {
 				if err == errFutureMessage {
 					// this is still a future message
-					logger.Trace("Istanbul: stop processing backlog", "msg", msg)
+					logger.Trace("Istanbul: stop processing backlog")
 					backlog.Push(msg, prio)
 					isFuture = true
 					break
 				}
-				logger.Trace("Istanbul: skip backlog message", "msg", msg, "err", err)
+				logger.Trace("Istanbul: skip backlog message", "err", err)
 				continue
 			}
-			logger.Trace("Istanbul: post backlog event", "msg", msg)
+			logger.Info("Istanbul: post backlog event")
 
 			event.src = src
 			go c.sendEvent(event)

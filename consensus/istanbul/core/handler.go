@@ -182,6 +182,7 @@ func (c *Core) handleEncodedMsg(code uint64, data []byte) error {
 
 	// Verify signatures and set source address
 	if err = c.verifySignatures(m); err != nil {
+		logger.Error("Istanbul: failed to verify signatures", "err", err)
 		return err
 	}
 
@@ -192,7 +193,10 @@ func (c *Core) handleDecodedMessage(m protocols.Message) error {
 	view := m.View()
 	if err := c.checkMessage(m.Code(), &view); err != nil {
 		// Store in the backlog if it's a future message
-		if err == errFutureMessage {
+		switch err {
+		case errFarFutureMessage: // ##CROSS: istanbul far future message
+			c.currentLogger(true, m).Warn("Istanbul: dropping far future message")
+		case errFutureMessage:
 			c.addToBacklog(m)
 		}
 		return err
