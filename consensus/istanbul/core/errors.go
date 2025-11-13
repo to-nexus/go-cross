@@ -27,7 +27,7 @@ var (
 	errFutureMessage = errors.New("future message")
 	// errFarFutureMessage is returned when current view is 1+ round/sequence earlier than the
 	// view of the received message.
-	errFarFutureMessage = errors.New("far future message")
+	errFarFutureMessage = errors.New("far future message") // ##CROSS: istanbul far future message
 	// errOldMessage is returned when the received message's view is earlier
 	// than current view.
 	errOldMessage = errors.New("old message")

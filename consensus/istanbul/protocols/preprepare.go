@@ -80,5 +80,5 @@ func (m *Preprepare) DecodeRLP(stream *rlp.Stream) error {
 }
 
 func (m *Preprepare) String() string {
-	return fmt.Sprintf("code: %d, sequence: %d, round: %d, proposal: %v", m.code, m.Sequence, m.Round, m.Proposal.Hash().Hex())
+	return fmt.Sprintf("Preprepare {code=%d, sequence=%d, round=%d, proposal=%v}", m.code, m.Sequence, m.Round, m.Proposal.Hash().Hex())
 }

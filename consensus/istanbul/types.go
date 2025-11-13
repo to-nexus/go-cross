@@ -80,18 +80,11 @@ func (v *View) String() string {
 //	-1 if v <  y
 //	 0 if v == y
 //	+1 if v >  y
-//	+2 if v >  y+1
 func (v *View) Cmp(y *View) int {
 	if cmp := v.Sequence.Cmp(y.Sequence); cmp != 0 {
-		if new(big.Int).Add(y.Sequence, common.Big1).Cmp(v.Sequence) < 0 {
-			return 2
-		}
 		return cmp
 	}
 	if cmp := v.Round.Cmp(y.Round); cmp != 0 {
-		if new(big.Int).Add(y.Round, common.Big1).Cmp(v.Round) < 0 {
-			return 2
-		}
 		return cmp
 	}
 	return 0
