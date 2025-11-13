@@ -123,6 +123,15 @@ func init() {
 				},
 			},
 			{
+				Name:         "ValidatorSlash",
+				ContractAddr: ValidatorSlashAddr,
+				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
+				Deploy:       true,
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					return breakpoint.NewValidatorSlash().PackInitialize(), nil
+				},
+			},
+			{
 				Name:         "CrossGovernor",
 				ContractAddr: GovernorAddr,
 				Code:         breakpoint.CrossGovernorMetaData.BinRuntime,

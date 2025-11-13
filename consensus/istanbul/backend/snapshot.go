@@ -19,11 +19,13 @@ package backend
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 const (
@@ -55,6 +57,8 @@ type Snapshot struct {
 	Votes  []*Vote                  // List of votes cast in chronological order
 	Tally  map[common.Address]Tally // Current vote tally to avoid recalculating
 	ValSet istanbul.ValidatorSet    // Set of authorized validators at this moment
+
+	Recents map[uint64]common.Address // Set of recent validators // ##CROSS: validator slash
 }
 
 // newSnapshot create a new snapshot with the specified startup parameters. This
@@ -106,10 +110,15 @@ func (s *Snapshot) copy() *Snapshot {
 		Tally:  make(map[common.Address]Tally),
 	}
 
-	for address, tally := range s.Tally {
-		cpy.Tally[address] = tally
-	}
+	maps.Copy(cpy.Tally, s.Tally)
 	copy(cpy.Votes, s.Votes)
+
+	// ##CROSS: validator slash
+	if s.Recents != nil {
+		cpy.Recents = make(map[uint64]common.Address)
+		maps.Copy(cpy.Recents, s.Recents)
+	}
+	// ##
 
 	return cpy
 }
@@ -173,6 +182,54 @@ func (s *Snapshot) validators() []common.Address {
 	return validators
 }
 
+// ##CROSS: validator slash
+func (s *Snapshot) historyCheckLen() uint64 {
+	return uint64(s.ValSet.Size()) - 1
+}
+
+// countRecents counts the number of times each validator appears in the recent list
+func (s *Snapshot) countRecents() map[common.Address]int {
+	counts := make(map[common.Address]int, s.ValSet.Size())
+	if s.Recents == nil {
+		return counts
+	}
+
+	from := uint64(0)
+	if checkLen := s.historyCheckLen(); s.Number > checkLen {
+		from = s.Number - checkLen
+	}
+	for num, recent := range s.Recents {
+		if num >= from && recent != (common.Address{}) {
+			counts[recent] += 1
+		}
+	}
+	log.Info("Snapshot recents", "number", s.Number, "recents", s.Recents)
+	return counts
+}
+
+// SignedRecently checks if a validator has signed recently
+func (s *Snapshot) SignedRecently(validator common.Address) bool {
+	counts := s.countRecents()
+	return counts[validator] > 0
+}
+
+func (s *Snapshot) OfflineValidators() []common.Address {
+	if s.Recents == nil {
+		return nil
+	}
+
+	counts := s.countRecents()
+	offlineValidators := make([]common.Address, 0)
+	for _, validator := range s.ValSet.List() {
+		if counts[validator.Address()] == 0 {
+			offlineValidators = append(offlineValidators, validator.Address())
+		}
+	}
+	return offlineValidators
+}
+
+// ##
+
 type snapshotJSON struct {
 	Epoch  uint64                   `json:"epoch"`
 	Number uint64                   `json:"number"`
@@ -183,6 +240,8 @@ type snapshotJSON struct {
 	// for validator set
 	Validators []common.Address          `json:"validators"`
 	Policy     istanbul.ProposerPolicyId `json:"policy"`
+
+	Recents map[uint64]common.Address `json:"recents,omitempty"` // ##CROSS: validator slash
 }
 
 func (s *Snapshot) toJSONStruct() *snapshotJSON {
@@ -194,6 +253,7 @@ func (s *Snapshot) toJSONStruct() *snapshotJSON {
 		Tally:      s.Tally,
 		Validators: s.validators(),
 		Policy:     s.ValSet.Policy().Id,
+		Recents:    s.Recents, // ##CROSS: validator slash
 	}
 }
 
@@ -209,6 +269,7 @@ func (s *Snapshot) UnmarshalJSON(b []byte) error {
 	s.Hash = j.Hash
 	s.Votes = j.Votes
 	s.Tally = j.Tally
+	s.Recents = j.Recents // ##CROSS: validator slash
 
 	// Setting the By function to ValidatorSortByStringFunc should be fine, as the validator do not change only the order changes
 	pp := istanbul.NewProposerPolicyByIdAndSortFunc(j.Policy, istanbul.ValidatorSortByString())

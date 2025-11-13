@@ -16,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 )
 
@@ -67,7 +66,7 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 			return err
 		}
 
-		log.Info("Syncing istanbul param", "index", index, "blockNumber", result.Timepoint, "config", result)
+		log.Info("Syncing istanbul param", "index", index, "number", result.Timepoint, "config", result)
 
 		config := params.IstanbulConfig{
 			EpochLength:             result.EpochLength,
@@ -109,21 +108,11 @@ type ValidatorInfo struct {
 	amount  *uint256.Int
 }
 
-func withBlockNumberOrHash(blockNr rpc.BlockNumberOrHash) *bind.CallOpts {
-	callOpts := bind.CallOpts{}
-	if hash, ok := blockNr.Hash(); ok {
-		callOpts.BlockHash = hash
-	} else if number, ok := blockNr.Number(); ok {
-		callOpts.BlockNumber = big.NewInt(int64(number))
-	}
-	return &callOpts
-}
-
-// getValidators reads the active validators from the ValidatorSet contract.
-func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address, error) {
+// getCurrentValidators reads the active validators from the ValidatorSet contract.
+func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, error) {
 	validatorSetInstance := e.validatorSet.Instance(e.contactBackend, contracts.ValidatorSetAddr)
 
-	callopts := withBlockNumberOrHash(blockNr)
+	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 	calldata := e.validatorSet.PackGetValidators()
 	validators, err := bind.Call(validatorSetInstance, callopts, calldata, e.validatorSet.UnpackGetValidators)
 	if err != nil {
@@ -148,10 +137,13 @@ func (e *Engine) getValidators(blockNr rpc.BlockNumberOrHash) ([]common.Address,
 // then it selects the top N validators as the active validators.
 // Finally, it creates a system transaction and applies it to the given state.
 func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
-	blockNr := rpc.BlockNumberOrHashWithHash(header.ParentHash, false)
+	if header.Number.Uint64() == 0 {
+		return nil
+	}
+	number := header.Number.Uint64() - 1 // read from parent block
 
 	// read active validators from StakeHub
-	validatorInfos, err := e.getValidatorInfo(blockNr)
+	validatorInfos, err := e.getStakedValidatorInfo(number)
 	if err != nil {
 		return err
 	}
@@ -159,7 +151,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return errors.New("no validator info")
 	}
 
-	threshold, err := e.getValidatorThreshold(blockNr)
+	threshold, err := e.getValidatorThreshold(number)
 	if err != nil {
 		return err
 	}
@@ -184,21 +176,20 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	data := e.validatorSet.PackUpdateValidators(validators)
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSetAddr, data)
 
-	log.Info("Updating validator set", "blockNumber", header.Number.Uint64(), "validators", validators)
+	log.Info("Updating validator set", "number", header.Number.Uint64(), "validators", validators)
 	if systemTxs != nil {
 		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 	} else {
-		msg.From = e.signer // header.Coinbase is empty here
 		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
 	}
 	return err
 }
 
-// getValidatorInfo reads all staked validators from the StakeHub contract.
-func (e *Engine) getValidatorInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorInfo, error) {
+// getStakedValidatorInfo reads all staked validators from the StakeHub contract.
+func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contactBackend, contracts.StakeHubAddr)
 
-	callopts := withBlockNumberOrHash(blockNr)
+	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 	calldata := e.stakeHub.PackGetValidators(big.NewInt(0), big.NewInt(0))
 	result, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackGetValidators)
 	if err != nil {
@@ -226,10 +217,10 @@ func (e *Engine) getValidatorInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorInf
 }
 
 // getValidatorThreshold reads the active validator threshold from the StakeHub contract.
-func (e *Engine) getValidatorThreshold(blockNr rpc.BlockNumberOrHash) (uint64, error) {
+func (e *Engine) getValidatorThreshold(number uint64) (uint64, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contactBackend, contracts.StakeHubAddr)
 
-	callopts := withBlockNumberOrHash(blockNr)
+	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 	calldata := e.stakeHub.PackValidatorThreshold()
 	threshold, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackValidatorThreshold)
 	if err != nil {
@@ -242,6 +233,37 @@ func (e *Engine) getValidatorThreshold(blockNr rpc.BlockNumberOrHash) (uint64, e
 	}
 
 	return threshold.Uint64(), nil
+}
+
+// ##
+
+// ##CROSS: validator slash
+// slashValidators slashes validators who failed to propose blocks in the previous sequence
+func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *chainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	if e.pos == nil || header.Number.Uint64() == 0 {
+		return nil
+	}
+	number := header.Number.Uint64() - 1 // read from parent block
+
+	idleValidators := e.pos.OfflineValidators(cx.Chain, number)
+	for _, validator := range idleValidators {
+		log.Warn("Slashing idle validator", "number", header.Number.Uint64(), "validator", validator)
+
+		data := e.validatorSlash.PackSlashOffline(validator)
+		msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data)
+
+		var err error
+		if systemTxs != nil {
+			err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+		} else {
+			err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ##

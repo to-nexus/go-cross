@@ -191,7 +191,7 @@ func (c Config) GetConfig(blockNumber *big.Int) Config {
 	newConfig := c
 
 	// ##CROSS: istanbul param
-	if blockNumber != nil {
+	if blockNumber != nil && blockNumber.Cmp(big.NewInt(0)) > 0 { // skip genesis block
 		if cfg := params.IstanbulConfigAt(blockNumber.Uint64()); cfg != nil {
 			if cfg.RequestTimeoutSeconds != 0 {
 				newConfig.RequestTimeout = cfg.RequestTimeoutSeconds * 1000

@@ -70,8 +70,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		misc.ApplyDAOHardFork(statedb)
 	}
 
-	posEngine, isPoS := consensus.ToIstanbulPoS(p.chain.engine) // ##CROSS: consensus system contract
 	// ##CROSS: istanbul param
+	posEngine, isPoS := consensus.ToIstanbulPoS(p.chain.engine)
 	parent := p.chain.GetHeaderByHash(block.ParentHash())
 	if isPoS && p.config.IsBreakpoint(block.Number(), block.Time()) &&
 		parent != nil && !p.config.IsOnBreakpoint(block.Number(), parent.Time, block.Time()) {

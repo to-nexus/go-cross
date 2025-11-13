@@ -246,6 +246,7 @@ func (sb *Backend) Verify(proposal istanbul.Proposal) (time.Duration, error) {
 	header := block.Header()
 	snap, err := sb.snapshot(sb.chain, header.Number.Uint64()-1, header.ParentHash, nil)
 	if err != nil {
+		log.Error("Istanbul: failed to get snapshot", "err", err, "number", header.Number.Uint64()-1, "hash", header.ParentHash.String())
 		return 0, err
 	}
 

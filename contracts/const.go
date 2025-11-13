@@ -18,6 +18,7 @@ var (
 	IstanbulParamAddr      = common.HexToAddress("0x0000000000000000000000000000000000001000")
 	ValidatorSetAddr       = common.HexToAddress("0x0000000000000000000000000000000000001001")
 	StakeHubAddr           = common.HexToAddress("0x0000000000000000000000000000000000001002")
+	ValidatorSlashAddr     = common.HexToAddress("0x0000000000000000000000000000000000001004")
 	GovernorAddr           = common.HexToAddress("0x0000000000000000000000000000000000001005")
 	GovernanceTokenAddr    = common.HexToAddress("0x0000000000000000000000000000000000001006")
 	GovernanceTimelockAddr = common.HexToAddress("0x0000000000000000000000000000000000001007")
@@ -29,6 +30,7 @@ var systemContracts = map[common.Address]bool{
 	IstanbulParamAddr:      true,
 	ValidatorSetAddr:       true,
 	StakeHubAddr:           true,
+	ValidatorSlashAddr:     true,
 	GovernorAddr:           true,
 	GovernanceTokenAddr:    true,
 	GovernanceTimelockAddr: true,

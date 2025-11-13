@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
@@ -51,16 +50,18 @@ type Engine struct {
 	contactBackend bind.ContractBackend
 	signTx         SignerTxFn
 	consensus      consensus.Engine
+	pos            consensus.IstanbulPoS
 
 	// system contracts
-	istanbulParam *breakpoint.IstanbulParam
-	validatorSet  *breakpoint.ValidatorSet
-	stakeHub      *breakpoint.StakeHub
+	istanbulParam  *breakpoint.IstanbulParam
+	validatorSet   *breakpoint.ValidatorSet
+	stakeHub       *breakpoint.StakeHub
+	validatorSlash *breakpoint.ValidatorSlash
 	// ##
 }
 
 func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, contractBackend bind.ContractBackend) *Engine {
-	return &Engine{
+	e := &Engine{
 		cfg:    cfg,
 		signer: signer,
 		sign:   sign,
@@ -71,8 +72,11 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		istanbulParam:  breakpoint.NewIstanbulParam(),
 		validatorSet:   breakpoint.NewValidatorSet(),
 		stakeHub:       breakpoint.NewStakeHub(),
+		validatorSlash: breakpoint.NewValidatorSlash(),
 		// ##
 	}
+	e.pos, _ = consensus.ToIstanbulPoS(ce)
+	return e
 }
 
 // ##CROSS: consensus system contract
@@ -473,21 +477,22 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 
 	// set header's timestamp
 	header.Time = parent.Time + e.cfg.GetConfig(header.Number).BlockPeriod
-	if header.Time < uint64(time.Now().Unix()) {
-		header.Time = uint64(time.Now().Unix())
-	}
+	header.Time = max(header.Time, uint64(time.Now().Unix()))
 
+	// update validator list
 	var validatorsList []common.Address
 	if chain.Config().IsCrossway(header.Number, header.Time) {
 		// ##CROSS: consensus system contract
-		// after crossway, validator list is managed by the system contract
-		vlist, err := e.getValidators(rpc.BlockNumberOrHashWithHash(header.ParentHash, false))
-		if err != nil {
-			return err
+		if e.cfg.OnNewEpoch(header.Number) {
+			// after crossway, validator list is managed by the system contract and updated every epoch
+			newList, err := e.getCurrentValidators(parent.Number.Uint64())
+			if err != nil {
+				return err
+			}
+			validatorsList = newList
 		}
-		if vlist != nil {
-			validatorsList = vlist
-		} else {
+		if len(validatorsList) == 0 {
+			// if validator list is not updated, use the validators from config
 			validatorsList = validator.SortedAddresses(validators.List())
 		}
 		// ##
@@ -546,7 +551,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			}
 
 			for _, data := range initData {
-				log.Info("Finalize: initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
+				log.Info("Finalize: initializing system contract", "number", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
 				msg := newSystemMessage(header.Coinbase, data.To, data.Data)
 				err := e.applyReceivedSystemTransaction(msg, state, header, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer)
 				if err != nil {
@@ -555,21 +560,31 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			}
 		}
 	}
-
-	// TODO: slash validator
-
 	// ##
 
-	// Accumulate any block and uncle rewards and commit the final state root
-	// e.accumulateRewards(chain, state, header)
-
 	// ##CROSS: consensus system contract
-	if chain.Config().IsCrossway(header.Number, header.Time) && e.cfg.OnNewEpoch(header.Number) {
-		log.Info("Finalize: updating validator set", "blockNumber", header.Number.Uint64())
-		if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
-			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
+	if chain.Config().IsCrossway(header.Number, header.Time) {
+		// ##CROSS: validator slash
+		if err := e.slashValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
 			return err
 		}
+		// ##
+
+		// TODO: distribute rewards
+
+		// Update validator set at the end of epoch (block N-1) so that block N (new epoch start) can read it in Prepare()
+		nextNumber := new(big.Int).Add(header.Number, common.Big1)
+		if e.cfg.OnNewEpoch(nextNumber) {
+			log.Info("Finalize: updating validator set for next epoch", "nextBlockNumber", nextNumber.Uint64())
+			if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+				log.Error("Failed to update validator set", "error", err, "nextBlockNumber", nextNumber.Uint64())
+				return err
+			}
+		}
+	} else {
+		// Accumulate any block and uncle rewards and commit the final state root
+		e.accumulateRewards(chain, state, header)
 	}
 	// ##
 
@@ -604,7 +619,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
 
 		for _, data := range initData {
-			log.Info("FinalizeAndAssemble: initializing system contract", "blockNumber", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
+			log.Info("FinalizeAndAssemble: initializing system contract", "number", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
 			msg := newSystemMessage(e.signer, data.To, data.Data)
 			err := e.applyGeneratedSystemTransaction(msg, state, header, cx, &body.Transactions, &receipts, &header.GasUsed, tracer)
 			if err != nil {
@@ -612,17 +627,27 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 			}
 		}
 	}
-
-	// TODO: slash validator
-	// TODO: distribute rewards
 	// ##
 
 	// ##CROSS: consensus system contract
-	if chain.Config().IsCrossway(header.Number, header.Time) && e.cfg.OnNewEpoch(header.Number) {
-		log.Info("FinalizeAndAssemble: updating validator set", "blockNumber", header.Number.Uint64())
-		if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
-			log.Error("Failed to update validator set", "error", err, "blockNumber", header.Number.Uint64())
+	if chain.Config().IsCrossway(header.Number, header.Time) {
+		// ##CROSS: validator slash
+		if err := e.slashValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
 			return nil, nil, err
+		}
+		// ##
+
+		// TODO: distribute rewards
+
+		// Update validator set at the end of epoch (block N-1) so that block N (new epoch start) can read it in Prepare()
+		nextNumber := new(big.Int).Add(header.Number, common.Big1)
+		if e.cfg.OnNewEpoch(nextNumber) {
+			log.Info("FinalizeAndAssemble: updating validator set for next epoch", "nextBlockNumber", nextNumber.Uint64())
+			if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+				log.Error("Failed to update validator set", "error", err, "nextBlockNumber", nextNumber.Uint64())
+				return nil, nil, err
+			}
 		}
 	}
 	// ##
@@ -818,6 +843,7 @@ func (e *Engine) applyGeneratedSystemTransaction(
 	usedGas *uint64,
 	tracer *tracing.Hooks,
 ) (err error) {
+	msg.From = e.signer // generated system transaction should be signed by the engine's signer
 	nonce := state.GetNonce(msg.From)
 	tx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
 	tx, err = e.signTx(accounts.Account{Address: msg.From}, tx, chainContext.Config().ChainID)

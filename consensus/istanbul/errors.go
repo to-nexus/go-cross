@@ -55,6 +55,10 @@ var (
 	// be modified via out-of-range or non-contiguous headers.
 	ErrInvalidVotingChain = errors.New("invalid voting chain")
 
+	// ErrInconsistentBlockHash is returned if an authorization list is attempted to
+	// insert an inconsistent block.
+	ErrInconsistentBlockHash = errors.New("inconsistent block hash")
+
 	// ErrInvalidVote is returned if a nonce value is something else that the two
 	// allowed constants of 0x00..0 or 0xff..f.
 	ErrInvalidVote = errors.New("vote nonce not 0x00..0 or 0xff..f")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math/big"
-	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum"
@@ -18,8 +17,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var _ core.ChainContext = (*mockChainContext)(nil)
@@ -92,20 +92,21 @@ func (m *mockContractBackend) SubscribeFilterLogs(ctx context.Context, query eth
 	return nil, nil
 }
 
-func TestGetValidators(t *testing.T) {
+func TestGetCurrentValidators(t *testing.T) {
 	code := []byte{1, 2, 3}
 	method := string(breakpoint.NewValidatorSet().PackGetValidators()[:4])
+	callContractErr := errors.New("call contract error")
 
 	tests := []struct {
 		name               string
-		blockNr            rpc.BlockNumberOrHash
+		number             uint64
 		mockCaller         *mockContractBackend
 		expectedValidators []common.Address
 		expectedErr        error
 	}{
 		{
-			name:    "success with validators",
-			blockNr: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(100)),
+			name:   "success with validators",
+			number: 100,
 			mockCaller: &mockContractBackend{
 				codeAtBytes: code,
 				callContractResponses: map[string][][]byte{
@@ -124,8 +125,8 @@ func TestGetValidators(t *testing.T) {
 			expectedErr: nil,
 		},
 		{
-			name:    "success with empty validators",
-			blockNr: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(100)),
+			name:   "success with empty validators",
+			number: 100,
 			mockCaller: &mockContractBackend{
 				codeAtBytes: code,
 				callContractResponses: map[string][][]byte{
@@ -136,8 +137,8 @@ func TestGetValidators(t *testing.T) {
 			expectedErr:        nil,
 		},
 		{
-			name:    "contract not deployed (ErrNoCode)",
-			blockNr: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(100)),
+			name:   "contract not deployed",
+			number: 100,
 			mockCaller: &mockContractBackend{
 				codeAtBytes: []byte{}, // No code
 			},
@@ -145,30 +146,14 @@ func TestGetValidators(t *testing.T) {
 			expectedErr:        nil,
 		},
 		{
-			name:    "error from CallContract",
-			blockNr: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(100)),
+			name:   "error from CallContract",
+			number: 100,
 			mockCaller: &mockContractBackend{
 				codeAtBytes:     []byte{1, 2, 3},
-				callContractErr: errors.New("call contract error"),
+				callContractErr: callContractErr,
 			},
 			expectedValidators: nil,
-			expectedErr:        errors.New("call contract error"),
-		},
-		{
-			name:    "success with block hash",
-			blockNr: rpc.BlockNumberOrHashWithHash(common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"), false),
-			mockCaller: &mockContractBackend{
-				codeAtBytes: []byte{1, 2, 3},
-				callContractResponses: map[string][][]byte{
-					method: {packValidatorsResponse(t, []common.Address{
-						common.HexToAddress("0x5555555555555555555555555555555555555555"),
-					})},
-				},
-			},
-			expectedValidators: []common.Address{
-				common.HexToAddress("0x5555555555555555555555555555555555555555"),
-			},
-			expectedErr: nil,
+			expectedErr:        callContractErr,
 		},
 	}
 
@@ -179,28 +164,10 @@ func TestGetValidators(t *testing.T) {
 				validatorSet:   breakpoint.NewValidatorSet(),
 			}
 
-			validators, err := engine.getValidators(tt.blockNr)
+			validators, err := engine.getCurrentValidators(tt.number)
 
-			if tt.expectedErr != nil {
-				if err == nil {
-					t.Errorf("expected error %v, got nil", tt.expectedErr)
-					return
-				}
-				if err.Error() != tt.expectedErr.Error() {
-					t.Errorf("expected error %v, got %v", tt.expectedErr, err)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			// getValidators() already sorts validators, so compare directly
-			if !reflect.DeepEqual(validators, tt.expectedValidators) {
-				t.Errorf("validators mismatch:\nexpected: %v\ngot: %v", tt.expectedValidators, validators)
-			}
+			require.ErrorIs(t, err, tt.expectedErr)
+			assert.Equal(t, tt.expectedValidators, validators)
 		})
 	}
 }
@@ -210,22 +177,18 @@ func packValidatorsResponse(t *testing.T, validators []common.Address) []byte {
 	t.Helper()
 
 	parsedABI, err := breakpoint.ValidatorSetMetaData.ParseABI()
-	if err != nil {
-		t.Fatalf("failed to parse ABI: %v", err)
-	}
+	require.NoError(t, err)
+
 	method, ok := parsedABI.Methods["getValidators"]
-	if !ok {
-		t.Fatalf("getValidators method not found")
-	}
+	require.True(t, ok)
+
 	retPacked, err := method.Outputs.Pack(validators)
-	if err != nil {
-		t.Fatalf("failed to pack return value: %v", err)
-	}
+	require.NoError(t, err)
 
 	return retPacked
 }
 
-// mockChainContext implements core.ChainContext for testing
+// mockChainContext implements core.ChainContext and consensus.ChainHeaderReader for testing
 type mockChainContext struct {
 	config *params.ChainConfig
 }
@@ -240,6 +203,22 @@ func (m *mockChainContext) GetHeader(hash common.Hash, number uint64) *types.Hea
 
 func (m *mockChainContext) Config() *params.ChainConfig {
 	return m.config
+}
+
+func (m *mockChainContext) CurrentHeader() *types.Header {
+	return nil
+}
+
+func (m *mockChainContext) GetHeaderByNumber(number uint64) *types.Header {
+	return nil
+}
+
+func (m *mockChainContext) GetHeaderByHash(hash common.Hash) *types.Header {
+	return nil
+}
+
+func (m *mockChainContext) GetTd(hash common.Hash, number uint64) *big.Int {
+	return nil
 }
 
 func TestUpdateValidatorSet(t *testing.T) {
@@ -258,7 +237,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name: "success with validators - applyGeneratedSystemTransaction",
+			name: "success",
 			validatorInfos: []struct {
 				addr   common.Address
 				amount int64
@@ -406,25 +385,13 @@ func TestUpdateValidatorSet(t *testing.T) {
 
 			// verify error
 			if tt.expectedErr != nil {
-				if err == nil {
-					t.Errorf("expected error %v, got nil", tt.expectedErr)
-					return
-				}
-				if err.Error() != tt.expectedErr.Error() {
-					t.Errorf("expected error %v, got %v", tt.expectedErr, err)
-				}
+				require.ErrorContains(t, err, tt.expectedErr.Error())
 				return
 			}
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
+			require.NoError(t, err)
 
 			// for success cases, verify that a transaction was created
-			if len(txs) == 0 {
-				t.Errorf("expected at least one transaction to be created")
-			}
+			assert.NotEmpty(t, txs)
 		})
 	}
 }
@@ -434,18 +401,15 @@ func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, am
 	t.Helper()
 
 	parsedABI, err := breakpoint.StakeHubMetaData.ParseABI()
-	if err != nil {
-		t.Fatalf("failed to parse ABI: %v", err)
-	}
+	require.NoError(t, err)
+
 	method, ok := parsedABI.Methods["getValidators"]
-	if !ok {
-		t.Fatalf("getValidators method not found")
-	}
+	require.True(t, ok)
+
 	totalLength := big.NewInt(int64(len(validatorAddrs)))
 	retPacked, err := method.Outputs.Pack(validatorAddrs, amounts, totalLength)
-	if err != nil {
-		t.Fatalf("failed to pack return value: %v", err)
-	}
+	require.NoError(t, err)
+
 	return retPacked
 }
 
@@ -454,26 +418,24 @@ func packValidatorThresholdResponse(t *testing.T, threshold uint64) []byte {
 	t.Helper()
 
 	parsedABI, err := breakpoint.StakeHubMetaData.ParseABI()
-	if err != nil {
-		t.Fatalf("failed to parse ABI: %v", err)
-	}
+	require.NoError(t, err)
+
 	method, ok := parsedABI.Methods["validatorThreshold"]
-	if !ok {
-		t.Fatalf("validatorThreshold method not found")
-	}
+	require.True(t, ok)
+
 	retPacked, err := method.Outputs.Pack(big.NewInt(int64(threshold)))
-	if err != nil {
-		t.Fatalf("failed to pack return value: %v", err)
-	}
+	require.NoError(t, err)
 
 	return retPacked
 }
 
+// ##CROSS: istanbul param
 func TestSyncIstanbulParam(t *testing.T) {
 	code := []byte{1, 2, 3}
 	methodNumCheckpoints := string(breakpoint.NewIstanbulParam().PackNumCheckpoints()[:4])
 	methodGetParamIndex := string(breakpoint.NewIstanbulParam().PackGetParamIndex(big.NewInt(100))[:4])
 	methodGetParamsByIndex := string(breakpoint.NewIstanbulParam().PackGetParamsByIndex(0)[:4])
+	callContractErr := errors.New("call contract error")
 
 	tests := []struct {
 		name        string
@@ -483,7 +445,7 @@ func TestSyncIstanbulParam(t *testing.T) {
 		validate    func(t *testing.T)
 	}{
 		{
-			name:   "success - sync single param",
+			name:   "sync single param",
 			header: &types.Header{Number: big.NewInt(100)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
@@ -509,16 +471,9 @@ func TestSyncIstanbulParam(t *testing.T) {
 			expectedErr: nil,
 			validate: func(t *testing.T) {
 				config := params.IstanbulConfigByIndex(0)
-				if config == nil {
-					t.Errorf("expected config to be cached at index 0")
-					return
-				}
-				if config.EpochLength != 1000 {
-					t.Errorf("expected EpochLength 1000, got %d", config.EpochLength)
-				}
-				if config.BlockPeriodSeconds != 5 {
-					t.Errorf("expected BlockPeriodSeconds 5, got %d", config.BlockPeriodSeconds)
-				}
+				require.NotNil(t, config)
+				assert.EqualValues(t, 1000, config.EpochLength)
+				assert.EqualValues(t, 5, config.BlockPeriodSeconds)
 			},
 		},
 		{
@@ -538,23 +493,9 @@ func TestSyncIstanbulParam(t *testing.T) {
 			header: &types.Header{Number: big.NewInt(100)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes:     code,
-				callContractErr: errors.New("numCheckpoints error"),
+				callContractErr: callContractErr,
 			},
-			expectedErr: errors.New("numCheckpoints error"),
-			validate:    func(t *testing.T) {},
-		},
-		{
-			name:   "getParamIndex returns ErrNoCode",
-			header: &types.Header{Number: big.NewInt(100)},
-			mockBackend: &mockContractBackend{
-				codeAtBytes: []byte{},
-				callContractResponses: map[string][][]byte{
-					methodNumCheckpoints: {packNumCheckpointsResponse(t, 1)},
-					// getParamIndex response is missing, so CallContract returns nil
-					// bind.Call will then check CodeAt, find empty code, and return ErrNoCode
-				},
-			},
-			expectedErr: nil,
+			expectedErr: callContractErr,
 			validate:    func(t *testing.T) {},
 		},
 		{
@@ -565,13 +506,13 @@ func TestSyncIstanbulParam(t *testing.T) {
 				callContractResponses: map[string][][]byte{
 					methodNumCheckpoints: {packNumCheckpointsResponse(t, 1)},
 				},
-				callContractErr: errors.New("getParamIndex error"),
+				callContractErr: callContractErr,
 			},
-			expectedErr: errors.New("getParamIndex error"),
+			expectedErr: callContractErr,
 			validate:    func(t *testing.T) {},
 		},
 		{
-			name:   "latestIndex equals length - already synced",
+			name:   "already synced",
 			header: &types.Header{Number: big.NewInt(100)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
@@ -592,13 +533,13 @@ func TestSyncIstanbulParam(t *testing.T) {
 					methodNumCheckpoints: {packNumCheckpointsResponse(t, 1)},
 					methodGetParamIndex:  {packGetParamIndexResponse(t, 0)},
 				},
-				callContractErr: errors.New("getParamsByIndex error"),
+				callContractErr: callContractErr,
 			},
-			expectedErr: errors.New("getParamsByIndex error"),
+			expectedErr: callContractErr,
 			validate:    func(t *testing.T) {},
 		},
 		{
-			name:   "success - sync multiple params",
+			name:   "sync multiple params",
 			header: &types.Header{Number: big.NewInt(200)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
@@ -655,31 +596,16 @@ func TestSyncIstanbulParam(t *testing.T) {
 			validate: func(t *testing.T) {
 				// Verify configs are cached (0, 1, 2)
 				config0 := params.IstanbulConfigByIndex(0)
-				if config0 == nil {
-					t.Errorf("expected config to be cached at index 0")
-					return
-				}
-				if config0.EpochLength != 1000 {
-					t.Errorf("expected EpochLength 1000, got %d", config0.EpochLength)
-				}
+				require.NotNil(t, config0)
+				assert.EqualValues(t, 1000, config0.EpochLength)
 
 				config1 := params.IstanbulConfigByIndex(1)
-				if config1 == nil {
-					t.Errorf("expected config to be cached at index 1")
-					return
-				}
-				if config1.EpochLength != 2000 {
-					t.Errorf("expected EpochLength 2000, got %d", config1.EpochLength)
-				}
+				require.NotNil(t, config1)
+				assert.EqualValues(t, 2000, config1.EpochLength)
 
 				config2 := params.IstanbulConfigByIndex(2)
-				if config2 == nil {
-					t.Errorf("expected config to be cached at index 2")
-					return
-				}
-				if config2.EpochLength != 3000 {
-					t.Errorf("expected EpochLength 3000, got %d", config2.EpochLength)
-				}
+				require.NotNil(t, config2)
+				assert.EqualValues(t, 3000, config2.EpochLength)
 			},
 		},
 	}
@@ -694,21 +620,7 @@ func TestSyncIstanbulParam(t *testing.T) {
 			params.ClearCachedIstanbulConfigs()
 			err := engine.SyncIstanbulParam(tt.header)
 
-			if tt.expectedErr != nil {
-				if err == nil {
-					t.Errorf("expected error %v, got nil", tt.expectedErr)
-					return
-				}
-				if err.Error() != tt.expectedErr.Error() {
-					t.Errorf("expected error %v, got %v", tt.expectedErr, err)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
+			require.ErrorIs(t, err, tt.expectedErr)
 
 			tt.validate(t)
 		})
@@ -720,17 +632,13 @@ func packNumCheckpointsResponse(t *testing.T, count uint64) []byte {
 	t.Helper()
 
 	parsedABI, err := breakpoint.IstanbulParamMetaData.ParseABI()
-	if err != nil {
-		t.Fatalf("failed to parse ABI: %v", err)
-	}
+	require.NoError(t, err)
+
 	method, ok := parsedABI.Methods["numCheckpoints"]
-	if !ok {
-		t.Fatalf("numCheckpoints method not found")
-	}
+	require.True(t, ok)
+
 	retPacked, err := method.Outputs.Pack(count)
-	if err != nil {
-		t.Fatalf("failed to pack return value: %v", err)
-	}
+	require.NoError(t, err)
 
 	return retPacked
 }
@@ -740,17 +648,13 @@ func packGetParamIndexResponse(t *testing.T, index uint64) []byte {
 	t.Helper()
 
 	parsedABI, err := breakpoint.IstanbulParamMetaData.ParseABI()
-	if err != nil {
-		t.Fatalf("failed to parse ABI: %v", err)
-	}
+	require.NoError(t, err)
+
 	method, ok := parsedABI.Methods["getParamIndex"]
-	if !ok {
-		t.Fatalf("getParamIndex method not found")
-	}
+	require.True(t, ok)
+
 	retPacked, err := method.Outputs.Pack(index)
-	if err != nil {
-		t.Fatalf("failed to pack return value: %v", err)
-	}
+	require.NoError(t, err)
 
 	return retPacked
 }
@@ -760,13 +664,11 @@ func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByInd
 	t.Helper()
 
 	parsedABI, err := breakpoint.IstanbulParamMetaData.ParseABI()
-	if err != nil {
-		t.Fatalf("failed to parse ABI: %v", err)
-	}
+	require.NoError(t, err)
+
 	method, ok := parsedABI.Methods["getParamsByIndex"]
-	if !ok {
-		t.Fatalf("getParamsByIndex method not found")
-	}
+	require.True(t, ok)
+
 	retPacked, err := method.Outputs.Pack(
 		result.Timepoint,
 		result.EpochLength,
@@ -781,9 +683,142 @@ func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByInd
 		result.ProposerPolicy,
 		result.GasLimit,
 	)
-	if err != nil {
-		t.Fatalf("failed to pack return value: %v", err)
-	}
+	require.NoError(t, err)
 
 	return retPacked
 }
+
+// ##CROSS: validator slash
+// mockIstanbulPoS implements consensus.IstanbulPoS for testing
+type mockIstanbulPoS struct {
+	offlineValidators []common.Address
+}
+
+func (m *mockIstanbulPoS) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	return false, nil
+}
+
+func (m *mockIstanbulPoS) IsSystemContract(to *common.Address) bool {
+	return false
+}
+
+func (m *mockIstanbulPoS) SyncIstanbulParam(header *types.Header) error {
+	return nil
+}
+
+func (m *mockIstanbulPoS) OfflineValidators(chain consensus.ChainHeaderReader, number uint64) []common.Address {
+	return m.offlineValidators
+}
+
+func TestSlashValidators(t *testing.T) {
+	tests := []struct {
+		name          string
+		header        *types.Header
+		pos           *mockIstanbulPoS
+		expectedErr   error
+		expectedTxLen int
+		validate      func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt)
+	}{
+		{
+			name:          "header number is 0",
+			header:        &types.Header{Number: big.NewInt(0)},
+			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{common.HexToAddress("0x1111111111111111111111111111111111111111")}},
+			expectedErr:   nil,
+			expectedTxLen: 0,
+			validate:      func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {},
+		},
+		{
+			name:          "no offline validators",
+			header:        &types.Header{Number: big.NewInt(100)},
+			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{}},
+			expectedErr:   nil,
+			expectedTxLen: 0,
+			validate:      func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {},
+		},
+		{
+			name: "success single",
+			header: &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				Coinbase:   common.HexToAddress("0x0000000000000000000000000000000000000000"),
+				BaseFee:    big.NewInt(0),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+				Time:       1000000000,
+			},
+			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{common.HexToAddress("0x1111111111111111111111111111111111111111")}},
+			expectedErr:   nil,
+			expectedTxLen: 1,
+			validate: func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {
+				assert.Equal(t, 1, len(txs))
+				assert.Equal(t, 1, len(receipts))
+				assert.NotNil(t, txs[0].To())
+			},
+		},
+		{
+			name: "success multiple",
+			header: &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				Coinbase:   common.HexToAddress("0x0000000000000000000000000000000000000000"),
+				BaseFee:    big.NewInt(0),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+				Time:       1000000000,
+			},
+			pos: &mockIstanbulPoS{offlineValidators: []common.Address{
+				common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				common.HexToAddress("0x2222222222222222222222222222222222222222"),
+				common.HexToAddress("0x3333333333333333333333333333333333333333"),
+			}},
+			expectedErr:   nil,
+			expectedTxLen: 3,
+			validate: func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {
+				assert.Equal(t, 3, len(txs))
+				assert.Equal(t, 3, len(receipts))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// setup
+			memdb := rawdb.NewMemoryDatabase()
+			triedb := triedb.NewDatabase(memdb, nil)
+			sdb := state.NewDatabase(triedb, nil)
+			statedb, _ := state.New(types.EmptyRootHash, sdb)
+
+			chainConfig := params.TestChainConfig
+			cx := &chainContext{
+				Chain:  &mockChainContext{config: chainConfig},
+				engine: nil,
+			}
+
+			var txs []*types.Transaction
+			var receipts []*types.Receipt
+			var usedGas uint64
+			var tracer *tracing.Hooks
+
+			// create engine with mock backend
+			engine := &Engine{
+				contactBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
+				validatorSlash: breakpoint.NewValidatorSlash(),
+				signer:         common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+					return tx, nil
+				},
+				pos: tt.pos,
+			}
+
+			// call slashValidators
+			err := engine.slashValidators(tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, tracer)
+
+			require.ErrorIs(t, err, tt.expectedErr)
+			require.Equal(t, tt.expectedTxLen, len(txs))
+
+			tt.validate(t, txs, receipts)
+		})
+	}
+}
+
+// ##
