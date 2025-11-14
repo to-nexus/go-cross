@@ -377,7 +377,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 			}
 
 			var validators []common.Address
-			validatorsFromConfig := sb.config.GetValidatorsAt(big.NewInt(0))
+			validatorsFromConfig := sb.config.Validators
 			if len(validatorsFromConfig) > 0 {
 				validators = validatorsFromConfig
 				log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
