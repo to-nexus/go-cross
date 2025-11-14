@@ -376,7 +376,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 			}
 
 			var validators []common.Address
-			validatorsFromConfig := sb.config.GetValidatorsAt(big.NewInt(0))
+			validatorsFromConfig := sb.config.Validators
 			if len(validatorsFromConfig) > 0 {
 				validators = validatorsFromConfig
 				log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
@@ -389,7 +389,6 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 					return nil, err
 				}
 			}
-			//	}
 
 			snap = newSnapshot(sb.config.GetConfig(new(big.Int).SetUint64(number)).Epoch, 0, genesis.Hash(), validator.NewSet(validators, sb.config.ProposerPolicy))
 			if err := sb.storeSnap(snap); err != nil {
@@ -429,15 +428,6 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 		return nil, err
 	}
 	sb.recents.Add(snap.Hash, snap)
-
-	targetBlockHeight := new(big.Int).SetUint64(number)
-	if validatorsFromTransitions := sb.config.GetValidatorsAt(targetBlockHeight); len(validatorsFromTransitions) > 0 {
-		//Note! we only want to set this once at this block height. Subsequent blocks will be propagated with the same
-		// 		validator as they are copied into the block header on the next block. Then normal voting can take place
-		// 		again.
-		valSet := validator.NewSet(validatorsFromTransitions, sb.config.ProposerPolicy)
-		snap.ValSet = valSet
-	}
 
 	// If we've generated a new checkpoint snapshot, save to disk
 	if snap.Number%checkpointInterval == 0 && len(headers) > 0 {

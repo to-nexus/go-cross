@@ -186,21 +186,6 @@ func (c Config) GetConfig(blockNumber *big.Int) Config {
 	return newConfig
 }
 
-func (c Config) GetValidatorsAt(blockNumber *big.Int) []common.Address {
-	if blockNumber.Cmp(big.NewInt(0)) == 0 && len(c.Validators) > 0 {
-		return c.Validators
-	}
-
-	// if blockNumber != nil && c.Transitions != nil {
-	// 	for i := 0; i < len(c.Transitions) && c.Transitions[i].Block.Cmp(blockNumber) == 0; i++ {
-	// 		return c.Transitions[i].Validators
-	// 	}
-	// }
-
-	//Note! empty means we will get the valset from previous block header which contains votes, validators etc
-	return []common.Address{}
-}
-
 func (c *Config) getTransitionValue(num *big.Int, callback func(transition params.Transition)) {
 	if c != nil && num != nil && c.Transitions != nil {
 		for i := 0; i < len(c.Transitions) && c.Transitions[i].Block.Cmp(num) <= 0; i++ {
