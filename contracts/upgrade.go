@@ -132,6 +132,12 @@ func init() {
 				},
 			},
 			{
+				Name:         "ValidatorShare",
+				ContractAddr: ValidatorShareAddr,
+				Code:         breakpoint.ValidatorShareMetaData.BinRuntime,
+				Deploy:       true,
+			},
+			{
 				Name:         "CrossGovernor",
 				ContractAddr: GovernorAddr,
 				Code:         breakpoint.CrossGovernorMetaData.BinRuntime,

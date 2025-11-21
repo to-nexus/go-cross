@@ -26,9 +26,9 @@ var (
 
 // StakeHubMetaData contains all meta data concerning the StakeHub contract.
 var StakeHubMetaData = bind.MetaData{
-	ABI:        "[{\"type\":\"function\",\"name\":\"addToBlackList\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"applyValidator\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"claimStake\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"getKeeper\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getLeavingTime\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getOperatorAddress\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getStakeAmount\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getUnstakingAmount\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorAddress\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorCount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidators\",\"inputs\":[{\"name\":\"offset\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"limit\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"validatorAddrs\",\"type\":\"address[]\",\"internalType\":\"address[]\"},{\"name\":\"amounts\",\"type\":\"uint256[]\",\"internalType\":\"uint256[]\"},{\"name\":\"totalLength\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[{\"name\":\"keeper\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"isActiveValidator\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"isJailedValidator\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"isLeavingValidator\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"leaveValidator\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"minStakeAmount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"offlineJailDuration\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"offlineSlashAmount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"paused\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"removeFromBlackList\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setKeeper\",\"inputs\":[{\"name\":\"keeper\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setMinStakeAmount\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setOfflineJailDuration\",\"inputs\":[{\"name\":\"duration\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setOfflineSlashAmount\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setUnbondingPeriod\",\"inputs\":[{\"name\":\"period\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setValidatorThreshold\",\"inputs\":[{\"name\":\"count\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"slashOffline\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"totalSlashedAmount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"unbondingPeriod\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"unjail\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"unpause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"validatorThreshold\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"BlackListed\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"KeeperChanged\",\"inputs\":[{\"name\":\"previousKeeper\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newKeeper\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"KeeperUpdated\",\"inputs\":[{\"name\":\"keeper\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"MinStakeAmountUpdated\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineJailDurationUpdated\",\"inputs\":[{\"name\":\"duration\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineSlashAmountUpdated\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Paused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"StakeClaimed\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"UnBlackListed\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"UnbondingPeriodUpdated\",\"inputs\":[{\"name\":\"period\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Unpaused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorApplied\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorJailed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"jailUntil\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorLeft\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"leavingTime\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorSlashed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"jailUntil\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"slashAmount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorThresholdUpdated\",\"inputs\":[{\"name\":\"count\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorUnjailed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"AlreadyLeaving\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"DuplicateOperatorAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"DuplicateValidatorAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"EnforcedPause\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ExpectedPause\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InBlackList\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"InvalidClaim\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValidatorAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValue\",\"inputs\":[{\"name\":\"key\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"value\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"JailedValidator\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotEnoughAmount\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotInLeavingState\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotJailedValidator\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotValidator\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyCoinbase\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyKeeper\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlySystemContract\",\"inputs\":[{\"name\":\"contractAddr\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OnlyZeroGasPrice\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ReentrancyGuardReentrantCall\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"StillInJailPeriod\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"StillInUnbondingPeriod\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"TransferFailed\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]}]",
+	ABI:        "[{\"type\":\"function\",\"name\":\"MAX_COMMISSION_RATE\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"UPDATE_FREQUENCY\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"addToBlackList\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"applyValidator\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"commissionRate\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"id\",\"type\":\"string\",\"internalType\":\"string\"}],\"outputs\":[],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"claimUndelegation\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"claimUnstaked\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"delegate\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"distributeReward\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"getKeeper\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorAddress\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorCount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorDescription\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"commissionRate\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"id\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorInfo\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"shareContract\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"isActive\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorJailInfo\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"jailUntil\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"isJailed\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorTotalStake\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidatorUnstakeInfo\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"unstakeTime\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"isUnstaking\",\"type\":\"bool\",\"internalType\":\"bool\"},{\"name\":\"isUnstaked\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getValidators\",\"inputs\":[{\"name\":\"offset\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"limit\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"validatorAddrs\",\"type\":\"address[]\",\"internalType\":\"address[]\"},{\"name\":\"amounts\",\"type\":\"uint256[]\",\"internalType\":\"uint256[]\"},{\"name\":\"totalLength\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"idToOperator\",\"inputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[{\"name\":\"keeper\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"isActiveValidator\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"minDelegateAmount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"minStakeAmount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"offlineJailDuration\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"offlineSlashAmount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"paused\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"removeFromBlackList\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setKeeper\",\"inputs\":[{\"name\":\"keeper\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setMinDelegateAmount\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setMinStakeAmount\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setOfflineJailDuration\",\"inputs\":[{\"name\":\"duration\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setOfflineSlashAmount\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setUnbondingPeriod\",\"inputs\":[{\"name\":\"period\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setValidatorThreshold\",\"inputs\":[{\"name\":\"count\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"slashOffline\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"totalSlashedAmount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"unbondingPeriod\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"undelegate\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"shares\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"unjail\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"unpause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"unstakeValidator\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"updateValidator\",\"inputs\":[{\"name\":\"newValidatorAddr\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"newCommissionRate\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"validatorThreshold\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"validatorToOperator\",\"inputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"BlackListed\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Claimed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"delegator\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Delegated\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"delegator\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"shares\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"KeeperChanged\",\"inputs\":[{\"name\":\"previousKeeper\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newKeeper\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"KeeperUpdated\",\"inputs\":[{\"name\":\"keeper\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"MinDelegateAmountUpdated\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"MinStakeAmountUpdated\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineJailDurationUpdated\",\"inputs\":[{\"name\":\"duration\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineSlashAmountUpdated\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Paused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"RewardDistributed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"UnBlackListed\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"UnbondingPeriodUpdated\",\"inputs\":[{\"name\":\"period\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Undelegated\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"delegator\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"shares\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Unpaused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorApplied\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"shareContract\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorJailed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"jailUntil\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorSlashed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"jailUntil\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"slashAmount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorThresholdUpdated\",\"inputs\":[{\"name\":\"count\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorUnjailed\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorUnstaked\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"unstakeTime\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorUpdated\",\"inputs\":[{\"name\":\"operatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newValidatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newCommissionRate\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"DuplicateId\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"DuplicateOperatorAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"DuplicateValidatorAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"EnforcedPause\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ExpectedPause\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"FailedDeployment\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InBlackList\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"InsufficientBalance\",\"inputs\":[{\"name\":\"balance\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"needed\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"InvalidCommissionRate\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidId\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValidatorAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValidatorStatus\",\"inputs\":[{\"name\":\"status\",\"type\":\"uint8\",\"internalType\":\"enumStakeHub.ValidatorStatus\"}]},{\"type\":\"error\",\"name\":\"InvalidValue\",\"inputs\":[{\"name\":\"key\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"value\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"JailedValidator\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotEnoughAmount\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotEnoughShares\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotJailed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyCoinbase\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyKeeper\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlySystemContract\",\"inputs\":[{\"name\":\"contractAddr\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OnlyZeroGasPrice\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ReentrancyGuardReentrantCall\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"SafeCastOverflowedUintDowncast\",\"inputs\":[{\"name\":\"bits\",\"type\":\"uint8\",\"internalType\":\"uint8\"},{\"name\":\"value\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"StillInJailPeriod\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"TooFrequentUpdate\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"TransferFailed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ValidatorNotExists\",\"inputs\":[]}]",
 	ID:         "StakeHub",
-	BinRuntime: "0x60806040526004361015610011575f80fd5b5f5f3560e01c806302c75532146113575780630c2eb40314611304578063114eaf5514611270578063391b6f4e1461123b5780633f4ba83a146111ad57806340550a1c14611171578063417c73a7146110f157806342fce3cd146110d357806343a769d91461103b57806344690e5c14610ebb578063449ecfe614610dcd5780634a49ac4c14610d3d5780634fd101d714610d1f5780635bc0fbc714610c885780635c975abb14610c59578063603eff8b14610aeb5780636cf6d67514610acd5780637071688a14610ab0578063748747e6146109ea5780638456cb591461094a5780639679904a146108b3578063a9cc60f314610895578063b6e5395f14610850578063ba723eda14610832578063bff02e2014610788578063c4d66de81461059c578063d137933214610554578063eaa43d1414610514578063eb3211731461032c578063eb4af04514610284578063f158628d1461023e578063f188768414610220578063f292a643146101e55763fc1332db14610190575f80fd5b346101e25760203660031901126101e257600435906001600160a01b0382168083036101e0576101c16020936117fe565b156101da5781526002825260409020545b604051908152f35b506101d2565b505b80fd5b50346101e25760203660031901126101e257600435906001600160a01b03821682036101e2576020610216836117fe565b6040519015158152f35b50346101e257806003193601126101e2576020600554604051908152f35b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e05790602091815260038252604060018060a01b0391205416604051908152f35b50346101e25760203660031901126101e25760043561100833036103175780156102da576020817f8448c02797b448f4946bc25b3bf925e5556d1df822c944da701c54bab8a3162f92600555604051908152a180f35b60849060405190632c648cf160e01b825260406004830152600e60448301526d1b5a5b94dd185ad9505b5bdd5b9d60921b60648301526024820152fd5b630f22c43960e41b8252611008600452602482fd5b50346101e257806003193601126101e25761034561177e565b60ff61035033611543565b54166105015761036b335f52600160205260405f2054151590565b156104f2577f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005c6104e35760017f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005d33815260026020526040812080549081156104d457600481015480156104c55742106104b6576001810154908390556001600160a01b03168280808085335af13d156104b1573d67ffffffffffffffff811161049d5760405190610428601f8201601f19166020018361157b565b81528460203d92013e5b15610489576040519182527f8766f9fdb3d7ff5c4fe7ccf145668fbc991a789c4d655f9535b0e08c4964a04d60203393a3807f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005d80f35b63c39ba1a960e01b83526004829052602483fd5b634e487b7160e01b85526041600452602485fd5b610432565b630e8c992760e01b8352600483fd5b63281f6b9160e01b8452600484fd5b633b4f091f60e21b8352600483fd5b633ee5aeb560e01b8152600490fd5b632ec5b44960e01b8152600490fd5b63033788ff60e01b815233600452602490fd5b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e0576040826004926020945260028452200154604051908152f35b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e0579060209181526002825260016040818060a01b039220015416604051908152f35b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e0575f5160206118f35f395f51905f52549060ff8260401c16159167ffffffffffffffff811680159081610780575b6001149081610776575b15908161076d575b5061075e5767ffffffffffffffff1981166001175f5160206118f35f395f51905f525582610732575b50413303610723573a6107145769021e19e0c9bab2400000600555600a60065562093a80600755678ac7230489e800006008556202a30060095561066d611887565b610675611887565b6bffffffffffffffffffffffff60a01b5f5160206118b35f395f51905f525416175f5160206118b35f395f51905f52556106ad611887565b6106b5611887565b6106bc5780f35b68ff0000000000000000195f5160206118f35f395f51905f5254165f5160206118f35f395f51905f52557fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2602060405160018152a180f35b6383f1b1d360e01b8352600483fd5b63022d8c9560e31b8352600483fd5b68ffffffffffffffffff191668010000000000000001175f5160206118f35f395f51905f52555f61062b565b63f92ee8a960e01b8452600484fd5b9050155f610602565b303b1591506105fa565b8491506105f0565b50346101e25760403660031901126101e2576107a8602435600435611651565b604051606080825284519082018190526080820195919460200190825b81811061081357505050838503602085015260208084519687815201930190945b8086106107fb57505082935060408301520390f35b909260208060019286518152019401950194906107e6565b82516001600160a01b03168852602097880197909201916001016107c5565b50346101e257806003193601126101e2576020600454604051908152f35b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e057600660408360ff936020955260028552200154166040519015158152f35b50346101e257806003193601126101e2576020600854604051908152f35b50346101e25760203660031901126101e2576004356110083303610317578015610909576020817fff6e1245b60ea5b68ddca24a93cb8707677289cbdbdec9ecb7ccfc25541a774992600855604051908152a180f35b60849060405190632c648cf160e01b82526040600483015260126044830152711bd9999b1a5b9954db185cda105b5bdd5b9d60721b60648301526024820152fd5b50346101e257806003193601126101e2575f5160206118b35f395f51905f52546001600160a01b031633036109db5761098161177e565b61098961177e565b600160ff195f5160206118d35f395f51905f525416175f5160206118d35f395f51905f52557f62e78cea01bee320cd4e420270b5ea74000d11b0c9f74754ebdbfc544b05a2586020604051338152a180f35b63c60eb33560e01b8152600490fd5b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e0576110083303610317578015610a7b575f5160206118b35f395f51905f5254816001600160a01b0382167f068b48a2fe7f498b57ff6da64f075ae658fde8d77124b092e62b3dc58d91ce358580a36001600160a01b031916175f5160206118b35f395f51905f525580f35b60848260405190632c648cf160e01b825260406004830152600660448301526535b2b2b832b960d11b60648301526024820152fd5b50346101e257806003193601126101e25760209054604051908152f35b50346101e257806003193601126101e2576020600754604051908152f35b50346101e257806003193601126101e257610b0461177e565b60ff610b0f33611543565b541661050157610b2a335f52600160205260405f2054151590565b156104f25733815260026020526040812060048101908154610c4a5760ff600682015416610c3b57610b5e600754426115d2565b8092556001808060a01b03910154166040519182527fe73d82fe262870ff059c299a893937ea90edc32a71143234a83299297ff8966660203393a36110063b156101e257604051632961046560e21b815233600482015281908181602481836110065af18015610c1b57610c26575b50506110063b156101e25780604051632949582d60e01b81523360048201528160248201528181604481836110065af18015610c1b57610c0a5750f35b81610c149161157b565b6101e25780f35b6040513d84823e3d90fd5b81610c309161157b565b6101e257805f610bcd565b633c59519b60e11b8352600483fd5b6333dd977160e01b8352600483fd5b50346101e257806003193601126101e257602060ff5f5160206118d35f395f51905f5254166040519015158152f35b50346101e25760203660031901126101e2576004356110083303610317578015610cde576020817f324143af489ab0ba77b0d3580e2486ee612b673b87db2179c589f61ac532fd5992600655604051908152a180f35b60849060405190632c648cf160e01b82526040600483015260126044830152711d985b1a59185d1bdc951a1c995cda1bdb1960721b60648301526024820152fd5b50346101e257806003193601126101e2576020600654604051908152f35b50346101e25760203660031901126101e2576004356001600160a01b03811690818103610dc9575f5160206118b35f395f51905f52546001600160a01b03163303610dba57610d8b90611543565b805460ff191690557fe0db3499b7fdc3da4cddff5f45d694549c19835e7f719fb5606d3ad1a5de40118280a280f35b63c60eb33560e01b8352600483fd5b8280fd5b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e057610dfc61177e565b60ff610e0733611543565b5416610ea857610e22335f52600160205260405f2054151590565b15610e9957808252600260205260408220600681019081549060ff821615610e8a57600501544210610e7b5760ff191690557f9390b453426557da5ebdc31f19a37753ca04addf656d32f35232211bb2af3f198280a280f35b63065f425760e21b8452600484fd5b635103560d60e11b8552600485fd5b632ec5b44960e01b8252600482fd5b63033788ff60e01b825233600452602482fd5b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e0576110043303611026578152600360209081526040808320546001600160a01b03165f818152600190935291205415610e995780829182526002602052807f83b04ecf7330997e742429a641e136d9f3698c3e9ac9cb9ce0cc2d6da36a244d604080852080546008548082115f1461101b57610f5e9080926115b1565b8255610f6c816004546115d2565b600455610f7b600954426115d2565b91826005820180548211611013575b505060068101600160ff19825416179055600260018060a01b03910154167feb7d7a49847ec491969db21a0e31b234565a9923145a2d1b56a75c9e9582580260208551858152a282519182526020820152a26110063b156110105760405190632961046560e21b825260048201528181602481836110065af18015610c1b57610c0a5750f35b50fd5b55825f610f8a565b50610f5e81806115b1565b630f22c43960e41b8252611004600452602482fd5b50346101e25760203660031901126101e2576004356110083303610317578015611091576020817fbdf592a42adc0296ad8a75a5e7b8a0912c37793a1a275d78275bc335911c6bd392600955604051908152a180f35b60849060405190632c648cf160e01b825260406004830152601360448301527237b3333634b732a530b4b6223ab930ba34b7b760691b60648301526024820152fd5b50346101e257806003193601126101e2576020600954604051908152f35b50346101e25760203660031901126101e2576004356001600160a01b03811690818103610dc9575f5160206118b35f395f51905f52546001600160a01b03163303610dba5761113f90611543565b805460ff191660011790557f7fd26be6fc92aff63f1f4409b2b2ddeb272a888031d7f55ec830485ec61941868280a280f35b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e057604082610216926020945260028452206117cd565b50346101e257806003193601126101e2575f5160206118b35f395f51905f52546001600160a01b031633036109db576111e46117a5565b6111ec6117a5565b60ff195f5160206118d35f395f51905f5254165f5160206118d35f395f51905f52557f5db9ee0a495bf2e6ff9c91a7834c1ba4fdd244a5e8aa4e537bd38aeae4b073aa6020604051338152a180f35b50346101e257806003193601126101e2575f5160206118b35f395f51905f52546040516001600160a01b039091168152602090f35b50346101e25760203660031901126101e25760043561100833036103175780156112c6576020817f38a1644f59872db6fd17fdced395495fcaa3ca7d2825a0704db5a3acbd1dd06492600755604051908152a180f35b60849060405190632c648cf160e01b825260406004830152600f60448301526e1d5b989bdb991a5b99d4195c9a5bd9608a1b60648301526024820152fd5b50346101e25760203660031901126101e2576004356001600160a01b038116908190036101e0579060209181526002825260408120906004820154155f14611350575054604051908152f35b90506101d2565b5060203660031901126114f0576004356001600160a01b038116908190036114f05761138161177e565b60ff61138c33611543565b5416611530578015611521576005543410611512576113b6335f52600160205260405f2054151590565b611503575f818152600360205260409020546001600160a01b03166114f4576113de3361182d565b505f8181526003602081815260408084208054336001600160a01b03199182168117909255818652600280855283872060018101805484168a1790559081018054909216831790915534808255429582019590955560040194909455519182529192917f0d83b503e698d0879dc7ad5505a19535ed048371a78d4b5908e85ca253a31a3c91a36110063b156114f057604051632961046560e21b81523360048201525f81602481836110065af180156114e5576114d2575b506110063b156101e25780604051632949582d60e01b81523360048201523360248201528181604481836110065af18015610c1b57610c0a5750f35b6114de91505f9061157b565b5f5f611496565b6040513d5f823e3d90fd5b5f80fd5b63813f326760e01b5f5260045ffd5b639cc20ced60e01b5f5260045ffd5b63e008b5f960e01b5f5260045ffd5b63713ce51160e01b5f5260045ffd5b63033788ff60e01b5f523360045260245ffd5b6001600160a01b03165f9081527f46944d7356e409d0d8c174d262d4ab0ddb2d4597e3e424151a463d8a4af4e5016020526040902090565b90601f8019910116810190811067ffffffffffffffff82111761159d57604052565b634e487b7160e01b5f52604160045260245ffd5b919082039182116115be57565b634e487b7160e01b5f52601160045260245ffd5b919082018092116115be57565b67ffffffffffffffff811161159d5760051b60200190565b90611601826115df565b61160e604051918261157b565b828152809261161f601f19916115df565b0190602036910137565b805182101561163d5760209160051b010190565b634e487b7160e01b5f52603260045260245ffd5b905f5490818310156117495780611740575061166e815b836115d2565b82828211611738575b611683919493946115b1565b9161168d836115f7565b93611697846115f7565b935f915f54925b8281106116ab5750505050565b6116b581836115d2565b908482101561163d577f290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563909101546001600160a01b039081165f9081526002602052604090206001818101549093921661170f838c611629565b52611719816117cd565b1561173157545b61172a828a611629565b520161169e565b505f611720565b829150611677565b61166e90611668565b50905060209160405161175c848261157b565b5f81525f36813760405193611771818661157b565b5f8552505f368137929190565b60ff5f5160206118d35f395f51905f52541661179657565b63d93c066560e01b5f5260045ffd5b60ff5f5160206118d35f395f51905f525416156117be57565b638dfc202b60e01b5f5260045ffd5b60048101541590816117f0575b816117e3575090565b60ff915060060154161590565b8054600554111591506117da565b6001600160a01b03165f908152600260205260409020600401548015159081611825575090565b905042101590565b805f52600160205260405f2054155f14611882575f546801000000000000000081101561159d57600181015f555f5481101561163d5781905f805260205f2001555f54905f52600160205260405f2055600190565b505f90565b60ff5f5160206118f35f395f51905f525460401c16156118a357565b631afcd79f60e31b5f5260045ffdfe46944d7356e409d0d8c174d262d4ab0ddb2d4597e3e424151a463d8a4af4e500cd5ed15c6e187e77e9aee88184c21f4f2182ab5827cb3b7e07fbedcd63f03300f0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00a2646970667358221220f40b583b5c1114a54275c41d90bd27af5de4b22883aa5a44f9aa92d39582be6264736f6c634300081c0033",
+	BinRuntime: "0x60806040526004361015610011575f80fd5b5f5f3560e01c8063092193ab146123f1578063114eaf551461235f578063207239c0146123435780632aa8e06d1461231857806335efc734146122d8578063391b6f4e146122a45780633e732eba146122105780633f4ba83a1461218457806340550a1c14612143578063417c73a7146120ba57806342fce3cd1461209d57806343a769d914611ff257806344690e5c14611daa578063449ecfe614611cbe5780634a49ac4c14611c365780634d99dd1614611a8c5780634fd101d714611a6e5780635bc0fbc7146119d75780635c19a95c1461182c5780635c975abb146117fd578063604ababc146112d7578063667cf078146112575780636cf6d675146112395780636f7aa7ec1461111f5780637071688a1461110257806372e9c934146110e4578063748747e6146110225780638456cb5914610f825780638a11d7c914610f1b5780639679904a14610e845780639ac83d8514610e51578063a43569b314610d16578063a9cc60f314610cf8578063ba723eda14610cda578063bbe5e34514610c83578063bff02e2014610bd9578063c4d66de8146109dd578063d13793321461099c578063d276290d14610755578063d86c7fe81461054b578063db6c4c061461052d578063e6635f5d146102c6578063eb4af0451461021e5763f1887684146101fe575f80fd5b3461021b578060031936011261021b576020600654604051908152f35b80fd5b503461021b57602036600319011261021b5760043561101333036102b1578015610274576020817f8448c02797b448f4946bc25b3bf925e5556d1df822c944da701c54bab8a3162f92600655604051908152a180f35b60849060405190632c648cf160e01b825260406004830152600e60448301526d1b5a5b94dd185ad9505b5bdd5b9d60921b60648301526024820152fd5b630f22c43960e41b8252611013600452602482fd5b503461021b57604036600319011261021b576102e0612438565b602435906102ec6129c4565b60ff6102f73361244e565b541661051a57610312335f52600160205260405f2054151590565b1561050b573383526002602052604083209160018301916001600160401b03835460a01c166201518081018091116104f75742106104e8576001600160a01b0316801515806104d4575b610464575b508015158061044a575b6103f0575b506103a69061037e42612a32565b815467ffffffffffffffff60a01b191660a09190911b67ffffffffffffffff60a01b16179055565b6001600160401b03600360018060a01b0383541692015460401c166040519081527f1a4d5ce1be705973f55eb762d6ca5ed08d73caab380fa407cfaf0c1fa64a2ae460203392a380f35b611388811161043b57906104356104096103a693612a32565b600385019067ffffffffffffffff60401b82549160401b169067ffffffffffffffff60401b1916179055565b90610370565b63047f2a9760e51b8452600484fd5b506001600160401b03600384015460401c1681141561036b565b808552600360205260408520546001600160a01b03166104c55783546001600160a01b0316855260036020818152604080882080546001600160a01b031990811690915584895292909152862080548216331790558454161783555f610361565b63813f326760e01b8552600485fd5b5083546001600160a01b031681141561035c565b63190bb86b60e31b8552600485fd5b634e487b7160e01b86526011600452602486fd5b635926e0c360e01b8352600483fd5b63033788ff60e01b835233600452602483fd5b503461021b578060031936011261021b576020604051620151808152f35b503461021b578060031936011261021b576105646129c4565b60ff61056f3361244e565b54166107425761058a335f52600160205260405f2054151590565b15610733573381526002602052604081206002810190815460ff8160e01c16600381101561071f578061070d575060e81c60ff166106fe57815460ff60e01b1916600160e01b1782556009546001600160401b03919061061f906105f7906105f29042612701565b612a32565b845467ffffffffffffffff60a01b191660a09190911b67ffffffffffffffff60a01b16178455565b60018060a01b03905416915460a01c16906040519182527fc88e6a643abb00b7da809fc581edda961c3ea06e7b32c1bce7e7671f37a77eed60203393a36110113b1561021b57604051632961046560e21b815233600482015281908181602481836110115af180156106de576106e9575b50506110113b1561021b5780604051632949582d60e01b81523360048201528160248201528181604481836110115af180156106de576106cd5750f35b816106d791612486565b61021b5780f35b6040513d84823e3d90fd5b816106f391612486565b61021b57805f610690565b633c59519b60e11b8352600483fd5b63170cc93360e21b8552600452602484fd5b634e487b7160e01b85526021600452602485fd5b635926e0c360e01b8152600490fd5b63033788ff60e01b815233600452602490fd5b503461021b578060031936011261021b5761076e6129c4565b60ff6107793361244e565b541661074257610794335f52600160205260405f2054151590565b15610733577f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005c61098d5760017f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005d33815260026020526002604082200190815460ff8160e01c16906003821015908161097957600183036109655760a01c6001600160401b0316421061093c57835460ff60e01b198116600160e11b178555604051630f8f004960e31b815284916020908290600490829086906001600160a01b03165af19081156106de578291610906575b5060405190815233907ff7a40077ff7a04c7e61f6f26fb13774259ddf1b6bce9ecf26a8276cdd399268360203392a36110113b1561021b57604051632961046560e21b815233600482015281908181602481836110115af180156106de576108f1575b507f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005d80f35b816108fb91612486565b61021b5780826108cb565b90506020813d602011610934575b8161092160209383612486565b81010312610930575182610868565b5f80fd5b3d9150610914565b63170cc93360e21b83526024935061095357600452fd5b50634e487b7160e01b81526021600452fd5b63170cc93360e21b84526004839052602484fd5b634e487b7160e01b84526021600452602484fd5b633ee5aeb560e01b8152600490fd5b503461021b57602036600319011261021b576020906001600160a01b036109c1612438565b16815260028252604060018060a01b0391205416604051908152f35b503461021b57602036600319011261021b576109f7612438565b5f516020612b1f5f395f51905f5254906001600160401b0360ff8360401c1615921680159081610bd1575b6001149081610bc7575b159081610bbe575b50610baf578160016001600160401b03195f516020612b1f5f395f51905f525416175f516020612b1f5f395f51905f5255610b7f575b413303610b70573a610b615769021e19e0c9bab2400000600655670de0b6b3a7640000600755600a60085562093a80600955678ac7230489e80000600a556202a300600b55610ab7612ab3565b610abf612ab3565b60018060a01b03166bffffffffffffffffffffffff60a01b5f516020612adf5f395f51905f525416175f516020612adf5f395f51905f5255610aff612ab3565b610b07612ab3565b610b0e5780f35b60ff60401b195f516020612b1f5f395f51905f5254165f516020612b1f5f395f51905f52557fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2602060405160018152a180f35b6383f1b1d360e01b8352600483fd5b63022d8c9560e31b8352600483fd5b600160401b60ff60401b195f516020612b1f5f395f51905f525416175f516020612b1f5f395f51905f5255610a6a565b63f92ee8a960e01b8352600483fd5b9050155f610a34565b303b159150610a2c565b839150610a22565b503461021b57604036600319011261021b57610bf9602435600435612793565b604051606080825284519082018190526080820195919460200190825b818110610c6457505050838503602085015260208084519687815201930190945b808610610c4c57505082935060408301520390f35b90926020806001928651815201940195019490610c37565b82516001600160a01b0316885260209788019790920191600101610c16565b503461021b57602036600319011261021b5760409081906001600160a01b03610caa612438565b16815260026020522060ff60026001600160401b0360038401541692015460e81c16825191825215156020820152f35b503461021b578060031936011261021b576020600554604051908152f35b503461021b578060031936011261021b576020600a54604051908152f35b503461021b57602036600319011261021b576001600160a01b03610d38612438565b1681526002602052600460408220826001600160401b03600383015460401c1691600260018060a01b0391015416604051938480926395d89b4160e01b82525afa918215610e46578392610dc0575b5060206060929360405194859384526040838501528051928391826040870152018585015e828201840152601f01601f19168101030190f35b91503d8084843e610dd18184612486565b820191602081840312610e3e578051906001600160401b038211610e4257019180601f84011215610e3e5782519084610e09836124bb565b91610e176040519384612486565b8383526020848701011161021b57602083819482606098018386015e830101529250610d87565b8380fd5b8480fd5b6040513d85823e3d90fd5b503461021b57602036600319011261021b57602090600435815260048252604060018060a01b0391205416604051908152f35b503461021b57602036600319011261021b5760043561101333036102b1578015610eda576020817fff6e1245b60ea5b68ddca24a93cb8707677289cbdbdec9ecb7ccfc25541a774992600a55604051908152a180f35b60849060405190632c648cf160e01b82526040600483015260126044830152711bd9999b1a5b9954db185cda105b5bdd5b9d60721b60648301526024820152fd5b503461021b57602036600319011261021b576060906040906001600160a01b03610f43612438565b168152600260208190529190208054918101546001600160a01b03928316921690610f6d90612951565b90604051928352602083015215156040820152f35b503461021b578060031936011261021b575f516020612adf5f395f51905f52546001600160a01b0316330361101357610fb96129c4565b610fc16129c4565b600160ff195f516020612aff5f395f51905f525416175f516020612aff5f395f51905f52557f62e78cea01bee320cd4e420270b5ea74000d11b0c9f74754ebdbfc544b05a2586020604051338152a180f35b63c60eb33560e01b8152600490fd5b503461021b57602036600319011261021b5761103c612438565b61101333036102b1576001600160a01b031680156110af575f516020612adf5f395f51905f5254816001600160a01b0382167f068b48a2fe7f498b57ff6da64f075ae658fde8d77124b092e62b3dc58d91ce358580a36001600160a01b031916175f516020612adf5f395f51905f525580f35b60848260405190632c648cf160e01b825260406004830152600660448301526535b2b2b832b960d11b60648301526024820152fd5b503461021b578060031936011261021b576020600754604051908152f35b503461021b578060031936011261021b5760209054604051908152f35b503461021b57602036600319011261021b57611139612438565b6111416129c4565b60ff61114c3361244e565b5416611226576001600160a01b03165f81815260016020526040902054156112175780829182526002602052602060018060a01b03600260408520015416602460405180958193630f41a04d60e11b83523360048401525af1918215610e465783926111e3575b506040519182527ff7a40077ff7a04c7e61f6f26fb13774259ddf1b6bce9ecf26a8276cdd399268360203393a380f35b9091506020813d60201161120f575b816111ff60209383612486565b810103126109305751905f6111b3565b3d91506111f2565b635926e0c360e01b8252600482fd5b63033788ff60e01b825233600452602482fd5b503461021b578060031936011261021b576020600954604051908152f35b503461021b57602036600319011261021b576001600160a01b03611279612438565b1681526002602052600260408220015460ff8160e01c1660038110156112c357600290606093506001600160401b036040519360a01c168352600181146020840152146040820152f35b634e487b7160e01b83526021600452602483fd5b50606036600319011261021b576112ec612438565b90602435604435926001600160401b0384116117f957366023850112156117f9578360040135906001600160401b038211610e3e5760248501946024833692010111610e3e5761133a6129c4565b60ff6113453361244e565b54166117e6576001600160a01b03169081156117d75760065434106117c857611379335f52600160205260405f2054151590565b6117b957818452600360205260408420546001600160a01b03166117aa57611388831161043b576040516020810190828783376113c960208285810189838201520301601f198101835282612486565b5190208452600460205260408420546001600160a01b031661179b576113ee816124bb565b926113fc6040519485612486565b818452818660208601378460208386010152835160038110908115611790575b5061178157845b84518110156114b1576020818601015160f81c603081109081156114a6575b81611489575b8161146a575b5061145b57600101611423565b631bf4348160e31b8652600486fd5b606181109150811561147e575b505f61144e565b607a9150115f611477565b905060418110801561149c575b90611448565b50605a8111611496565b603981119150611442565b50763d602d80600a3d3981f3363d3d373d3d3d363d7300000085527010035af43d82803e903d91602b57fd5bf3602052849350856001600160a01b036037600987f01692831561177257833b1561176e57856040516379ccf11760e11b8152336004820152604060248201528260448201528284606483013781606484830101528181606481601f19601f8801168101030181348a5af180156106de57611759575b505061155e33612a63565b5084865260036020908152604080882080546001600160a01b03191633179055518082019390926115a7929184919081908737810189838201520301601f198101835282612486565b51902084526004602090815260408086208054336001600160a01b0319918216811790925581885260029384905291872080548316871781556001810180548416909217825592830180549092168517825590926116439061160890612a32565b9261163a6003820194859067ffffffffffffffff60401b82549160401b169067ffffffffffffffff60401b1916179055565b61037e42612a32565b805467ffffffffffffffff60a01b199081169091558254168255805467ffffffffffffffff19169055805461ffff60e01b191690556040519133907f02a48e2789d19f84e9cfb18b02359e63c1e9779fa51ff1ae65bba5ab0a2739a38580a434815234602082015233907f24d7bda8602b916d64417f0dbfe2e2e88ec9b1157bd9f596dfdb91ba26624e0460403392a36110113b1561021b57604051632961046560e21b815233600482015281908181602481836110115af180156106de57611744575b50506110113b1561021b5780604051632949582d60e01b81523360048201523360248201528181604481836110115af180156106de576106cd5750f35b8161174e91612486565b61021b578082611707565b8161176391612486565b61176e578587611553565b8580fd5b63b06ebf3d60e01b8652600486fd5b631bf4348160e31b8552600485fd5b60099150115f61141c565b630b1fb6bd60e41b8452600484fd5b63813f326760e01b8452600484fd5b639cc20ced60e01b8452600484fd5b63e008b5f960e01b8452600484fd5b63713ce51160e01b8452600484fd5b63033788ff60e01b845233600452602484fd5b8280fd5b503461021b578060031936011261021b57602060ff5f516020612aff5f395f51905f5254166040519015158152f35b50602036600319011261021b57611841612438565b6118496129c4565b60ff6118543361244e565b5416611226576001600160a01b03165f81815260016020526040902054909190156107335760075434106119c857818152600260205260026040822001549160ff8360e01c1660038110156112c357806119b6575060ff8360e81c16806119ac575b61199d57604051636e553f6560e01b815234600482018190523360248301529293849360209183916044918391906001600160a01b03165af1908115610e46578391611968575b50604051903482526020820152817f24d7bda8602b916d64417f0dbfe2e2e88ec9b1157bd9f596dfdb91ba26624e0460403393a36110113b156119655760405190632961046560e21b825260048201528181602481836110115af180156106de576106cd5750f35b50fd5b9250506020823d602011611995575b8161198460209383612486565b81010312610930578291515f6118fd565b3d9150611977565b633c59519b60e11b8252600482fd5b50803314156118b6565b63170cc93360e21b8352600452602482fd5b63e008b5f960e01b8152600490fd5b503461021b57602036600319011261021b5760043561101333036102b1578015611a2d576020817f324143af489ab0ba77b0d3580e2486ee612b673b87db2179c589f61ac532fd5992600855604051908152a180f35b60849060405190632c648cf160e01b82526040600483015260126044830152711d985b1a59185d1bdc951a1c995cda1bdb1960721b60648301526024820152fd5b503461021b578060031936011261021b576020600854604051908152f35b503461021b57604036600319011261021b57611aa6612438565b9060243591611ab36129c4565b60ff611abe3361244e565b5416611226576001600160a01b03165f8181526001602052604090205415611217578215611c2757819281835260026020526040832090836002830191602060018060a01b03845416606460405180958193635d043b2960e11b83528660048401523360248401523360448401525af1918215611c1c578692611be5575b506040519182526020820152837f3aace7340547de7b9156593a7652dc07ee900cea3fd8f82cb6c9d38b4082980260403393a3338314611bad575b50506110113b156119655760405190632961046560e21b825260048201528181602481836110115af180156106de576106cd5750f35b60ff919293505460e81c166106fe57611bc5906129eb565b60065411611bd65781905f80611b77565b63e008b5f960e01b8252600482fd5b955090506020853d602011611c14575b81611c0260209383612486565b8101031261093057859451905f611b3c565b3d9150611bf5565b6040513d88823e3d90fd5b633c57b48560e21b8252600482fd5b503461021b57602036600319011261021b57611c50612438565b5f516020612adf5f395f51905f52546001600160a01b03163303611caf57611c778161244e565b805460ff191690556001600160a01b03167fe0db3499b7fdc3da4cddff5f45d694549c19835e7f719fb5606d3ad1a5de40118280a280f35b63c60eb33560e01b8252600482fd5b503461021b57602036600319011261021b57611cd8612438565b611ce06129c4565b60ff611ceb3361244e565b5416611226576001600160a01b03165f818152600160205260409020541561121757815260026020526040812060028101805460ff8160e81c1615611d9b576001600160401b036003840154164210611d8c57611d47836129eb565b600654116117c85760ff60e81b19169055600101546001600160a01b03167f9390b453426557da5ebdc31f19a37753ca04addf656d32f35232211bb2af3f198280a280f35b63065f425760e21b8452600484fd5b63f9200d4f60e01b8452600484fd5b503461093057602036600319011261093057611dc4612438565b6110043303611fdd5760018060a01b03165f52600360205260018060a01b0360405f205416611dfe815f52600160205260405f2054151590565b15611fce57805f5260026020525f604081206002810190602060018060a01b038354166024600a54604051968793849263045bc4d160e41b845260048401525af1908115611f445784935f92611f76575b5091817f83b04ecf7330997e742429a641e136d9f3698c3e9ac9cb9ce0cc2d6da36a244d93611e82604094600554612701565b600555611e91600b5442612701565b92600382016001600160401b038154168511611f4f575b50805460ff60e81b1916600160e81b1790556001015483518381526001600160a01b0391909116907feb7d7a49847ec491969db21a0e31b234565a9923145a2d1b56a75c9e9582580290602090a282519182526020820152a26110113b156109305760405190632961046560e21b825260048201525f81602481836110115af18015611f4457611f36575080f35b611f4291505f90612486565b005b6040513d5f823e3d90fd5b6001600160401b03611f6086612a32565b166001600160401b03198254161790555f611ea8565b91509192506020813d602011611fc6575b81611f9460209383612486565b8101031261093057518392917f83b04ecf7330997e742429a641e136d9f3698c3e9ac9cb9ce0cc2d6da36a244d611e4f565b3d9150611f87565b635926e0c360e01b5f5260045ffd5b630f22c43960e41b5f5261100460045260245ffd5b34610930576020366003190112610930576004356110133303612088578015612046576020817fbdf592a42adc0296ad8a75a5e7b8a0912c37793a1a275d78275bc335911c6bd392600b55604051908152a1005b60849060405190632c648cf160e01b825260406004830152601360448301527237b3333634b732a530b4b6223ab930ba34b7b760691b60648301526024820152fd5b630f22c43960e41b5f5261101360045260245ffd5b34610930575f366003190112610930576020600b54604051908152f35b34610930576020366003190112610930576120d3612438565b5f516020612adf5f395f51905f52546001600160a01b03163303612134576120fa8161244e565b805460ff191660011790556001600160a01b03167f7fd26be6fc92aff63f1f4409b2b2ddeb272a888031d7f55ec830485ec61941865f80a2005b63c60eb33560e01b5f5260045ffd5b34610930576020366003190112610930576001600160a01b03612164612438565b165f526002602052602061217a60405f20612951565b6040519015158152f35b34610930575f366003190112610930575f516020612adf5f395f51905f52546001600160a01b03163303612134576121ba612929565b6121c2612929565b60ff195f516020612aff5f395f51905f5254165f516020612aff5f395f51905f52557f5db9ee0a495bf2e6ff9c91a7834c1ba4fdd244a5e8aa4e537bd38aeae4b073aa6020604051338152a1005b34610930576020366003190112610930576004356110133303612088578015612264576020817f02cd8ef316564ca78b75bf239c0a630008374c1fb1d26d941a6e9b19e42b2aa592600755604051908152a1005b60849060405190632c648cf160e01b82526040600483015260116044830152701b5a5b91195b1959d85d19505b5bdd5b9d607a1b60648301526024820152fd5b34610930575f366003190112610930575f516020612adf5f395f51905f52546040516001600160a01b039091168152602090f35b34610930576020366003190112610930576001600160a01b036122f9612438565b165f526003602052602060018060a01b0360405f205416604051908152f35b3461093057602036600319011261093057602061233b612336612438565b612681565b604051908152f35b34610930575f3660031901126109305760206040516113888152f35b346109305760203660031901126109305760043561101333036120885780156123b3576020817f38a1644f59872db6fd17fdced395495fcaa3ca7d2825a0704db5a3acbd1dd06492600955604051908152a1005b60849060405190632c648cf160e01b825260406004830152600f60448301526e1d5b989bdb991a5b99d4195c9a5bd9608a1b60648301526024820152fd5b602036600319011261093057612405612438565b413303612429573a61241a57611f42906124d6565b6383f1b1d360e01b5f5260045ffd5b63022d8c9560e31b5f5260045ffd5b600435906001600160a01b038216820361093057565b6001600160a01b03165f9081527f46944d7356e409d0d8c174d262d4ab0ddb2d4597e3e424151a463d8a4af4e5016020526040902090565b90601f801991011681019081106001600160401b038211176124a757604052565b634e487b7160e01b5f52604160045260245ffd5b6001600160401b0381116124a757601f01601f191660200190565b5f9060018060a01b03165f52600360205260018060a01b0360405f205416805f52600260205260405f2060028101805460018060a01b03811615908115612673575b506125f55760036001600160401b039160018060a01b0390541692015460401c16813b15610930575f90602460405180948193632f303ebb60e11b8352600483015234905af18015611f44576125e0575b50807fe34918ff1c7084970068b53fd71ad6d8b04e9f15d3886cbf006443e6cdc52ea66020604051348152a26110113b156125dc5760405190632961046560e21b825260048201528181602481836110115af180156106de576125ca575050565b6125d5828092612486565b61021b5750565b5080fd5b6125ed9192505f90612486565b5f905f612569565b505050505f808080346110055af13d1561266e573d612613816124bb565b906126216040519283612486565b81525f60203d92013e5b1561265f576110057fe34918ff1c7084970068b53fd71ad6d8b04e9f15d3886cbf006443e6cdc52ea66020604051348152a2565b6312171d8360e31b5f5260045ffd5b61262b565b60ff915060e81c165f612518565b6001600160a01b039081165f90815260026020819052604090912001541680156126fc576020600491604051928380926278744560e21b82525afa908115611f44575f916126cd575090565b90506020813d6020116126f4575b816126e860209383612486565b81010312610930575190565b3d91506126db565b505f90565b9190820180921161270e57565b634e487b7160e01b5f52601160045260245ffd5b6001600160401b0381116124a75760051b60200190565b9061274382612722565b6127506040519182612486565b8281528092612761601f1991612722565b0190602036910137565b805182101561277f5760209160051b010190565b634e487b7160e01b5f52603260045260245ffd5b91905f5490818410156128f357806128ea57506127b1815b84612701565b918183116128e1575b83830392831161270e576127cf839493612739565b936127d981612739565b935f905f54915b8381106127ed5750505050565b6127f78183612701565b8381101561277f577f290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e56301546001600160a01b039081165f90815260026020526040902080549092911661284a828b61276b565b5261285482612951565b156128d7576002909101546040516278744560e21b81529190602090839060049082906001600160a01b03165afa8015611f44575f906128a5575b600192505b61289e828a61276b565b52016127e0565b506020823d82116128cf575b816128be60209383612486565b81010312610930576001915161288f565b3d91506128b1565b600191505f612894565b915080916127ba565b6127b1906127ab565b509091506020916040516129078482612486565b5f81525f3681376040519361291c8186612486565b5f8552505f368137929190565b60ff5f516020612aff5f395f51905f5254161561294257565b638dfc202b60e01b5f5260045ffd5b60028101546001600160a01b038116156129be5760ff8160e01c1660038110156129aa57159182612993575b5081612987575090565b60ff915060e81c161590565b61299e9192506129eb565b6006541115905f61297d565b634e487b7160e01b5f52602160045260245ffd5b50505f90565b60ff5f516020612aff5f395f51905f5254166129dc57565b63d93c066560e01b5f5260045ffd5b600281015460019091015460405163ce96cb7760e01b81526001600160a01b0391821660048201529160209183916024918391165afa908115611f44575f916126cd575090565b6001600160401b038111612a4c576001600160401b031690565b6306dfcc6560e41b5f52604060045260245260445ffd5b805f52600160205260405f2054155f146126fc575f54600160401b8110156124a757600181015f555f5481101561277f5781905f805260205f2001555f54905f52600160205260405f2055600190565b60ff5f516020612b1f5f395f51905f525460401c1615612acf57565b631afcd79f60e31b5f5260045ffdfe46944d7356e409d0d8c174d262d4ab0ddb2d4597e3e424151a463d8a4af4e500cd5ed15c6e187e77e9aee88184c21f4f2182ab5827cb3b7e07fbedcd63f03300f0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00a2646970667358221220c8df6cc4d3dc9a6b8f39b00187f6408100cfb4f7909b2295a03c5b16b932db0364736f6c634300081c0033",
 }
 
 // StakeHub is an auto generated Go binding around an Ethereum contract.
@@ -51,6 +51,56 @@ func (c *StakeHub) Instance(backend bind.ContractBackend, addr common.Address) *
 	return bind.NewBoundContract(addr, c.abi, backend, backend, backend)
 }
 
+// PackMAXCOMMISSIONRATE is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x207239c0.
+//
+// Solidity: function MAX_COMMISSION_RATE() view returns(uint256)
+func (stakeHub *StakeHub) PackMAXCOMMISSIONRATE() []byte {
+	enc, err := stakeHub.abi.Pack("MAX_COMMISSION_RATE")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// UnpackMAXCOMMISSIONRATE is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x207239c0.
+//
+// Solidity: function MAX_COMMISSION_RATE() view returns(uint256)
+func (stakeHub *StakeHub) UnpackMAXCOMMISSIONRATE(data []byte) (*big.Int, error) {
+	out, err := stakeHub.abi.Unpack("MAX_COMMISSION_RATE", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, err
+}
+
+// PackUPDATEFREQUENCY is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xdb6c4c06.
+//
+// Solidity: function UPDATE_FREQUENCY() view returns(uint256)
+func (stakeHub *StakeHub) PackUPDATEFREQUENCY() []byte {
+	enc, err := stakeHub.abi.Pack("UPDATE_FREQUENCY")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// UnpackUPDATEFREQUENCY is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0xdb6c4c06.
+//
+// Solidity: function UPDATE_FREQUENCY() view returns(uint256)
+func (stakeHub *StakeHub) UnpackUPDATEFREQUENCY(data []byte) (*big.Int, error) {
+	out, err := stakeHub.abi.Unpack("UPDATE_FREQUENCY", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, err
+}
+
 // PackAddToBlackList is the Go binding used to pack the parameters required for calling
 // the contract method with ID 0x417c73a7.
 //
@@ -64,23 +114,59 @@ func (stakeHub *StakeHub) PackAddToBlackList(account common.Address) []byte {
 }
 
 // PackApplyValidator is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0x02c75532.
+// the contract method with ID 0x604ababc.
 //
-// Solidity: function applyValidator(address validatorAddr) payable returns()
-func (stakeHub *StakeHub) PackApplyValidator(validatorAddr common.Address) []byte {
-	enc, err := stakeHub.abi.Pack("applyValidator", validatorAddr)
+// Solidity: function applyValidator(address validatorAddr, uint256 commissionRate, string id) payable returns()
+func (stakeHub *StakeHub) PackApplyValidator(validatorAddr common.Address, commissionRate *big.Int, id string) []byte {
+	enc, err := stakeHub.abi.Pack("applyValidator", validatorAddr, commissionRate, id)
 	if err != nil {
 		panic(err)
 	}
 	return enc
 }
 
-// PackClaimStake is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0xeb321173.
+// PackClaimUndelegation is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x6f7aa7ec.
 //
-// Solidity: function claimStake() returns()
-func (stakeHub *StakeHub) PackClaimStake() []byte {
-	enc, err := stakeHub.abi.Pack("claimStake")
+// Solidity: function claimUndelegation(address operatorAddr) returns()
+func (stakeHub *StakeHub) PackClaimUndelegation(operatorAddr common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("claimUndelegation", operatorAddr)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// PackClaimUnstaked is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xd276290d.
+//
+// Solidity: function claimUnstaked() returns()
+func (stakeHub *StakeHub) PackClaimUnstaked() []byte {
+	enc, err := stakeHub.abi.Pack("claimUnstaked")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// PackDelegate is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x5c19a95c.
+//
+// Solidity: function delegate(address operatorAddr) payable returns()
+func (stakeHub *StakeHub) PackDelegate(operatorAddr common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("delegate", operatorAddr)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// PackDistributeReward is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x092193ab.
+//
+// Solidity: function distributeReward(address validatorAddr) payable returns()
+func (stakeHub *StakeHub) PackDistributeReward(validatorAddr common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("distributeReward", validatorAddr)
 	if err != nil {
 		panic(err)
 	}
@@ -109,106 +195,6 @@ func (stakeHub *StakeHub) UnpackGetKeeper(data []byte) (common.Address, error) {
 		return *new(common.Address), err
 	}
 	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
-	return out0, err
-}
-
-// PackGetLeavingTime is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0xeaa43d14.
-//
-// Solidity: function getLeavingTime(address operatorAddr) view returns(uint256)
-func (stakeHub *StakeHub) PackGetLeavingTime(operatorAddr common.Address) []byte {
-	enc, err := stakeHub.abi.Pack("getLeavingTime", operatorAddr)
-	if err != nil {
-		panic(err)
-	}
-	return enc
-}
-
-// UnpackGetLeavingTime is the Go binding that unpacks the parameters returned
-// from invoking the contract method with ID 0xeaa43d14.
-//
-// Solidity: function getLeavingTime(address operatorAddr) view returns(uint256)
-func (stakeHub *StakeHub) UnpackGetLeavingTime(data []byte) (*big.Int, error) {
-	out, err := stakeHub.abi.Unpack("getLeavingTime", data)
-	if err != nil {
-		return new(big.Int), err
-	}
-	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
-	return out0, err
-}
-
-// PackGetOperatorAddress is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0xf158628d.
-//
-// Solidity: function getOperatorAddress(address validatorAddr) view returns(address)
-func (stakeHub *StakeHub) PackGetOperatorAddress(validatorAddr common.Address) []byte {
-	enc, err := stakeHub.abi.Pack("getOperatorAddress", validatorAddr)
-	if err != nil {
-		panic(err)
-	}
-	return enc
-}
-
-// UnpackGetOperatorAddress is the Go binding that unpacks the parameters returned
-// from invoking the contract method with ID 0xf158628d.
-//
-// Solidity: function getOperatorAddress(address validatorAddr) view returns(address)
-func (stakeHub *StakeHub) UnpackGetOperatorAddress(data []byte) (common.Address, error) {
-	out, err := stakeHub.abi.Unpack("getOperatorAddress", data)
-	if err != nil {
-		return *new(common.Address), err
-	}
-	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
-	return out0, err
-}
-
-// PackGetStakeAmount is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0x0c2eb403.
-//
-// Solidity: function getStakeAmount(address operatorAddr) view returns(uint256)
-func (stakeHub *StakeHub) PackGetStakeAmount(operatorAddr common.Address) []byte {
-	enc, err := stakeHub.abi.Pack("getStakeAmount", operatorAddr)
-	if err != nil {
-		panic(err)
-	}
-	return enc
-}
-
-// UnpackGetStakeAmount is the Go binding that unpacks the parameters returned
-// from invoking the contract method with ID 0x0c2eb403.
-//
-// Solidity: function getStakeAmount(address operatorAddr) view returns(uint256)
-func (stakeHub *StakeHub) UnpackGetStakeAmount(data []byte) (*big.Int, error) {
-	out, err := stakeHub.abi.Unpack("getStakeAmount", data)
-	if err != nil {
-		return new(big.Int), err
-	}
-	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
-	return out0, err
-}
-
-// PackGetUnstakingAmount is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0xfc1332db.
-//
-// Solidity: function getUnstakingAmount(address operatorAddr) view returns(uint256)
-func (stakeHub *StakeHub) PackGetUnstakingAmount(operatorAddr common.Address) []byte {
-	enc, err := stakeHub.abi.Pack("getUnstakingAmount", operatorAddr)
-	if err != nil {
-		panic(err)
-	}
-	return enc
-}
-
-// UnpackGetUnstakingAmount is the Go binding that unpacks the parameters returned
-// from invoking the contract method with ID 0xfc1332db.
-//
-// Solidity: function getUnstakingAmount(address operatorAddr) view returns(uint256)
-func (stakeHub *StakeHub) UnpackGetUnstakingAmount(data []byte) (*big.Int, error) {
-	out, err := stakeHub.abi.Unpack("getUnstakingAmount", data)
-	if err != nil {
-		return new(big.Int), err
-	}
-	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
 	return out0, err
 }
 
@@ -262,6 +248,175 @@ func (stakeHub *StakeHub) UnpackGetValidatorCount(data []byte) (*big.Int, error)
 	return out0, err
 }
 
+// PackGetValidatorDescription is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xa43569b3.
+//
+// Solidity: function getValidatorDescription(address operatorAddr) view returns(uint256 commissionRate, string id)
+func (stakeHub *StakeHub) PackGetValidatorDescription(operatorAddr common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("getValidatorDescription", operatorAddr)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// GetValidatorDescriptionOutput serves as a container for the return parameters of contract
+// method GetValidatorDescription.
+type GetValidatorDescriptionOutput struct {
+	CommissionRate *big.Int
+	Id             string
+}
+
+// UnpackGetValidatorDescription is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0xa43569b3.
+//
+// Solidity: function getValidatorDescription(address operatorAddr) view returns(uint256 commissionRate, string id)
+func (stakeHub *StakeHub) UnpackGetValidatorDescription(data []byte) (GetValidatorDescriptionOutput, error) {
+	out, err := stakeHub.abi.Unpack("getValidatorDescription", data)
+	outstruct := new(GetValidatorDescriptionOutput)
+	if err != nil {
+		return *outstruct, err
+	}
+	outstruct.CommissionRate = abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	outstruct.Id = *abi.ConvertType(out[1], new(string)).(*string)
+	return *outstruct, err
+
+}
+
+// PackGetValidatorInfo is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x8a11d7c9.
+//
+// Solidity: function getValidatorInfo(address operatorAddr) view returns(address validatorAddr, address shareContract, bool isActive)
+func (stakeHub *StakeHub) PackGetValidatorInfo(operatorAddr common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("getValidatorInfo", operatorAddr)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// GetValidatorInfoOutput serves as a container for the return parameters of contract
+// method GetValidatorInfo.
+type GetValidatorInfoOutput struct {
+	ValidatorAddr common.Address
+	ShareContract common.Address
+	IsActive      bool
+}
+
+// UnpackGetValidatorInfo is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x8a11d7c9.
+//
+// Solidity: function getValidatorInfo(address operatorAddr) view returns(address validatorAddr, address shareContract, bool isActive)
+func (stakeHub *StakeHub) UnpackGetValidatorInfo(data []byte) (GetValidatorInfoOutput, error) {
+	out, err := stakeHub.abi.Unpack("getValidatorInfo", data)
+	outstruct := new(GetValidatorInfoOutput)
+	if err != nil {
+		return *outstruct, err
+	}
+	outstruct.ValidatorAddr = *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+	outstruct.ShareContract = *abi.ConvertType(out[1], new(common.Address)).(*common.Address)
+	outstruct.IsActive = *abi.ConvertType(out[2], new(bool)).(*bool)
+	return *outstruct, err
+
+}
+
+// PackGetValidatorJailInfo is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xbbe5e345.
+//
+// Solidity: function getValidatorJailInfo(address operatorAddr) view returns(uint256 jailUntil, bool isJailed)
+func (stakeHub *StakeHub) PackGetValidatorJailInfo(operatorAddr common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("getValidatorJailInfo", operatorAddr)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// GetValidatorJailInfoOutput serves as a container for the return parameters of contract
+// method GetValidatorJailInfo.
+type GetValidatorJailInfoOutput struct {
+	JailUntil *big.Int
+	IsJailed  bool
+}
+
+// UnpackGetValidatorJailInfo is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0xbbe5e345.
+//
+// Solidity: function getValidatorJailInfo(address operatorAddr) view returns(uint256 jailUntil, bool isJailed)
+func (stakeHub *StakeHub) UnpackGetValidatorJailInfo(data []byte) (GetValidatorJailInfoOutput, error) {
+	out, err := stakeHub.abi.Unpack("getValidatorJailInfo", data)
+	outstruct := new(GetValidatorJailInfoOutput)
+	if err != nil {
+		return *outstruct, err
+	}
+	outstruct.JailUntil = abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	outstruct.IsJailed = *abi.ConvertType(out[1], new(bool)).(*bool)
+	return *outstruct, err
+
+}
+
+// PackGetValidatorTotalStake is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x2aa8e06d.
+//
+// Solidity: function getValidatorTotalStake(address account) view returns(uint256)
+func (stakeHub *StakeHub) PackGetValidatorTotalStake(account common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("getValidatorTotalStake", account)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// UnpackGetValidatorTotalStake is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x2aa8e06d.
+//
+// Solidity: function getValidatorTotalStake(address account) view returns(uint256)
+func (stakeHub *StakeHub) UnpackGetValidatorTotalStake(data []byte) (*big.Int, error) {
+	out, err := stakeHub.abi.Unpack("getValidatorTotalStake", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, err
+}
+
+// PackGetValidatorUnstakeInfo is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x667cf078.
+//
+// Solidity: function getValidatorUnstakeInfo(address operatorAddr) view returns(uint256 unstakeTime, bool isUnstaking, bool isUnstaked)
+func (stakeHub *StakeHub) PackGetValidatorUnstakeInfo(operatorAddr common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("getValidatorUnstakeInfo", operatorAddr)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// GetValidatorUnstakeInfoOutput serves as a container for the return parameters of contract
+// method GetValidatorUnstakeInfo.
+type GetValidatorUnstakeInfoOutput struct {
+	UnstakeTime *big.Int
+	IsUnstaking bool
+	IsUnstaked  bool
+}
+
+// UnpackGetValidatorUnstakeInfo is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x667cf078.
+//
+// Solidity: function getValidatorUnstakeInfo(address operatorAddr) view returns(uint256 unstakeTime, bool isUnstaking, bool isUnstaked)
+func (stakeHub *StakeHub) UnpackGetValidatorUnstakeInfo(data []byte) (GetValidatorUnstakeInfoOutput, error) {
+	out, err := stakeHub.abi.Unpack("getValidatorUnstakeInfo", data)
+	outstruct := new(GetValidatorUnstakeInfoOutput)
+	if err != nil {
+		return *outstruct, err
+	}
+	outstruct.UnstakeTime = abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	outstruct.IsUnstaking = *abi.ConvertType(out[1], new(bool)).(*bool)
+	outstruct.IsUnstaked = *abi.ConvertType(out[2], new(bool)).(*bool)
+	return *outstruct, err
+
+}
+
 // PackGetValidators is the Go binding used to pack the parameters required for calling
 // the contract method with ID 0xbff02e20.
 //
@@ -297,6 +452,31 @@ func (stakeHub *StakeHub) UnpackGetValidators(data []byte) (GetValidatorsOutput,
 	outstruct.TotalLength = abi.ConvertType(out[2], new(big.Int)).(*big.Int)
 	return *outstruct, err
 
+}
+
+// PackIdToOperator is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x9ac83d85.
+//
+// Solidity: function idToOperator(bytes32 ) view returns(address)
+func (stakeHub *StakeHub) PackIdToOperator(arg0 [32]byte) []byte {
+	enc, err := stakeHub.abi.Pack("idToOperator", arg0)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// UnpackIdToOperator is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x9ac83d85.
+//
+// Solidity: function idToOperator(bytes32 ) view returns(address)
+func (stakeHub *StakeHub) UnpackIdToOperator(data []byte) (common.Address, error) {
+	out, err := stakeHub.abi.Unpack("idToOperator", data)
+	if err != nil {
+		return *new(common.Address), err
+	}
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+	return out0, err
 }
 
 // PackInitialize is the Go binding used to pack the parameters required for calling
@@ -336,66 +516,29 @@ func (stakeHub *StakeHub) UnpackIsActiveValidator(data []byte) (bool, error) {
 	return out0, err
 }
 
-// PackIsJailedValidator is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0xb6e5395f.
+// PackMinDelegateAmount is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x72e9c934.
 //
-// Solidity: function isJailedValidator(address operatorAddr) view returns(bool)
-func (stakeHub *StakeHub) PackIsJailedValidator(operatorAddr common.Address) []byte {
-	enc, err := stakeHub.abi.Pack("isJailedValidator", operatorAddr)
+// Solidity: function minDelegateAmount() view returns(uint256)
+func (stakeHub *StakeHub) PackMinDelegateAmount() []byte {
+	enc, err := stakeHub.abi.Pack("minDelegateAmount")
 	if err != nil {
 		panic(err)
 	}
 	return enc
 }
 
-// UnpackIsJailedValidator is the Go binding that unpacks the parameters returned
-// from invoking the contract method with ID 0xb6e5395f.
+// UnpackMinDelegateAmount is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x72e9c934.
 //
-// Solidity: function isJailedValidator(address operatorAddr) view returns(bool)
-func (stakeHub *StakeHub) UnpackIsJailedValidator(data []byte) (bool, error) {
-	out, err := stakeHub.abi.Unpack("isJailedValidator", data)
+// Solidity: function minDelegateAmount() view returns(uint256)
+func (stakeHub *StakeHub) UnpackMinDelegateAmount(data []byte) (*big.Int, error) {
+	out, err := stakeHub.abi.Unpack("minDelegateAmount", data)
 	if err != nil {
-		return *new(bool), err
+		return new(big.Int), err
 	}
-	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
 	return out0, err
-}
-
-// PackIsLeavingValidator is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0xf292a643.
-//
-// Solidity: function isLeavingValidator(address operatorAddr) view returns(bool)
-func (stakeHub *StakeHub) PackIsLeavingValidator(operatorAddr common.Address) []byte {
-	enc, err := stakeHub.abi.Pack("isLeavingValidator", operatorAddr)
-	if err != nil {
-		panic(err)
-	}
-	return enc
-}
-
-// UnpackIsLeavingValidator is the Go binding that unpacks the parameters returned
-// from invoking the contract method with ID 0xf292a643.
-//
-// Solidity: function isLeavingValidator(address operatorAddr) view returns(bool)
-func (stakeHub *StakeHub) UnpackIsLeavingValidator(data []byte) (bool, error) {
-	out, err := stakeHub.abi.Unpack("isLeavingValidator", data)
-	if err != nil {
-		return *new(bool), err
-	}
-	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
-	return out0, err
-}
-
-// PackLeaveValidator is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0x603eff8b.
-//
-// Solidity: function leaveValidator() returns()
-func (stakeHub *StakeHub) PackLeaveValidator() []byte {
-	enc, err := stakeHub.abi.Pack("leaveValidator")
-	if err != nil {
-		panic(err)
-	}
-	return enc
 }
 
 // PackMinStakeAmount is the Go binding used to pack the parameters required for calling
@@ -534,6 +677,18 @@ func (stakeHub *StakeHub) PackSetKeeper(keeper common.Address) []byte {
 	return enc
 }
 
+// PackSetMinDelegateAmount is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x3e732eba.
+//
+// Solidity: function setMinDelegateAmount(uint256 amount) returns()
+func (stakeHub *StakeHub) PackSetMinDelegateAmount(amount *big.Int) []byte {
+	enc, err := stakeHub.abi.Pack("setMinDelegateAmount", amount)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
 // PackSetMinStakeAmount is the Go binding used to pack the parameters required for calling
 // the contract method with ID 0xeb4af045.
 //
@@ -656,6 +811,18 @@ func (stakeHub *StakeHub) UnpackUnbondingPeriod(data []byte) (*big.Int, error) {
 	return out0, err
 }
 
+// PackUndelegate is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x4d99dd16.
+//
+// Solidity: function undelegate(address operatorAddr, uint256 shares) returns()
+func (stakeHub *StakeHub) PackUndelegate(operatorAddr common.Address, shares *big.Int) []byte {
+	enc, err := stakeHub.abi.Pack("undelegate", operatorAddr, shares)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
 // PackUnjail is the Go binding used to pack the parameters required for calling
 // the contract method with ID 0x449ecfe6.
 //
@@ -674,6 +841,30 @@ func (stakeHub *StakeHub) PackUnjail(operatorAddr common.Address) []byte {
 // Solidity: function unpause() returns()
 func (stakeHub *StakeHub) PackUnpause() []byte {
 	enc, err := stakeHub.abi.Pack("unpause")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// PackUnstakeValidator is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xd86c7fe8.
+//
+// Solidity: function unstakeValidator() returns()
+func (stakeHub *StakeHub) PackUnstakeValidator() []byte {
+	enc, err := stakeHub.abi.Pack("unstakeValidator")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// PackUpdateValidator is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xe6635f5d.
+//
+// Solidity: function updateValidator(address newValidatorAddr, uint256 newCommissionRate) returns()
+func (stakeHub *StakeHub) PackUpdateValidator(newValidatorAddr common.Address, newCommissionRate *big.Int) []byte {
+	enc, err := stakeHub.abi.Pack("updateValidator", newValidatorAddr, newCommissionRate)
 	if err != nil {
 		panic(err)
 	}
@@ -705,6 +896,31 @@ func (stakeHub *StakeHub) UnpackValidatorThreshold(data []byte) (*big.Int, error
 	return out0, err
 }
 
+// PackValidatorToOperator is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x35efc734.
+//
+// Solidity: function validatorToOperator(address ) view returns(address)
+func (stakeHub *StakeHub) PackValidatorToOperator(arg0 common.Address) []byte {
+	enc, err := stakeHub.abi.Pack("validatorToOperator", arg0)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// UnpackValidatorToOperator is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x35efc734.
+//
+// Solidity: function validatorToOperator(address ) view returns(address)
+func (stakeHub *StakeHub) UnpackValidatorToOperator(data []byte) (common.Address, error) {
+	out, err := stakeHub.abi.Unpack("validatorToOperator", data)
+	if err != nil {
+		return *new(common.Address), err
+	}
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+	return out0, err
+}
+
 // StakeHubBlackListed represents a BlackListed event raised by the StakeHub contract.
 type StakeHubBlackListed struct {
 	Account common.Address
@@ -728,6 +944,93 @@ func (stakeHub *StakeHub) UnpackBlackListedEvent(log *types.Log) (*StakeHubBlack
 		return nil, errors.New("event signature mismatch")
 	}
 	out := new(StakeHubBlackListed)
+	if len(log.Data) > 0 {
+		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range stakeHub.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// StakeHubClaimed represents a Claimed event raised by the StakeHub contract.
+type StakeHubClaimed struct {
+	OperatorAddr common.Address
+	Delegator    common.Address
+	Amount       *big.Int
+	Raw          *types.Log // Blockchain specific contextual infos
+}
+
+const StakeHubClaimedEventName = "Claimed"
+
+// ContractEventName returns the user-defined event name.
+func (StakeHubClaimed) ContractEventName() string {
+	return StakeHubClaimedEventName
+}
+
+// UnpackClaimedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event Claimed(address indexed operatorAddr, address indexed delegator, uint256 amount)
+func (stakeHub *StakeHub) UnpackClaimedEvent(log *types.Log) (*StakeHubClaimed, error) {
+	event := "Claimed"
+	if log.Topics[0] != stakeHub.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(StakeHubClaimed)
+	if len(log.Data) > 0 {
+		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range stakeHub.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// StakeHubDelegated represents a Delegated event raised by the StakeHub contract.
+type StakeHubDelegated struct {
+	OperatorAddr common.Address
+	Delegator    common.Address
+	Amount       *big.Int
+	Shares       *big.Int
+	Raw          *types.Log // Blockchain specific contextual infos
+}
+
+const StakeHubDelegatedEventName = "Delegated"
+
+// ContractEventName returns the user-defined event name.
+func (StakeHubDelegated) ContractEventName() string {
+	return StakeHubDelegatedEventName
+}
+
+// UnpackDelegatedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event Delegated(address indexed operatorAddr, address indexed delegator, uint256 amount, uint256 shares)
+func (stakeHub *StakeHub) UnpackDelegatedEvent(log *types.Log) (*StakeHubDelegated, error) {
+	event := "Delegated"
+	if log.Topics[0] != stakeHub.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(StakeHubDelegated)
 	if len(log.Data) > 0 {
 		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
 			return nil, err
@@ -852,6 +1155,47 @@ func (stakeHub *StakeHub) UnpackKeeperUpdatedEvent(log *types.Log) (*StakeHubKee
 		return nil, errors.New("event signature mismatch")
 	}
 	out := new(StakeHubKeeperUpdated)
+	if len(log.Data) > 0 {
+		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range stakeHub.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// StakeHubMinDelegateAmountUpdated represents a MinDelegateAmountUpdated event raised by the StakeHub contract.
+type StakeHubMinDelegateAmountUpdated struct {
+	Amount *big.Int
+	Raw    *types.Log // Blockchain specific contextual infos
+}
+
+const StakeHubMinDelegateAmountUpdatedEventName = "MinDelegateAmountUpdated"
+
+// ContractEventName returns the user-defined event name.
+func (StakeHubMinDelegateAmountUpdated) ContractEventName() string {
+	return StakeHubMinDelegateAmountUpdatedEventName
+}
+
+// UnpackMinDelegateAmountUpdatedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event MinDelegateAmountUpdated(uint256 amount)
+func (stakeHub *StakeHub) UnpackMinDelegateAmountUpdatedEvent(log *types.Log) (*StakeHubMinDelegateAmountUpdated, error) {
+	event := "MinDelegateAmountUpdated"
+	if log.Topics[0] != stakeHub.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(StakeHubMinDelegateAmountUpdated)
 	if len(log.Data) > 0 {
 		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
 			return nil, err
@@ -1034,31 +1378,30 @@ func (stakeHub *StakeHub) UnpackPausedEvent(log *types.Log) (*StakeHubPaused, er
 	return out, nil
 }
 
-// StakeHubStakeClaimed represents a StakeClaimed event raised by the StakeHub contract.
-type StakeHubStakeClaimed struct {
-	ValidatorAddr common.Address
-	OperatorAddr  common.Address
-	Amount        *big.Int
-	Raw           *types.Log // Blockchain specific contextual infos
+// StakeHubRewardDistributed represents a RewardDistributed event raised by the StakeHub contract.
+type StakeHubRewardDistributed struct {
+	OperatorAddr common.Address
+	Amount       *big.Int
+	Raw          *types.Log // Blockchain specific contextual infos
 }
 
-const StakeHubStakeClaimedEventName = "StakeClaimed"
+const StakeHubRewardDistributedEventName = "RewardDistributed"
 
 // ContractEventName returns the user-defined event name.
-func (StakeHubStakeClaimed) ContractEventName() string {
-	return StakeHubStakeClaimedEventName
+func (StakeHubRewardDistributed) ContractEventName() string {
+	return StakeHubRewardDistributedEventName
 }
 
-// UnpackStakeClaimedEvent is the Go binding that unpacks the event data emitted
+// UnpackRewardDistributedEvent is the Go binding that unpacks the event data emitted
 // by contract.
 //
-// Solidity: event StakeClaimed(address indexed validatorAddr, address indexed operatorAddr, uint256 amount)
-func (stakeHub *StakeHub) UnpackStakeClaimedEvent(log *types.Log) (*StakeHubStakeClaimed, error) {
-	event := "StakeClaimed"
+// Solidity: event RewardDistributed(address indexed operatorAddr, uint256 amount)
+func (stakeHub *StakeHub) UnpackRewardDistributedEvent(log *types.Log) (*StakeHubRewardDistributed, error) {
+	event := "RewardDistributed"
 	if log.Topics[0] != stakeHub.abi.Events[event].ID {
 		return nil, errors.New("event signature mismatch")
 	}
-	out := new(StakeHubStakeClaimed)
+	out := new(StakeHubRewardDistributed)
 	if len(log.Data) > 0 {
 		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
 			return nil, err
@@ -1159,6 +1502,50 @@ func (stakeHub *StakeHub) UnpackUnbondingPeriodUpdatedEvent(log *types.Log) (*St
 	return out, nil
 }
 
+// StakeHubUndelegated represents a Undelegated event raised by the StakeHub contract.
+type StakeHubUndelegated struct {
+	OperatorAddr common.Address
+	Delegator    common.Address
+	Amount       *big.Int
+	Shares       *big.Int
+	Raw          *types.Log // Blockchain specific contextual infos
+}
+
+const StakeHubUndelegatedEventName = "Undelegated"
+
+// ContractEventName returns the user-defined event name.
+func (StakeHubUndelegated) ContractEventName() string {
+	return StakeHubUndelegatedEventName
+}
+
+// UnpackUndelegatedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event Undelegated(address indexed operatorAddr, address indexed delegator, uint256 amount, uint256 shares)
+func (stakeHub *StakeHub) UnpackUndelegatedEvent(log *types.Log) (*StakeHubUndelegated, error) {
+	event := "Undelegated"
+	if log.Topics[0] != stakeHub.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(StakeHubUndelegated)
+	if len(log.Data) > 0 {
+		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range stakeHub.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
 // StakeHubUnpaused represents a Unpaused event raised by the StakeHub contract.
 type StakeHubUnpaused struct {
 	Account common.Address
@@ -1204,7 +1591,7 @@ func (stakeHub *StakeHub) UnpackUnpausedEvent(log *types.Log) (*StakeHubUnpaused
 type StakeHubValidatorApplied struct {
 	ValidatorAddr common.Address
 	OperatorAddr  common.Address
-	Amount        *big.Int
+	ShareContract common.Address
 	Raw           *types.Log // Blockchain specific contextual infos
 }
 
@@ -1218,7 +1605,7 @@ func (StakeHubValidatorApplied) ContractEventName() string {
 // UnpackValidatorAppliedEvent is the Go binding that unpacks the event data emitted
 // by contract.
 //
-// Solidity: event ValidatorApplied(address indexed validatorAddr, address indexed operatorAddr, uint256 amount)
+// Solidity: event ValidatorApplied(address indexed validatorAddr, address indexed operatorAddr, address indexed shareContract)
 func (stakeHub *StakeHub) UnpackValidatorAppliedEvent(log *types.Log) (*StakeHubValidatorApplied, error) {
 	event := "ValidatorApplied"
 	if log.Topics[0] != stakeHub.abi.Events[event].ID {
@@ -1267,49 +1654,6 @@ func (stakeHub *StakeHub) UnpackValidatorJailedEvent(log *types.Log) (*StakeHubV
 		return nil, errors.New("event signature mismatch")
 	}
 	out := new(StakeHubValidatorJailed)
-	if len(log.Data) > 0 {
-		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
-			return nil, err
-		}
-	}
-	var indexed abi.Arguments
-	for _, arg := range stakeHub.abi.Events[event].Inputs {
-		if arg.Indexed {
-			indexed = append(indexed, arg)
-		}
-	}
-	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
-		return nil, err
-	}
-	out.Raw = log
-	return out, nil
-}
-
-// StakeHubValidatorLeft represents a ValidatorLeft event raised by the StakeHub contract.
-type StakeHubValidatorLeft struct {
-	ValidatorAddr common.Address
-	OperatorAddr  common.Address
-	LeavingTime   *big.Int
-	Raw           *types.Log // Blockchain specific contextual infos
-}
-
-const StakeHubValidatorLeftEventName = "ValidatorLeft"
-
-// ContractEventName returns the user-defined event name.
-func (StakeHubValidatorLeft) ContractEventName() string {
-	return StakeHubValidatorLeftEventName
-}
-
-// UnpackValidatorLeftEvent is the Go binding that unpacks the event data emitted
-// by contract.
-//
-// Solidity: event ValidatorLeft(address indexed validatorAddr, address indexed operatorAddr, uint256 leavingTime)
-func (stakeHub *StakeHub) UnpackValidatorLeftEvent(log *types.Log) (*StakeHubValidatorLeft, error) {
-	event := "ValidatorLeft"
-	if log.Topics[0] != stakeHub.abi.Events[event].ID {
-		return nil, errors.New("event signature mismatch")
-	}
-	out := new(StakeHubValidatorLeft)
 	if len(log.Data) > 0 {
 		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
 			return nil, err
@@ -1453,11 +1797,97 @@ func (stakeHub *StakeHub) UnpackValidatorUnjailedEvent(log *types.Log) (*StakeHu
 	return out, nil
 }
 
+// StakeHubValidatorUnstaked represents a ValidatorUnstaked event raised by the StakeHub contract.
+type StakeHubValidatorUnstaked struct {
+	ValidatorAddr common.Address
+	OperatorAddr  common.Address
+	UnstakeTime   *big.Int
+	Raw           *types.Log // Blockchain specific contextual infos
+}
+
+const StakeHubValidatorUnstakedEventName = "ValidatorUnstaked"
+
+// ContractEventName returns the user-defined event name.
+func (StakeHubValidatorUnstaked) ContractEventName() string {
+	return StakeHubValidatorUnstakedEventName
+}
+
+// UnpackValidatorUnstakedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event ValidatorUnstaked(address indexed validatorAddr, address indexed operatorAddr, uint256 unstakeTime)
+func (stakeHub *StakeHub) UnpackValidatorUnstakedEvent(log *types.Log) (*StakeHubValidatorUnstaked, error) {
+	event := "ValidatorUnstaked"
+	if log.Topics[0] != stakeHub.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(StakeHubValidatorUnstaked)
+	if len(log.Data) > 0 {
+		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range stakeHub.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// StakeHubValidatorUpdated represents a ValidatorUpdated event raised by the StakeHub contract.
+type StakeHubValidatorUpdated struct {
+	OperatorAddr      common.Address
+	NewValidatorAddr  common.Address
+	NewCommissionRate *big.Int
+	Raw               *types.Log // Blockchain specific contextual infos
+}
+
+const StakeHubValidatorUpdatedEventName = "ValidatorUpdated"
+
+// ContractEventName returns the user-defined event name.
+func (StakeHubValidatorUpdated) ContractEventName() string {
+	return StakeHubValidatorUpdatedEventName
+}
+
+// UnpackValidatorUpdatedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event ValidatorUpdated(address indexed operatorAddr, address indexed newValidatorAddr, uint256 newCommissionRate)
+func (stakeHub *StakeHub) UnpackValidatorUpdatedEvent(log *types.Log) (*StakeHubValidatorUpdated, error) {
+	event := "ValidatorUpdated"
+	if log.Topics[0] != stakeHub.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(StakeHubValidatorUpdated)
+	if len(log.Data) > 0 {
+		if err := stakeHub.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range stakeHub.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
 // UnpackError attempts to decode the provided error data using user-defined
 // error definitions.
 func (stakeHub *StakeHub) UnpackError(raw []byte) (any, error) {
-	if bytes.Equal(raw[:4], stakeHub.abi.Errors["AlreadyLeaving"].ID.Bytes()[:4]) {
-		return stakeHub.UnpackAlreadyLeavingError(raw[4:])
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["DuplicateId"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackDuplicateIdError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["DuplicateOperatorAddress"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackDuplicateOperatorAddressError(raw[4:])
@@ -1471,17 +1901,29 @@ func (stakeHub *StakeHub) UnpackError(raw []byte) (any, error) {
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["ExpectedPause"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackExpectedPauseError(raw[4:])
 	}
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["FailedDeployment"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackFailedDeploymentError(raw[4:])
+	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InBlackList"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackInBlackListError(raw[4:])
 	}
-	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InvalidClaim"].ID.Bytes()[:4]) {
-		return stakeHub.UnpackInvalidClaimError(raw[4:])
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InsufficientBalance"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackInsufficientBalanceError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InvalidCommissionRate"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackInvalidCommissionRateError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InvalidId"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackInvalidIdError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InvalidInitialization"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackInvalidInitializationError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InvalidValidatorAddress"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackInvalidValidatorAddressError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InvalidValidatorStatus"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackInvalidValidatorStatusError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["InvalidValue"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackInvalidValueError(raw[4:])
@@ -1492,17 +1934,14 @@ func (stakeHub *StakeHub) UnpackError(raw []byte) (any, error) {
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["NotEnoughAmount"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackNotEnoughAmountError(raw[4:])
 	}
-	if bytes.Equal(raw[:4], stakeHub.abi.Errors["NotInLeavingState"].ID.Bytes()[:4]) {
-		return stakeHub.UnpackNotInLeavingStateError(raw[4:])
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["NotEnoughShares"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackNotEnoughSharesError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["NotInitializing"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackNotInitializingError(raw[4:])
 	}
-	if bytes.Equal(raw[:4], stakeHub.abi.Errors["NotJailedValidator"].ID.Bytes()[:4]) {
-		return stakeHub.UnpackNotJailedValidatorError(raw[4:])
-	}
-	if bytes.Equal(raw[:4], stakeHub.abi.Errors["NotValidator"].ID.Bytes()[:4]) {
-		return stakeHub.UnpackNotValidatorError(raw[4:])
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["NotJailed"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackNotJailedError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["OnlyCoinbase"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackOnlyCoinbaseError(raw[4:])
@@ -1519,36 +1958,42 @@ func (stakeHub *StakeHub) UnpackError(raw []byte) (any, error) {
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["ReentrancyGuardReentrantCall"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackReentrancyGuardReentrantCallError(raw[4:])
 	}
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["SafeCastOverflowedUintDowncast"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackSafeCastOverflowedUintDowncastError(raw[4:])
+	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["StillInJailPeriod"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackStillInJailPeriodError(raw[4:])
 	}
-	if bytes.Equal(raw[:4], stakeHub.abi.Errors["StillInUnbondingPeriod"].ID.Bytes()[:4]) {
-		return stakeHub.UnpackStillInUnbondingPeriodError(raw[4:])
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["TooFrequentUpdate"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackTooFrequentUpdateError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], stakeHub.abi.Errors["TransferFailed"].ID.Bytes()[:4]) {
 		return stakeHub.UnpackTransferFailedError(raw[4:])
 	}
+	if bytes.Equal(raw[:4], stakeHub.abi.Errors["ValidatorNotExists"].ID.Bytes()[:4]) {
+		return stakeHub.UnpackValidatorNotExistsError(raw[4:])
+	}
 	return nil, errors.New("Unknown error")
 }
 
-// StakeHubAlreadyLeaving represents a AlreadyLeaving error raised by the StakeHub contract.
-type StakeHubAlreadyLeaving struct {
+// StakeHubDuplicateId represents a DuplicateId error raised by the StakeHub contract.
+type StakeHubDuplicateId struct {
 }
 
 // ErrorID returns the hash of canonical representation of the error's signature.
 //
-// Solidity: error AlreadyLeaving()
-func StakeHubAlreadyLeavingErrorID() common.Hash {
-	return common.HexToHash("0x33dd9771a04987f8b2f49f8bbcc151db435d1e17b8367051371cfd069b3fb717")
+// Solidity: error DuplicateId()
+func StakeHubDuplicateIdErrorID() common.Hash {
+	return common.HexToHash("0xb1fb6bd0569a843fae5509e7270458906bc5e0359ad0fe264fabe5345bacf83d")
 }
 
-// UnpackAlreadyLeavingError is the Go binding used to decode the provided
+// UnpackDuplicateIdError is the Go binding used to decode the provided
 // error data into the corresponding Go error struct.
 //
-// Solidity: error AlreadyLeaving()
-func (stakeHub *StakeHub) UnpackAlreadyLeavingError(raw []byte) (*StakeHubAlreadyLeaving, error) {
-	out := new(StakeHubAlreadyLeaving)
-	if err := stakeHub.abi.UnpackIntoInterface(out, "AlreadyLeaving", raw); err != nil {
+// Solidity: error DuplicateId()
+func (stakeHub *StakeHub) UnpackDuplicateIdError(raw []byte) (*StakeHubDuplicateId, error) {
+	out := new(StakeHubDuplicateId)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "DuplicateId", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -1646,6 +2091,29 @@ func (stakeHub *StakeHub) UnpackExpectedPauseError(raw []byte) (*StakeHubExpecte
 	return out, nil
 }
 
+// StakeHubFailedDeployment represents a FailedDeployment error raised by the StakeHub contract.
+type StakeHubFailedDeployment struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error FailedDeployment()
+func StakeHubFailedDeploymentErrorID() common.Hash {
+	return common.HexToHash("0xb06ebf3d5067824a3fe5d5ba19471e035a7de6c88dac362c77b162830a5b9093")
+}
+
+// UnpackFailedDeploymentError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error FailedDeployment()
+func (stakeHub *StakeHub) UnpackFailedDeploymentError(raw []byte) (*StakeHubFailedDeployment, error) {
+	out := new(StakeHubFailedDeployment)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "FailedDeployment", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StakeHubInBlackList represents a InBlackList error raised by the StakeHub contract.
 type StakeHubInBlackList struct {
 	Account common.Address
@@ -1670,24 +2138,72 @@ func (stakeHub *StakeHub) UnpackInBlackListError(raw []byte) (*StakeHubInBlackLi
 	return out, nil
 }
 
-// StakeHubInvalidClaim represents a InvalidClaim error raised by the StakeHub contract.
-type StakeHubInvalidClaim struct {
+// StakeHubInsufficientBalance represents a InsufficientBalance error raised by the StakeHub contract.
+type StakeHubInsufficientBalance struct {
+	Balance *big.Int
+	Needed  *big.Int
 }
 
 // ErrorID returns the hash of canonical representation of the error's signature.
 //
-// Solidity: error InvalidClaim()
-func StakeHubInvalidClaimErrorID() common.Hash {
-	return common.HexToHash("0xed3c247cc0268b6a8ea6ea7af517a687f38b09876966c761867fb56e61e3d0eb")
+// Solidity: error InsufficientBalance(uint256 balance, uint256 needed)
+func StakeHubInsufficientBalanceErrorID() common.Hash {
+	return common.HexToHash("0xcf4791818fba6e019216eb4864093b4947f674afada5d305e57d598b641dad1d")
 }
 
-// UnpackInvalidClaimError is the Go binding used to decode the provided
+// UnpackInsufficientBalanceError is the Go binding used to decode the provided
 // error data into the corresponding Go error struct.
 //
-// Solidity: error InvalidClaim()
-func (stakeHub *StakeHub) UnpackInvalidClaimError(raw []byte) (*StakeHubInvalidClaim, error) {
-	out := new(StakeHubInvalidClaim)
-	if err := stakeHub.abi.UnpackIntoInterface(out, "InvalidClaim", raw); err != nil {
+// Solidity: error InsufficientBalance(uint256 balance, uint256 needed)
+func (stakeHub *StakeHub) UnpackInsufficientBalanceError(raw []byte) (*StakeHubInsufficientBalance, error) {
+	out := new(StakeHubInsufficientBalance)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "InsufficientBalance", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// StakeHubInvalidCommissionRate represents a InvalidCommissionRate error raised by the StakeHub contract.
+type StakeHubInvalidCommissionRate struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error InvalidCommissionRate()
+func StakeHubInvalidCommissionRateErrorID() common.Hash {
+	return common.HexToHash("0x8fe552e0fc2e1a1a1656c6c0141e0073be5b3b424244bc17f9ee08d7f29ab97e")
+}
+
+// UnpackInvalidCommissionRateError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error InvalidCommissionRate()
+func (stakeHub *StakeHub) UnpackInvalidCommissionRateError(raw []byte) (*StakeHubInvalidCommissionRate, error) {
+	out := new(StakeHubInvalidCommissionRate)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "InvalidCommissionRate", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// StakeHubInvalidId represents a InvalidId error raised by the StakeHub contract.
+type StakeHubInvalidId struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error InvalidId()
+func StakeHubInvalidIdErrorID() common.Hash {
+	return common.HexToHash("0xdfa1a408860d09b3a48293a777aa052aa693dea19a077bbc934298b3ce4acd29")
+}
+
+// UnpackInvalidIdError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error InvalidId()
+func (stakeHub *StakeHub) UnpackInvalidIdError(raw []byte) (*StakeHubInvalidId, error) {
+	out := new(StakeHubInvalidId)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "InvalidId", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -1734,6 +2250,30 @@ func StakeHubInvalidValidatorAddressErrorID() common.Hash {
 func (stakeHub *StakeHub) UnpackInvalidValidatorAddressError(raw []byte) (*StakeHubInvalidValidatorAddress, error) {
 	out := new(StakeHubInvalidValidatorAddress)
 	if err := stakeHub.abi.UnpackIntoInterface(out, "InvalidValidatorAddress", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// StakeHubInvalidValidatorStatus represents a InvalidValidatorStatus error raised by the StakeHub contract.
+type StakeHubInvalidValidatorStatus struct {
+	Status uint8
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error InvalidValidatorStatus(uint8 status)
+func StakeHubInvalidValidatorStatusErrorID() common.Hash {
+	return common.HexToHash("0x5c3324cccfdef5487c5ba458c99fd8eac87de089ab6d0759af0d114eaad96a3e")
+}
+
+// UnpackInvalidValidatorStatusError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error InvalidValidatorStatus(uint8 status)
+func (stakeHub *StakeHub) UnpackInvalidValidatorStatusError(raw []byte) (*StakeHubInvalidValidatorStatus, error) {
+	out := new(StakeHubInvalidValidatorStatus)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "InvalidValidatorStatus", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -1810,24 +2350,24 @@ func (stakeHub *StakeHub) UnpackNotEnoughAmountError(raw []byte) (*StakeHubNotEn
 	return out, nil
 }
 
-// StakeHubNotInLeavingState represents a NotInLeavingState error raised by the StakeHub contract.
-type StakeHubNotInLeavingState struct {
+// StakeHubNotEnoughShares represents a NotEnoughShares error raised by the StakeHub contract.
+type StakeHubNotEnoughShares struct {
 }
 
 // ErrorID returns the hash of canonical representation of the error's signature.
 //
-// Solidity: error NotInLeavingState()
-func StakeHubNotInLeavingStateErrorID() common.Hash {
-	return common.HexToHash("0x281f6b914c6cc246a19e3cbb0e0cb34cf54e3fd690ef2a5bd9c5ff78b9ddcd9a")
+// Solidity: error NotEnoughShares()
+func StakeHubNotEnoughSharesErrorID() common.Hash {
+	return common.HexToHash("0xf15ed2146de0776d0c3238708a746d883c49ffc423a1269fe2022bfaf59c7446")
 }
 
-// UnpackNotInLeavingStateError is the Go binding used to decode the provided
+// UnpackNotEnoughSharesError is the Go binding used to decode the provided
 // error data into the corresponding Go error struct.
 //
-// Solidity: error NotInLeavingState()
-func (stakeHub *StakeHub) UnpackNotInLeavingStateError(raw []byte) (*StakeHubNotInLeavingState, error) {
-	out := new(StakeHubNotInLeavingState)
-	if err := stakeHub.abi.UnpackIntoInterface(out, "NotInLeavingState", raw); err != nil {
+// Solidity: error NotEnoughShares()
+func (stakeHub *StakeHub) UnpackNotEnoughSharesError(raw []byte) (*StakeHubNotEnoughShares, error) {
+	out := new(StakeHubNotEnoughShares)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "NotEnoughShares", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -1856,47 +2396,24 @@ func (stakeHub *StakeHub) UnpackNotInitializingError(raw []byte) (*StakeHubNotIn
 	return out, nil
 }
 
-// StakeHubNotJailedValidator represents a NotJailedValidator error raised by the StakeHub contract.
-type StakeHubNotJailedValidator struct {
+// StakeHubNotJailed represents a NotJailed error raised by the StakeHub contract.
+type StakeHubNotJailed struct {
 }
 
 // ErrorID returns the hash of canonical representation of the error's signature.
 //
-// Solidity: error NotJailedValidator()
-func StakeHubNotJailedValidatorErrorID() common.Hash {
-	return common.HexToHash("0xa206ac1a18393ea5c89e8aa5e2a5c0f20bdb5f463ed25133d9f23d36dd49af50")
+// Solidity: error NotJailed()
+func StakeHubNotJailedErrorID() common.Hash {
+	return common.HexToHash("0xf9200d4f9403acb31301fdd63749a1f0c233891cee0618b3f06f5f9768d0c018")
 }
 
-// UnpackNotJailedValidatorError is the Go binding used to decode the provided
+// UnpackNotJailedError is the Go binding used to decode the provided
 // error data into the corresponding Go error struct.
 //
-// Solidity: error NotJailedValidator()
-func (stakeHub *StakeHub) UnpackNotJailedValidatorError(raw []byte) (*StakeHubNotJailedValidator, error) {
-	out := new(StakeHubNotJailedValidator)
-	if err := stakeHub.abi.UnpackIntoInterface(out, "NotJailedValidator", raw); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// StakeHubNotValidator represents a NotValidator error raised by the StakeHub contract.
-type StakeHubNotValidator struct {
-}
-
-// ErrorID returns the hash of canonical representation of the error's signature.
-//
-// Solidity: error NotValidator()
-func StakeHubNotValidatorErrorID() common.Hash {
-	return common.HexToHash("0x2ec5b449e1d63fa34c160c67ce2d5826d939017f27bc0c78ef142b8357c69f9e")
-}
-
-// UnpackNotValidatorError is the Go binding used to decode the provided
-// error data into the corresponding Go error struct.
-//
-// Solidity: error NotValidator()
-func (stakeHub *StakeHub) UnpackNotValidatorError(raw []byte) (*StakeHubNotValidator, error) {
-	out := new(StakeHubNotValidator)
-	if err := stakeHub.abi.UnpackIntoInterface(out, "NotValidator", raw); err != nil {
+// Solidity: error NotJailed()
+func (stakeHub *StakeHub) UnpackNotJailedError(raw []byte) (*StakeHubNotJailed, error) {
+	out := new(StakeHubNotJailed)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "NotJailed", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -2018,6 +2535,31 @@ func (stakeHub *StakeHub) UnpackReentrancyGuardReentrantCallError(raw []byte) (*
 	return out, nil
 }
 
+// StakeHubSafeCastOverflowedUintDowncast represents a SafeCastOverflowedUintDowncast error raised by the StakeHub contract.
+type StakeHubSafeCastOverflowedUintDowncast struct {
+	Bits  uint8
+	Value *big.Int
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error SafeCastOverflowedUintDowncast(uint8 bits, uint256 value)
+func StakeHubSafeCastOverflowedUintDowncastErrorID() common.Hash {
+	return common.HexToHash("0x6dfcc6503a32754ce7a89698e18201fc5294fd4aad43edefee786f88423b1a12")
+}
+
+// UnpackSafeCastOverflowedUintDowncastError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error SafeCastOverflowedUintDowncast(uint8 bits, uint256 value)
+func (stakeHub *StakeHub) UnpackSafeCastOverflowedUintDowncastError(raw []byte) (*StakeHubSafeCastOverflowedUintDowncast, error) {
+	out := new(StakeHubSafeCastOverflowedUintDowncast)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "SafeCastOverflowedUintDowncast", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StakeHubStillInJailPeriod represents a StillInJailPeriod error raised by the StakeHub contract.
 type StakeHubStillInJailPeriod struct {
 }
@@ -2041,24 +2583,24 @@ func (stakeHub *StakeHub) UnpackStillInJailPeriodError(raw []byte) (*StakeHubSti
 	return out, nil
 }
 
-// StakeHubStillInUnbondingPeriod represents a StillInUnbondingPeriod error raised by the StakeHub contract.
-type StakeHubStillInUnbondingPeriod struct {
+// StakeHubTooFrequentUpdate represents a TooFrequentUpdate error raised by the StakeHub contract.
+type StakeHubTooFrequentUpdate struct {
 }
 
 // ErrorID returns the hash of canonical representation of the error's signature.
 //
-// Solidity: error StillInUnbondingPeriod()
-func StakeHubStillInUnbondingPeriodErrorID() common.Hash {
-	return common.HexToHash("0x0e8c99272d5669d980928301edd9c9438012d2001950950ad47620b73840623a")
+// Solidity: error TooFrequentUpdate()
+func StakeHubTooFrequentUpdateErrorID() common.Hash {
+	return common.HexToHash("0xc85dc358bb7c88429397fc64ed42d3cef735fef6b38bb9aae96e5c1d3e864224")
 }
 
-// UnpackStillInUnbondingPeriodError is the Go binding used to decode the provided
+// UnpackTooFrequentUpdateError is the Go binding used to decode the provided
 // error data into the corresponding Go error struct.
 //
-// Solidity: error StillInUnbondingPeriod()
-func (stakeHub *StakeHub) UnpackStillInUnbondingPeriodError(raw []byte) (*StakeHubStillInUnbondingPeriod, error) {
-	out := new(StakeHubStillInUnbondingPeriod)
-	if err := stakeHub.abi.UnpackIntoInterface(out, "StillInUnbondingPeriod", raw); err != nil {
+// Solidity: error TooFrequentUpdate()
+func (stakeHub *StakeHub) UnpackTooFrequentUpdateError(raw []byte) (*StakeHubTooFrequentUpdate, error) {
+	out := new(StakeHubTooFrequentUpdate)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "TooFrequentUpdate", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -2066,23 +2608,45 @@ func (stakeHub *StakeHub) UnpackStillInUnbondingPeriodError(raw []byte) (*StakeH
 
 // StakeHubTransferFailed represents a TransferFailed error raised by the StakeHub contract.
 type StakeHubTransferFailed struct {
-	Amount *big.Int
 }
 
 // ErrorID returns the hash of canonical representation of the error's signature.
 //
-// Solidity: error TransferFailed(uint256 amount)
+// Solidity: error TransferFailed()
 func StakeHubTransferFailedErrorID() common.Hash {
-	return common.HexToHash("0xc39ba1a9a812115efec13c9546b7b109574823d9c12ff09ebcc4ba5d47153ec6")
+	return common.HexToHash("0x90b8ec1877afffd816d05d9b13947f3ff18ec5851c38bad15ec2b710f92391b1")
 }
 
 // UnpackTransferFailedError is the Go binding used to decode the provided
 // error data into the corresponding Go error struct.
 //
-// Solidity: error TransferFailed(uint256 amount)
+// Solidity: error TransferFailed()
 func (stakeHub *StakeHub) UnpackTransferFailedError(raw []byte) (*StakeHubTransferFailed, error) {
 	out := new(StakeHubTransferFailed)
 	if err := stakeHub.abi.UnpackIntoInterface(out, "TransferFailed", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// StakeHubValidatorNotExists represents a ValidatorNotExists error raised by the StakeHub contract.
+type StakeHubValidatorNotExists struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error ValidatorNotExists()
+func StakeHubValidatorNotExistsErrorID() common.Hash {
+	return common.HexToHash("0x5926e0c333f1cbbc6225b5f94c36bb66fcde4ead7b7b00e0b28ebb7bcf906e5e")
+}
+
+// UnpackValidatorNotExistsError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error ValidatorNotExists()
+func (stakeHub *StakeHub) UnpackValidatorNotExistsError(raw []byte) (*StakeHubValidatorNotExists, error) {
+	out := new(StakeHubValidatorNotExists)
+	if err := stakeHub.abi.UnpackIntoInterface(out, "ValidatorNotExists", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
