@@ -6,7 +6,6 @@ import (
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -50,14 +49,19 @@ func init() {
 			{
 				Name:         "HistoryStorage",
 				ContractAddr: params.HistoryStorageAddress,
-				Deploy:       true,
 				Code:         params.HistoryStorageCode,
+				Deploy:       true,
 			},
 		},
 	}
 	upgrades[forks.Breakpoint] = &Upgrade{
 		UpgradeName: forks.Breakpoint.String(),
 		Configs: []*UpgradeConfig{
+			{
+				Name:         "CrossEx",
+				ContractAddr: CrossExAddr,
+				Code:         breakpoint.CrossExCode,
+			},
 			// ##CROSS: consensus system contract
 			{
 				Name:         "IstanbulParam",
@@ -123,6 +127,12 @@ func init() {
 				},
 			},
 			{
+				Name:         "ValidatorShare",
+				ContractAddr: ValidatorShareAddr,
+				Code:         breakpoint.ValidatorShareMetaData.BinRuntime,
+				Deploy:       true,
+			},
+			{
 				Name:         "ValidatorSlash",
 				ContractAddr: ValidatorSlashAddr,
 				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
@@ -130,12 +140,6 @@ func init() {
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					return breakpoint.NewValidatorSlash().PackInitialize(), nil
 				},
-			},
-			{
-				Name:         "ValidatorShare",
-				ContractAddr: ValidatorShareAddr,
-				Code:         breakpoint.ValidatorShareMetaData.BinRuntime,
-				Deploy:       true,
 			},
 			{
 				Name:         "CrossGovernor",
@@ -192,6 +196,7 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 	return
 }
 
+// InitSystemContract checks if the block is exactly on the fork and returns the initialization data for the system contracts if it is.
 func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBlockTime uint64) (initData []ContractInitData) {
 	if config == nil || header == nil {
 		return
@@ -220,9 +225,9 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 		exists := statedb.Exist(cfg.ContractAddr)
 
 		// write code
-		code, err := getCode(cfg)
-		if err != nil {
-			panic(fmt.Errorf("failed to parse code: %w", err))
+		code := getCode(cfg)
+		if len(code) == 0 {
+			panic(fmt.Errorf("%s: failed to parse code: %s", upgrade.UpgradeName, cfg.Name))
 		}
 
 		if len(code) > 0 {
@@ -251,10 +256,10 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 	}
 }
 
-func getCode(cfg *UpgradeConfig) (code []byte, err error) {
+func getCode(cfg *UpgradeConfig) (code []byte) {
 	switch v := cfg.Code.(type) {
 	case string:
-		code, err = hexutil.Decode(v)
+		code = common.FromHex(v)
 	case []byte:
 		code = v
 	}

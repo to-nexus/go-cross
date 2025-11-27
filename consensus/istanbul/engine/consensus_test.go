@@ -160,8 +160,8 @@ func TestGetCurrentValidators(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := &Engine{
-				contactBackend: tt.mockCaller,
-				validatorSet:   breakpoint.NewValidatorSet(),
+				contractBackend: tt.mockCaller,
+				validatorSet:    breakpoint.NewValidatorSet(),
 			}
 
 			validators, err := engine.getCurrentValidators(tt.number)
@@ -371,10 +371,10 @@ func TestUpdateValidatorSet(t *testing.T) {
 
 			// create engine with mock backend
 			engine := &Engine{
-				contactBackend: tt.mockBackend,
-				validatorSet:   breakpoint.NewValidatorSet(),
-				stakeHub:       breakpoint.NewStakeHub(),
-				signer:         common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				contractBackend: tt.mockBackend,
+				validatorSet:    breakpoint.NewValidatorSet(),
+				stakeHub:        breakpoint.NewStakeHub(),
+				signer:          common.HexToAddress("0x1111111111111111111111111111111111111111"),
 				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 					return tx, nil
 				},
@@ -613,8 +613,8 @@ func TestSyncIstanbulParam(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := &Engine{
-				contactBackend: tt.mockBackend,
-				istanbulParam:  breakpoint.NewIstanbulParam(),
+				contractBackend: tt.mockBackend,
+				istanbulParam:   breakpoint.NewIstanbulParam(),
 			}
 
 			params.ClearCachedIstanbulConfigs()
@@ -801,9 +801,9 @@ func TestSlashValidators(t *testing.T) {
 
 			// create engine with mock backend
 			engine := &Engine{
-				contactBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
-				validatorSlash: breakpoint.NewValidatorSlash(),
-				signer:         common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				contractBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
+				validatorSlash:  breakpoint.NewValidatorSlash(),
+				signer:          common.HexToAddress("0x1111111111111111111111111111111111111111"),
 				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 					return tx, nil
 				},

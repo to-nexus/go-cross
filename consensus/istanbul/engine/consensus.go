@@ -25,7 +25,7 @@ import (
 // It reads all checkpoints up to the given timepoint and caches them.
 func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 	timepoint := header.Number
-	istanbulParamInstance := e.istanbulParam.Instance(e.contactBackend, contracts.IstanbulParamAddr)
+	istanbulParamInstance := e.istanbulParam.Instance(e.contractBackend, contracts.IstanbulParamAddr)
 
 	length, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackNumCheckpoints(), e.istanbulParam.UnpackNumCheckpoints)
 	if err != nil {
@@ -103,14 +103,9 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 
 // ##CROSS: consensus system contract
 
-type ValidatorInfo struct {
-	address common.Address
-	amount  *uint256.Int
-}
-
 // getCurrentValidators reads the active validators from the ValidatorSet contract.
 func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, error) {
-	validatorSetInstance := e.validatorSet.Instance(e.contactBackend, contracts.ValidatorSetAddr)
+	validatorSetInstance := e.validatorSet.Instance(e.contractBackend, contracts.ValidatorSetAddr)
 
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 	calldata := e.validatorSet.PackGetValidators()
@@ -130,6 +125,11 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, error) {
 	})
 
 	return validators, nil
+}
+
+type ValidatorInfo struct {
+	address common.Address
+	amount  *uint256.Int
 }
 
 // updateValidatorSet creates a new validator set and updates the ValidatorSet contract.
@@ -187,7 +187,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 
 // getStakedValidatorInfo reads all staked validators from the StakeHub contract.
 func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) {
-	stakeHubInstance := e.stakeHub.Instance(e.contactBackend, contracts.StakeHubAddr)
+	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 	calldata := e.stakeHub.PackGetValidators(big.NewInt(0), big.NewInt(0))
@@ -218,7 +218,7 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 
 // getValidatorThreshold reads the active validator threshold from the StakeHub contract.
 func (e *Engine) getValidatorThreshold(number uint64) (uint64, error) {
-	stakeHubInstance := e.stakeHub.Instance(e.contactBackend, contracts.StakeHubAddr)
+	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 	calldata := e.stakeHub.PackValidatorThreshold()

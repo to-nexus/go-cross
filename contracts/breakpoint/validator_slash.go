@@ -26,9 +26,9 @@ var (
 
 // ValidatorSlashMetaData contains all meta data concerning the ValidatorSlash contract.
 var ValidatorSlashMetaData = bind.MetaData{
-	ABI:        "[{\"type\":\"function\",\"name\":\"getSlashInfo\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"height\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"count\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getSlashedValidators\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address[]\",\"internalType\":\"address[]\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"offlineSlashThreshold\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"setOfflineSlashThreshold\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"slashOffline\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineSlashThresholdUpdated\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineSlashed\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValue\",\"inputs\":[{\"name\":\"key\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"value\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyCoinbase\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlySystemContract\",\"inputs\":[{\"name\":\"contractAddr\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OnlyZeroGasPrice\",\"inputs\":[]}]",
+	ABI:        "[{\"type\":\"function\",\"name\":\"REDUCE_COUNT_RATE\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getSlashInfo\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"height\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"count\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getSlashedValidators\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address[]\",\"internalType\":\"address[]\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"offlineSlashThreshold\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"reduceCount\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setOfflineSlashThreshold\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"slashOffline\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineSlashThresholdUpdated\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValue\",\"inputs\":[{\"name\":\"key\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"value\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotValidator\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OncePerBlock\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyCoinbase\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlySystemContract\",\"inputs\":[{\"name\":\"contractAddr\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OnlyZeroGasPrice\",\"inputs\":[]}]",
 	ID:         "ValidatorSlash",
-	BinRuntime: "0x6080806040526004361015610012575f80fd5b5f3560e01c9081632ea22d0b146103805750806344690e5c146103455780634ac9302e146102865780635b19c262146102695780637ac6010d146101bc57638129fc1c1461005e575f80fd5b346101b8575f3660031901126101b8575f5160206106755f395f51905f525460ff8160401c16159067ffffffffffffffff8116801590816101b0575b60011490816101a6575b15908161019d575b5061018e5767ffffffffffffffff1981166001175f5160206106755f395f51905f525581610162575b50413303610153573a6101445760326003556100ed57005b68ff0000000000000000195f5160206106755f395f51905f5254165f5160206106755f395f51905f52557fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2602060405160018152a1005b6383f1b1d360e01b5f5260045ffd5b63022d8c9560e31b5f5260045ffd5b68ffffffffffffffffff191668010000000000000001175f5160206106755f395f51905f52555f6100d5565b63f92ee8a960e01b5f5260045ffd5b9050155f6100ac565b303b1591506100a4565b83915061009a565b5f80fd5b346101b85760203660031901126101b8576004356110083303610254578015610210576020817f44cf37fc8d2185243e5927aa52de715bc8ff0d81f4785d5d391bc8178f1a2cdc92600355604051908152a1005b60849060405190632c648cf160e01b82526040600483015260156044830152741bd9999b1a5b9954db185cda151a1c995cda1bdb19605a1b60648301526024820152fd5b630f22c43960e41b5f5261100860045260245ffd5b346101b8575f3660031901126101b8576020600354604051908152f35b346101b8575f3660031901126101b8576040518060206001549283815201809260015f527fb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6905f5b81811061032f57505050816102e491038261040a565b604051918291602083019060208452518091526040830191905f5b81811061030d575050500390f35b82516001600160a01b03168452859450602093840193909201916001016102ff565b82548452602090930192600192830192016102ce565b346101b85760203660031901126101b8576004356001600160a01b03811681036101b857413303610153573a6101445761037e9061042c565b005b346101b85760203660031901126101b8576004356001600160a01b03811691908290036101b8576040915f525f6020526020825f20916103bf816103da565b60018354938483520154918291015282519182526020820152f35b6040810190811067ffffffffffffffff8211176103f657604052565b634e487b7160e01b5f52604160045260245ffd5b90601f8019910116810190811067ffffffffffffffff8211176103f657604052565b60405163facd743b60e01b81526001600160a01b0390911660048201819052905f906020816024816110015afa908115610578575f916105c8575b50156105c457815f525f60205260405f2090604051610485816103da565b60018354938483520154602082019381855243146105bd578061059757506104ac84610603565b50600183525b4381528251600354908115610583570615610503575b60017fa134ecb0a8ea69d0a9d1f43e7c16431fe63e3671536b461b96c16a5f2e7860d5938584528360205260408420925183555191015580a2565b6110023b156101b85760405163111a439760e21b815260048101859052925f84602481836110025af1938415610578577fa134ecb0a8ea69d0a9d1f43e7c16431fe63e3671536b461b96c16a5f2e7860d594610562575b5092506104c8565b61056f9193505f9061040a565b5f91600161055a565b6040513d5f823e3d90fd5b634e487b7160e01b5f52601260045260245ffd5b5f1981146105a95760010183526104b2565b634e487b7160e01b5f52601160045260245ffd5b5050505050565b5050565b90506020813d6020116105fb575b816105e36020938361040a565b810103126101b8575180151581036101b8575f610467565b3d91506105d6565b805f52600260205260405f2054155f1461066f57600154680100000000000000008110156103f657600181018060015581101561065b57819060015f5260205f200155600154905f52600260205260405f2055600190565b634e487b7160e01b5f52603260045260245ffd5b505f9056fef0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00a264697066735822122058471f0206e5d6b3ed0f8f36a5aae35bf0f1b02dfa6418fb0a4e079a4abc573764736f6c634300081c0033",
+	BinRuntime: "0x6080806040526004361015610012575f80fd5b5f905f3560e01c9081630fa2f647146105c0575080632ea22d0b1461053e57806344690e5c1461039d5780634ac9302e146102de5780635b19c262146102c05780637ac6010d1461020f5780638129fc1c146100b25763c786872914610076575f80fd5b346100af57806003193601126100af57611001330361009a576100976105fb565b80f35b630f22c43960e41b8152611001600452602490fd5b80fd5b50346100af57806003193601126100af575f5160206108165f395f51905f525460ff8160401c16159067ffffffffffffffff811680159081610207575b60011490816101fd575b1590816101f4575b506101e55767ffffffffffffffff1981166001175f5160206108165f395f51905f5255816101b9575b504133036101aa573a61019b5760326003556101435780f35b68ff0000000000000000195f5160206108165f395f51905f5254165f5160206108165f395f51905f52557fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2602060405160018152a180f35b6383f1b1d360e01b8252600482fd5b63022d8c9560e31b8252600482fd5b68ffffffffffffffffff191668010000000000000001175f5160206108165f395f51905f52555f61012a565b63f92ee8a960e01b8352600483fd5b9050155f610101565b303b1591506100f9565b8391506100ef565b50346100af5760203660031901126100af5760043561101333036102ab5760048110610267576020817f44cf37fc8d2185243e5927aa52de715bc8ff0d81f4785d5d391bc8178f1a2cdc92600355604051908152a180f35b60849060405190632c648cf160e01b82526040600483015260156044830152741bd9999b1a5b9954db185cda151a1c995cda1bdb19605a1b60648301526024820152fd5b630f22c43960e41b8252611013600452602482fd5b50346100af57806003193601126100af576020600354604051908152f35b50346100af57806003193601126100af5760405180602060015491828152018091600185527fb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf690855b818110610387575050508261033d9103836105d9565b604051928392602084019060208552518091526040840192915b818110610365575050500390f35b82516001600160a01b0316845285945060209384019390920191600101610357565b8254845260209093019260019283019201610327565b5034610493576020366003190112610493576004356001600160a01b038116908190036104935741330361052f573a6105205760405163facd743b60e01b8152600481018290526020816024816110015afa908115610488575f916104e5575b50156104d657805f525f60205260405f2080544381146104c75761049757600190610427836106e0565b5081808201555b4381550180546003541115610441578280f35b5f90556110023b15610493576040519063111a439760e21b825260048201525f81602481836110025af180156104885761047a57808280f35b61048691505f906105d9565b005b6040513d5f823e3d90fd5b5f80fd5b60018101805491905f1983146104b3576001809301905561042e565b634e487b7160e01b5f52601160045260245ffd5b638aaaa79d60e01b5f5260045ffd5b632ec5b44960e01b5f5260045ffd5b90506020813d602011610518575b81610500602093836105d9565b8101031261049357518015158103610493575f6103fd565b3d91506104f3565b6383f1b1d360e01b5f5260045ffd5b63022d8c9560e31b5f5260045ffd5b34610493576020366003190112610493576004356001600160a01b03811690819003610493575f525f60205260405f20604051906040820182811067ffffffffffffffff8211176105ac57604092602091845260018354938483520154918291015282519182526020820152f35b634e487b7160e01b5f52604160045260245ffd5b34610493575f3660031901126104935780600460209252f35b90601f8019910116810190811067ffffffffffffffff8211176105ac57604052565b60015480156106c85760035460021c90805b610615575050565b5f1981018181116104b35760015411156106b4577fb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf58101546001600160a01b03165f818152602081905260409020600101805490919084101561069157508054908382039182116104b357555b80156104b3575f19018061060d565b6106ae9150805f525f6020525f6001604082208281550155610750565b50610682565b634e487b7160e01b5f52603260045260245ffd5b50565b80548210156106b4575f5260205f2001905f90565b805f52600260205260405f2054155f1461074b57600154680100000000000000008110156105ac5761073461071e82600185940160015560016106cb565b819391549060031b91821b915f19901b19161790565b9055600154905f52600260205260405f2055600190565b505f90565b5f81815260026020526040902054801561080f575f1981018181116104b3576001545f198101919082116104b3578181036107d7575b50505060015480156107c3575f19016107a08160016106cb565b8154905f199060031b1b191690556001555f5260026020525f6040812055600190565b634e487b7160e01b5f52603160045260245ffd5b6107f96107e861071e9360016106cb565b90549060031b1c92839260016106cb565b90555f52600260205260405f20555f8080610786565b50505f9056fef0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00a2646970667358221220e639486dbd6cfc8ff441e2f58c06942852f1c7805595061a82d73fad8cf6539d64736f6c634300081c0033",
 }
 
 // ValidatorSlash is an auto generated Go binding around an Ethereum contract.
@@ -49,6 +49,31 @@ func NewValidatorSlash() *ValidatorSlash {
 // Use this to create the instance object passed to abigen v2 library functions Call, Transact, etc.
 func (c *ValidatorSlash) Instance(backend bind.ContractBackend, addr common.Address) *bind.BoundContract {
 	return bind.NewBoundContract(addr, c.abi, backend, backend, backend)
+}
+
+// PackREDUCECOUNTRATE is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x0fa2f647.
+//
+// Solidity: function REDUCE_COUNT_RATE() view returns(uint256)
+func (validatorSlash *ValidatorSlash) PackREDUCECOUNTRATE() []byte {
+	enc, err := validatorSlash.abi.Pack("REDUCE_COUNT_RATE")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// UnpackREDUCECOUNTRATE is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x0fa2f647.
+//
+// Solidity: function REDUCE_COUNT_RATE() view returns(uint256)
+func (validatorSlash *ValidatorSlash) UnpackREDUCECOUNTRATE(data []byte) (*big.Int, error) {
+	out, err := validatorSlash.abi.Unpack("REDUCE_COUNT_RATE", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, err
 }
 
 // PackGetSlashInfo is the Go binding used to pack the parameters required for calling
@@ -146,6 +171,18 @@ func (validatorSlash *ValidatorSlash) UnpackOfflineSlashThreshold(data []byte) (
 	}
 	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
 	return out0, err
+}
+
+// PackReduceCount is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xc7868729.
+//
+// Solidity: function reduceCount() returns()
+func (validatorSlash *ValidatorSlash) PackReduceCount() []byte {
+	enc, err := validatorSlash.abi.Pack("reduceCount")
+	if err != nil {
+		panic(err)
+	}
+	return enc
 }
 
 // PackSetOfflineSlashThreshold is the Go binding used to pack the parameters required for calling
@@ -254,47 +291,6 @@ func (validatorSlash *ValidatorSlash) UnpackOfflineSlashThresholdUpdatedEvent(lo
 	return out, nil
 }
 
-// ValidatorSlashOfflineSlashed represents a OfflineSlashed event raised by the ValidatorSlash contract.
-type ValidatorSlashOfflineSlashed struct {
-	ValidatorAddr common.Address
-	Raw           *types.Log // Blockchain specific contextual infos
-}
-
-const ValidatorSlashOfflineSlashedEventName = "OfflineSlashed"
-
-// ContractEventName returns the user-defined event name.
-func (ValidatorSlashOfflineSlashed) ContractEventName() string {
-	return ValidatorSlashOfflineSlashedEventName
-}
-
-// UnpackOfflineSlashedEvent is the Go binding that unpacks the event data emitted
-// by contract.
-//
-// Solidity: event OfflineSlashed(address indexed validatorAddr)
-func (validatorSlash *ValidatorSlash) UnpackOfflineSlashedEvent(log *types.Log) (*ValidatorSlashOfflineSlashed, error) {
-	event := "OfflineSlashed"
-	if log.Topics[0] != validatorSlash.abi.Events[event].ID {
-		return nil, errors.New("event signature mismatch")
-	}
-	out := new(ValidatorSlashOfflineSlashed)
-	if len(log.Data) > 0 {
-		if err := validatorSlash.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
-			return nil, err
-		}
-	}
-	var indexed abi.Arguments
-	for _, arg := range validatorSlash.abi.Events[event].Inputs {
-		if arg.Indexed {
-			indexed = append(indexed, arg)
-		}
-	}
-	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
-		return nil, err
-	}
-	out.Raw = log
-	return out, nil
-}
-
 // UnpackError attempts to decode the provided error data using user-defined
 // error definitions.
 func (validatorSlash *ValidatorSlash) UnpackError(raw []byte) (any, error) {
@@ -306,6 +302,12 @@ func (validatorSlash *ValidatorSlash) UnpackError(raw []byte) (any, error) {
 	}
 	if bytes.Equal(raw[:4], validatorSlash.abi.Errors["NotInitializing"].ID.Bytes()[:4]) {
 		return validatorSlash.UnpackNotInitializingError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], validatorSlash.abi.Errors["NotValidator"].ID.Bytes()[:4]) {
+		return validatorSlash.UnpackNotValidatorError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], validatorSlash.abi.Errors["OncePerBlock"].ID.Bytes()[:4]) {
+		return validatorSlash.UnpackOncePerBlockError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], validatorSlash.abi.Errors["OnlyCoinbase"].ID.Bytes()[:4]) {
 		return validatorSlash.UnpackOnlyCoinbaseError(raw[4:])
@@ -385,6 +387,52 @@ func ValidatorSlashNotInitializingErrorID() common.Hash {
 func (validatorSlash *ValidatorSlash) UnpackNotInitializingError(raw []byte) (*ValidatorSlashNotInitializing, error) {
 	out := new(ValidatorSlashNotInitializing)
 	if err := validatorSlash.abi.UnpackIntoInterface(out, "NotInitializing", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ValidatorSlashNotValidator represents a NotValidator error raised by the ValidatorSlash contract.
+type ValidatorSlashNotValidator struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error NotValidator()
+func ValidatorSlashNotValidatorErrorID() common.Hash {
+	return common.HexToHash("0x2ec5b449e1d63fa34c160c67ce2d5826d939017f27bc0c78ef142b8357c69f9e")
+}
+
+// UnpackNotValidatorError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error NotValidator()
+func (validatorSlash *ValidatorSlash) UnpackNotValidatorError(raw []byte) (*ValidatorSlashNotValidator, error) {
+	out := new(ValidatorSlashNotValidator)
+	if err := validatorSlash.abi.UnpackIntoInterface(out, "NotValidator", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ValidatorSlashOncePerBlock represents a OncePerBlock error raised by the ValidatorSlash contract.
+type ValidatorSlashOncePerBlock struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error OncePerBlock()
+func ValidatorSlashOncePerBlockErrorID() common.Hash {
+	return common.HexToHash("0x8aaaa79d8f19a3e4f2e6009e25cdfe18acbcdc0260b835dc213c1a242e2c3af6")
+}
+
+// UnpackOncePerBlockError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error OncePerBlock()
+func (validatorSlash *ValidatorSlash) UnpackOncePerBlockError(raw []byte) (*ValidatorSlashOncePerBlock, error) {
+	out := new(ValidatorSlashOncePerBlock)
+	if err := validatorSlash.abi.UnpackIntoInterface(out, "OncePerBlock", raw); err != nil {
 		return nil, err
 	}
 	return out, nil

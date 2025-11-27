@@ -35,7 +35,6 @@ func TestTryUpdateSystemContract(t *testing.T) {
 	upgraded := TryUpdateSystemContract(config, header, forkTime-1, statedb)
 	require.True(t, upgraded)
 
-	// Prague upgrade
 	t.Run("Prague upgrade", func(t *testing.T) {
 		code := statedb.GetCode(params.HistoryStorageAddress)
 		assert.Equal(t, params.HistoryStorageCode, code)
@@ -51,8 +50,8 @@ func TestTryUpdateSystemContract(t *testing.T) {
 	})
 }
 
+// ##CROSS: consensus system contract
 func TestInitSystemContract(t *testing.T) {
-	// ##CROSS: consensus system contract
 	extra := &types.IstanbulExtra{
 		VanityData: []byte{},
 		Validators: []common.Address{
@@ -81,62 +80,73 @@ func TestInitSystemContract(t *testing.T) {
 			MinBaseFee:              minBaseFee,
 		},
 	}
-	header := &types.Header{
-		Number:   big.NewInt(100),
-		Time:     uint64(time.Now().Unix()),
-		GasLimit: 2e10,
-		Extra:    payload,
+
+	tests := []struct {
+		name     string
+		fork     forks.Fork
+		header   *types.Header
+		expected []ContractInitData
+	}{
+		{
+			name: "Breakpoint",
+			fork: forks.Breakpoint,
+			header: &types.Header{
+				Number:   big.NewInt(100),
+				Time:     uint64(time.Now().Unix()),
+				GasLimit: 2e10,
+				Extra:    payload,
+			},
+			expected: []ContractInitData{
+				{
+					To: IstanbulParamAddr,
+					Data: breakpoint.NewIstanbulParam().PackInitialize(
+						86400,                             // epochLength
+						1,                                 // blockPeriod
+						0,                                 // emptyBlockPeriod
+						10,                                // requestTimeout
+						0,                                 // maxRequestTimeout
+						config.ElasticityMultiplier(),     // elasticityMultiplier
+						config.BaseFeeChangeDenominator(), // baseFeeChangeDenominator
+						(*big.Int)(maxBaseFee),            // maxBaseFee
+						(*big.Int)(minBaseFee),            // minBaseFee
+						0,                                 // proposerPolicy
+						2e10,                              // gasLimit
+					),
+				},
+				{
+					To:   ValidatorSetAddr,
+					Data: breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators),
+				},
+				{
+					To:   StakeHubAddr,
+					Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"), // initialize(address(0))
+				},
+				{
+					To:   ValidatorSlashAddr,
+					Data: common.FromHex("8129fc1c"), // initialize()
+				},
+				{
+					To:   GovernorAddr,
+					Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"), // initialize(address(0))
+				},
+				{
+					To:   GovernanceTokenAddr,
+					Data: common.FromHex("8129fc1c"), // initialize()
+				},
+				{
+					To:   GovernanceTimelockAddr,
+					Data: common.FromHex("8129fc1c"), // initialize()
+				},
+			},
+		},
 	}
 
-	expected := []ContractInitData{
-		{
-			To: IstanbulParamAddr,
-			Data: func() []byte {
-				// pack initialize data for IstanbulParam
-				return breakpoint.NewIstanbulParam().PackInitialize(
-					86400,                             // epochLength
-					1,                                 // blockPeriod
-					0,                                 // emptyBlockPeriod
-					10,                                // requestTimeout
-					0,                                 // maxRequestTimeout
-					config.ElasticityMultiplier(),     // elasticityMultiplier
-					config.BaseFeeChangeDenominator(), // baseFeeChangeDenominator
-					(*big.Int)(maxBaseFee),            // maxBaseFee
-					(*big.Int)(minBaseFee),            // minBaseFee
-					0,                                 // proposerPolicy
-					2e10,                              // gasLimit
-				)
-			}(),
-		},
-		{
-			To: ValidatorSetAddr,
-			Data: func() []byte {
-				return breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators)
-			}(),
-		},
-		{
-			To:   StakeHubAddr,
-			Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"), // initialize(address(0))
-		},
-		{
-			To:   ValidatorSlashAddr,
-			Data: common.FromHex("8129fc1c"), // initialize()
-		},
-		{
-			To:   GovernorAddr,
-			Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"), // initialize(address(0))
-		},
-		{
-			To:   GovernanceTokenAddr,
-			Data: common.FromHex("8129fc1c"), // initialize()
-		},
-		{
-			To:   GovernanceTimelockAddr,
-			Data: common.FromHex("8129fc1c"), // initialize()
-		},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			initData := getSystemContractInitialization(upgrades[tt.fork], config, tt.header)
+			assert.Equal(t, tt.expected, initData)
+		})
 	}
-
-	initData := getSystemContractInitialization(upgrades[forks.Breakpoint], config, header)
-	assert.Equal(t, expected, initData)
-	// ##
 }
+
+// ##

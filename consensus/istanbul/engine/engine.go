@@ -47,10 +47,10 @@ type Engine struct {
 	sign   SignerFn       // Signer function to authorize hashes with
 
 	// ##CROSS: consensus system contract
-	contactBackend bind.ContractBackend
-	signTx         SignerTxFn
-	consensus      consensus.Engine
-	pos            consensus.IstanbulPoS
+	contractBackend bind.ContractBackend
+	signTx          SignerTxFn
+	consensus       consensus.Engine
+	pos             consensus.IstanbulPoS
 
 	// system contracts
 	istanbulParam  *breakpoint.IstanbulParam
@@ -66,13 +66,13 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		signer: signer,
 		sign:   sign,
 		// ##CROSS: consensus system contract
-		contactBackend: contractBackend,
-		signTx:         signTx,
-		consensus:      ce,
-		istanbulParam:  breakpoint.NewIstanbulParam(),
-		validatorSet:   breakpoint.NewValidatorSet(),
-		stakeHub:       breakpoint.NewStakeHub(),
-		validatorSlash: breakpoint.NewValidatorSlash(),
+		contractBackend: contractBackend,
+		signTx:          signTx,
+		consensus:       ce,
+		istanbulParam:   breakpoint.NewIstanbulParam(),
+		validatorSet:    breakpoint.NewValidatorSet(),
+		stakeHub:        breakpoint.NewStakeHub(),
+		validatorSlash:  breakpoint.NewValidatorSlash(),
 		// ##
 	}
 	e.pos, _ = consensus.ToIstanbulPoS(ce)
@@ -483,16 +483,15 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	var validatorsList []common.Address
 	if chain.Config().IsCrossway(header.Number, header.Time) {
 		// ##CROSS: consensus system contract
-		if e.cfg.OnNewEpoch(header.Number) {
-			// after crossway, validator list is managed by the system contract and updated every epoch
-			newList, err := e.getCurrentValidators(parent.Number.Uint64())
-			if err != nil {
-				return err
-			}
-			validatorsList = newList
+		// since crossway, validator list is managed by the system contract
+		newList, err := e.getCurrentValidators(parent.Number.Uint64())
+		if err != nil {
+			return err
 		}
+		validatorsList = newList
 		if len(validatorsList) == 0 {
-			// if validator list is not updated, use the validators from config
+			// if validator list is not updated, use the validators from snapshot
+			log.Warn("Prepare: empty validator list, using snapshot", "number", header.Number.Uint64(), "validators", validators.List())
 			validatorsList = validator.SortedAddresses(validators.List())
 		}
 		// ##
