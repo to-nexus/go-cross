@@ -174,7 +174,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	}
 
 	data := e.validatorSet.PackUpdateValidators(validators)
-	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSetAddr, data)
+	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSetAddr, data, nil)
 
 	log.Info("Updating validator set", "number", header.Number.Uint64(), "validators", validators)
 	if systemTxs != nil {
@@ -207,9 +207,10 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 
 	validatorInfos := make([]ValidatorInfo, len(result.ValidatorAddrs))
 	for i, validator := range result.ValidatorAddrs {
+		amountU256, _ := uint256.FromBig(result.Amounts[i])
 		validatorInfos[i] = ValidatorInfo{
 			address: validator,
-			amount:  uint256.MustFromBig(result.Amounts[i]),
+			amount:  amountU256,
 		}
 	}
 
@@ -247,10 +248,10 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 
 	idleValidators := e.pos.OfflineValidators(cx.Chain, number)
 	for _, validator := range idleValidators {
-		log.Warn("Slashing idle validator", "number", header.Number.Uint64(), "validator", validator)
+		log.Info("Slashing idle validator", "number", header.Number.Uint64(), "validator", validator)
 
 		data := e.validatorSlash.PackSlashOffline(validator)
-		msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data)
+		msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
 
 		var err error
 		if systemTxs != nil {
@@ -263,6 +264,68 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 		}
 	}
 
+	return nil
+}
+
+// ##
+
+// ##CROSS: validator reward
+func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	// move collected rewards to the validator
+	coinbase := header.Coinbase
+	if coinbase == (common.Address{}) {
+		coinbase = e.signer
+	}
+
+	// Calculate total transaction fees
+	// totalFee := state.GetBalance(params.SystemAddress)
+
+	totalFee := new(uint256.Int)
+	for i, tx := range *txs {
+		if isSystemTx, err := e.IsSystemTransaction(tx, header); err != nil {
+			return err
+		} else if isSystemTx {
+			// All remaining transactions are system transactions
+			break
+		}
+
+		receipt := (*receipts)[i]
+
+		gasPrice := new(big.Int).Add(header.BaseFee, tx.EffectiveGasTipValue(header.BaseFee)) // base fee is not burned
+		fee := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
+
+		// Blob fee is also included in the total fee
+		if receipt.BlobGasPrice != nil && receipt.BlobGasUsed > 0 {
+			blobFee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.BlobGasUsed), receipt.BlobGasPrice)
+			fee.Add(fee, blobFee)
+		}
+
+		feeU256, _ := uint256.FromBig(fee)
+		totalFee.Add(totalFee, feeU256)
+	}
+
+	if totalFee.IsZero() {
+		return nil
+	}
+
+	// state.SubBalance(params.SystemAddress, totalFee, tracing.BalanceDecreaseDistributeReward)
+	// state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseDistributeReward)
+	state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseRewardTransactionFee)
+	log.Trace("Distributing rewards", "number", header.Number.Uint64(), "validator", coinbase, "totalFee", totalFee, "usedGas", *usedGas)
+
+	// call 'distributeReward' function to send the collected rewards to the validator share contract
+	data := e.stakeHub.PackDistributeReward(coinbase)
+	msg := newSystemMessage(coinbase, contracts.StakeHubAddr, data, totalFee.ToBig())
+
+	var err error
+	if systemTxs != nil {
+		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+	} else {
+		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+	}
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

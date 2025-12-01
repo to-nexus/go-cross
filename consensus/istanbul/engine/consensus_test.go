@@ -10,11 +10,11 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -35,11 +35,9 @@ type mockContractBackend struct {
 func (m *mockContractBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
 	return m.codeAtBytes, m.codeAtErr
 }
-
 func (m *mockContractBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
 	return m.callContract(call)
 }
-
 func (m *mockContractBackend) callContract(call ethereum.CallMsg) ([]byte, error) {
 	if m.callContractResponses != nil && len(call.Data) >= 4 {
 		methodSelector := string(call.Data[:4])
@@ -52,16 +50,12 @@ func (m *mockContractBackend) callContract(call ethereum.CallMsg) ([]byte, error
 	return nil, m.callContractErr
 }
 
-// BlockHashContractCaller methods
 func (m *mockContractBackend) CodeAtHash(ctx context.Context, contract common.Address, hash common.Hash) ([]byte, error) {
 	return m.codeAtBytes, m.codeAtErr
 }
-
 func (m *mockContractBackend) CallContractAtHash(ctx context.Context, call ethereum.CallMsg, hash common.Hash) ([]byte, error) {
 	return m.callContract(call)
 }
-
-// ContractTransactor methods
 func (m *mockContractBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
 	return &types.Header{}, nil
 }
@@ -83,8 +77,6 @@ func (m *mockContractBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, e
 func (m *mockContractBackend) SendTransaction(ctx context.Context, tx *types.Transaction) error {
 	return nil
 }
-
-// ContractFilterer methods
 func (m *mockContractBackend) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	return nil, nil
 }
@@ -172,7 +164,6 @@ func TestGetCurrentValidators(t *testing.T) {
 	}
 }
 
-// packValidatorsResponse packs the validators response for testing
 func packValidatorsResponse(t *testing.T, validators []common.Address) []byte {
 	t.Helper()
 
@@ -196,27 +187,21 @@ type mockChainContext struct {
 func (m *mockChainContext) Engine() consensus.Engine {
 	return nil
 }
-
 func (m *mockChainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
 	return nil
 }
-
 func (m *mockChainContext) Config() *params.ChainConfig {
 	return m.config
 }
-
 func (m *mockChainContext) CurrentHeader() *types.Header {
 	return nil
 }
-
 func (m *mockChainContext) GetHeaderByNumber(number uint64) *types.Header {
 	return nil
 }
-
 func (m *mockChainContext) GetHeaderByHash(hash common.Hash) *types.Header {
 	return nil
 }
-
 func (m *mockChainContext) GetTd(hash common.Hash, number uint64) *big.Int {
 	return nil
 }
@@ -367,9 +352,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 			var txs []*types.Transaction
 			var receipts []*types.Receipt
 			var usedGas uint64
-			var tracer *tracing.Hooks
 
-			// create engine with mock backend
 			engine := &Engine{
 				contractBackend: tt.mockBackend,
 				validatorSet:    breakpoint.NewValidatorSet(),
@@ -380,10 +363,8 @@ func TestUpdateValidatorSet(t *testing.T) {
 				},
 			}
 
-			// call updateValidatorSet
-			err := engine.updateValidatorSet(header, statedb, cx, &txs, &receipts, nil, &usedGas, tracer)
+			err := engine.updateValidatorSet(header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
 
-			// verify error
 			if tt.expectedErr != nil {
 				require.ErrorContains(t, err, tt.expectedErr.Error())
 				return
@@ -396,7 +377,6 @@ func TestUpdateValidatorSet(t *testing.T) {
 	}
 }
 
-// packGetValidatorsResponse packs the StakeHub getValidators response for testing
 func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, amounts []*big.Int) []byte {
 	t.Helper()
 
@@ -413,7 +393,6 @@ func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, am
 	return retPacked
 }
 
-// packValidatorThresholdResponse packs the StakeHub validatorThreshold response for testing
 func packValidatorThresholdResponse(t *testing.T, threshold uint64) []byte {
 	t.Helper()
 
@@ -627,7 +606,6 @@ func TestSyncIstanbulParam(t *testing.T) {
 	}
 }
 
-// packNumCheckpointsResponse packs the IstanbulParam numCheckpoints response for testing
 func packNumCheckpointsResponse(t *testing.T, count uint64) []byte {
 	t.Helper()
 
@@ -643,7 +621,6 @@ func packNumCheckpointsResponse(t *testing.T, count uint64) []byte {
 	return retPacked
 }
 
-// packGetParamIndexResponse packs the IstanbulParam getParamIndex response for testing
 func packGetParamIndexResponse(t *testing.T, index uint64) []byte {
 	t.Helper()
 
@@ -659,7 +636,6 @@ func packGetParamIndexResponse(t *testing.T, index uint64) []byte {
 	return retPacked
 }
 
-// packGetParamsByIndexResponse packs the IstanbulParam getParamsByIndex response for testing
 func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByIndexOutput) []byte {
 	t.Helper()
 
@@ -689,7 +665,6 @@ func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByInd
 }
 
 // ##CROSS: validator slash
-// mockIstanbulPoS implements consensus.IstanbulPoS for testing
 type mockIstanbulPoS struct {
 	offlineValidators []common.Address
 }
@@ -697,15 +672,12 @@ type mockIstanbulPoS struct {
 func (m *mockIstanbulPoS) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	return false, nil
 }
-
 func (m *mockIstanbulPoS) IsSystemContract(to *common.Address) bool {
 	return false
 }
-
 func (m *mockIstanbulPoS) SyncIstanbulParam(header *types.Header) error {
 	return nil
 }
-
 func (m *mockIstanbulPoS) OfflineValidators(chain consensus.ChainHeaderReader, number uint64) []common.Address {
 	return m.offlineValidators
 }
@@ -715,52 +687,32 @@ func TestSlashValidators(t *testing.T) {
 		name          string
 		header        *types.Header
 		pos           *mockIstanbulPoS
-		expectedErr   error
 		expectedTxLen int
-		validate      func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt)
 	}{
-		{
-			name:          "header number is 0",
-			header:        &types.Header{Number: big.NewInt(0)},
-			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{common.HexToAddress("0x1111111111111111111111111111111111111111")}},
-			expectedErr:   nil,
-			expectedTxLen: 0,
-			validate:      func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {},
-		},
 		{
 			name:          "no offline validators",
 			header:        &types.Header{Number: big.NewInt(100)},
 			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{}},
-			expectedErr:   nil,
 			expectedTxLen: 0,
-			validate:      func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {},
 		},
 		{
 			name: "success single",
 			header: &types.Header{
 				Number:     big.NewInt(100),
 				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-				Coinbase:   common.HexToAddress("0x0000000000000000000000000000000000000000"),
 				BaseFee:    big.NewInt(0),
 				GasLimit:   10000000,
 				Difficulty: big.NewInt(0),
 				Time:       1000000000,
 			},
 			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{common.HexToAddress("0x1111111111111111111111111111111111111111")}},
-			expectedErr:   nil,
 			expectedTxLen: 1,
-			validate: func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {
-				assert.Equal(t, 1, len(txs))
-				assert.Equal(t, 1, len(receipts))
-				assert.NotNil(t, txs[0].To())
-			},
 		},
 		{
 			name: "success multiple",
 			header: &types.Header{
 				Number:     big.NewInt(100),
 				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-				Coinbase:   common.HexToAddress("0x0000000000000000000000000000000000000000"),
 				BaseFee:    big.NewInt(0),
 				GasLimit:   10000000,
 				Difficulty: big.NewInt(0),
@@ -771,12 +723,7 @@ func TestSlashValidators(t *testing.T) {
 				common.HexToAddress("0x2222222222222222222222222222222222222222"),
 				common.HexToAddress("0x3333333333333333333333333333333333333333"),
 			}},
-			expectedErr:   nil,
 			expectedTxLen: 3,
-			validate: func(t *testing.T, txs []*types.Transaction, receipts []*types.Receipt) {
-				assert.Equal(t, 3, len(txs))
-				assert.Equal(t, 3, len(receipts))
-			},
 		},
 	}
 
@@ -797,28 +744,198 @@ func TestSlashValidators(t *testing.T) {
 			var txs []*types.Transaction
 			var receipts []*types.Receipt
 			var usedGas uint64
-			var tracer *tracing.Hooks
 
-			// create engine with mock backend
+			signer := common.HexToAddress("0x1111111111111111111111111111111111111111")
 			engine := &Engine{
 				contractBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
 				validatorSlash:  breakpoint.NewValidatorSlash(),
-				signer:          common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				signer:          signer,
 				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+					require.Equal(t, account.Address, signer)
 					return tx, nil
 				},
 				pos: tt.pos,
 			}
 
-			// call slashValidators
-			err := engine.slashValidators(tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, tracer)
+			err := engine.slashValidators(tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
 
-			require.ErrorIs(t, err, tt.expectedErr)
-			require.Equal(t, tt.expectedTxLen, len(txs))
-
-			tt.validate(t, txs, receipts)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedTxLen, len(txs))
+			assert.Equal(t, tt.expectedTxLen, len(receipts))
 		})
 	}
+}
+
+// ##
+
+// ##CROSS: validator reward
+func TestDistributeRewards(t *testing.T) {
+	tests := []struct {
+		name        string
+		header      *types.Header
+		txs         []*types.Transaction
+		receipts    []*types.Receipt
+		expectedFee *big.Int
+	}{
+		{
+			name: "no transactions",
+			header: &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				BaseFee:    big.NewInt(1000000000),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+				Time:       1000000000,
+			},
+			txs:         []*types.Transaction{},
+			receipts:    []*types.Receipt{},
+			expectedFee: big.NewInt(0),
+		},
+		{
+			name: "success with single tx",
+			header: &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				BaseFee:    big.NewInt(1000000000),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+				Time:       1000000000,
+			},
+			txs: []*types.Transaction{
+				types.NewTx(&types.DynamicFeeTx{
+					Nonce:     0,
+					GasTipCap: big.NewInt(1000000000),
+					GasFeeCap: big.NewInt(2000000000),
+					Gas:       21000,
+					To:        ptrAddr(common.HexToAddress("0x2222222222222222222222222222222222222222")),
+					Value:     big.NewInt(0),
+				}),
+			},
+			receipts: []*types.Receipt{
+				{
+					Status:  types.ReceiptStatusSuccessful,
+					GasUsed: 21000,
+				},
+			},
+			expectedFee: new(big.Int).Mul(big.NewInt(21000), big.NewInt(2000000000)), // 21000 * (1+1) Gwei
+		},
+		{
+			name: "success with multiple txs",
+			header: &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				BaseFee:    big.NewInt(1000000000),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+				Time:       1000000000,
+			},
+			txs: []*types.Transaction{
+				types.NewTx(&types.DynamicFeeTx{
+					Nonce:     0,
+					GasTipCap: big.NewInt(1000000000),
+					GasFeeCap: big.NewInt(2000000000),
+					Gas:       21000,
+					To:        ptrAddr(common.HexToAddress("0x2222222222222222222222222222222222222222")),
+					Value:     big.NewInt(0),
+				}),
+				types.NewTx(&types.DynamicFeeTx{
+					Nonce:     1,
+					GasTipCap: big.NewInt(2000000000),
+					GasFeeCap: big.NewInt(3000000000),
+					Gas:       42000,
+					To:        ptrAddr(common.HexToAddress("0x3333333333333333333333333333333333333333")),
+					Value:     big.NewInt(0),
+				}),
+			},
+			receipts: []*types.Receipt{
+				{
+					Status:  types.ReceiptStatusSuccessful,
+					GasUsed: 21000,
+				},
+				{
+					Status:  types.ReceiptStatusSuccessful,
+					GasUsed: 42000,
+				},
+			},
+			expectedFee: new(big.Int).Add(
+				new(big.Int).Mul(big.NewInt(21000), big.NewInt(2000000000)),
+				new(big.Int).Mul(big.NewInt(42000), big.NewInt(3000000000)),
+			), // 21000 * (1+1) Gwei + 42000 * (1+2) Gwei
+		},
+		{
+			name: "legacy tx",
+			header: &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				BaseFee:    big.NewInt(1000000000),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+				Time:       1000000000,
+			},
+			txs: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{
+					Nonce:    0,
+					GasPrice: big.NewInt(2000000000), // 2 Gwei
+					Gas:      21000,
+					To:       ptrAddr(common.HexToAddress("0x2222222222222222222222222222222222222222")),
+					Value:    big.NewInt(0),
+				}),
+			},
+			receipts: []*types.Receipt{
+				{
+					Status:  types.ReceiptStatusSuccessful,
+					GasUsed: 21000,
+				},
+			},
+			expectedFee: new(big.Int).Mul(big.NewInt(21000), big.NewInt(2000000000)), // 21000 * 2 Gwei
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// setup
+			memdb := rawdb.NewMemoryDatabase()
+			triedb := triedb.NewDatabase(memdb, nil)
+			sdb := state.NewDatabase(triedb, nil)
+			statedb, _ := state.New(types.EmptyRootHash, sdb)
+			cx := &mockChainContext{config: params.TestChainConfig}
+
+			txs := make([]*types.Transaction, len(tt.txs))
+			copy(txs, tt.txs)
+			receipts := make([]*types.Receipt, len(tt.receipts))
+			copy(receipts, tt.receipts)
+			var usedGas uint64
+
+			signer := common.HexToAddress("0x1111111111111111111111111111111111111111")
+			engine := &Engine{
+				contractBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
+				stakeHub:        breakpoint.NewStakeHub(),
+				signer:          signer,
+				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+					require.Equal(t, account.Address, signer)
+					return tx, nil
+				},
+			}
+
+			err := engine.distributeRewards(tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
+
+			require.NoError(t, err)
+			if len(tt.txs) > 0 {
+				// 1 system tx should be added
+				assert.Equal(t, len(tt.txs)+1, len(txs))
+				tx := txs[len(txs)-1]
+
+				assert.Equal(t, contracts.StakeHubAddr, *tx.To())
+				// verify fee
+				assert.Equal(t, tt.expectedFee.Uint64(), tx.Value().Uint64())
+			}
+			assert.Equal(t, len(txs), len(receipts))
+		})
+	}
+}
+
+func ptrAddr(addr common.Address) *common.Address {
+	return &addr
 }
 
 // ##

@@ -551,7 +551,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 			for _, data := range initData {
 				log.Info("Finalize: initializing system contract", "number", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
-				msg := newSystemMessage(header.Coinbase, data.To, data.Data)
+				msg := newSystemMessage(header.Coinbase, data.To, data.Data, nil)
 				err := e.applyReceivedSystemTransaction(msg, state, header, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer)
 				if err != nil {
 					return err
@@ -570,7 +570,12 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 		// ##
 
-		// TODO: distribute rewards
+		// ##CROSS: validator reward
+		if err := e.distributeRewards(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+			log.Error("Failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", header.Coinbase, "usedGas", *usedGas)
+			return err
+		}
+		// ##
 
 		// Update validator set at the end of epoch (block N-1) so that block N (new epoch start) can read it in Prepare()
 		nextNumber := new(big.Int).Add(header.Number, common.Big1)
@@ -619,7 +624,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 
 		for _, data := range initData {
 			log.Info("FinalizeAndAssemble: initializing system contract", "number", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
-			msg := newSystemMessage(e.signer, data.To, data.Data)
+			msg := newSystemMessage(e.signer, data.To, data.Data, nil)
 			err := e.applyGeneratedSystemTransaction(msg, state, header, cx, &body.Transactions, &receipts, &header.GasUsed, tracer)
 			if err != nil {
 				return nil, nil, err
@@ -637,7 +642,12 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 		// ##
 
-		// TODO: distribute rewards
+		// ##CROSS: validator reward
+		if err := e.distributeRewards(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+			log.Error("Failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", e.signer, "usedGas", header.GasUsed)
+			return nil, nil, err
+		}
+		// ##
 
 		// Update validator set at the end of epoch (block N-1) so that block N (new epoch start) can read it in Prepare()
 		nextNumber := new(big.Int).Add(header.Number, common.Big1)
@@ -977,17 +987,27 @@ func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header
 		uint256.MustFromBig(msg.Value),
 	)
 	if err != nil {
-		log.Error("apply message failed", "msg", string(ret), "err", err)
+		log.Error("apply message failed",
+			"err", err,
+			"return", string(ret),
+			"from", msg.From,
+			"to", *msg.To,
+			"data", common.Bytes2Hex(msg.Data),
+			"value", msg.Value.String(),
+		)
 	}
 	return msg.GasLimit - returnGas, err
 }
 
-func newSystemMessage(from, toAddress common.Address, data []byte) *core.Message {
+func newSystemMessage(from, toAddress common.Address, data []byte, value *big.Int) *core.Message {
+	if value == nil {
+		value = big.NewInt(0)
+	}
 	return &core.Message{
 		From:     from,
 		GasLimit: math.MaxUint64 / 2,
 		GasPrice: big.NewInt(0),
-		Value:    big.NewInt(0),
+		Value:    value,
 		To:       &toAddress,
 		Data:     data,
 	}
