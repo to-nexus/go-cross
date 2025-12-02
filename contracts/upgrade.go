@@ -123,13 +123,13 @@ func init() {
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return breakpoint.NewStakeHub().PackInitialize(common.Address{}), nil
+					return breakpoint.NewStakeHub().PackInitialize(), nil
 				},
 			},
 			{
 				Name:         "ValidatorShare",
 				ContractAddr: ValidatorShareAddr,
-				Code:         breakpoint.ValidatorShareMetaData.BinRuntime,
+				Code:         breakpoint.ValidatorShareCode,
 				Deploy:       true,
 			},
 			{
@@ -142,36 +142,42 @@ func init() {
 				},
 			},
 			{
+				Name:         "SystemReward",
+				ContractAddr: SystemRewardAddr,
+				Code:         breakpoint.SystemRewardCode,
+				Deploy:       true,
+			},
+			{
 				Name:         "CrossGovernor",
 				ContractAddr: GovernorAddr,
-				Code:         breakpoint.CrossGovernorMetaData.BinRuntime,
+				Code:         breakpoint.CrossGovernorCode,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return breakpoint.NewCrossGovernor().PackInitialize(common.Address{}), nil
+					return common.FromHex("8129fc1c"), nil
 				},
 			},
 			{
 				Name:         "GovernanceToken",
 				ContractAddr: GovernanceTokenAddr,
-				Code:         breakpoint.GovernanceTokenMetaData.BinRuntime,
+				Code:         breakpoint.GovernanceTokenCode,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return breakpoint.NewGovernanceToken().PackInitialize(), nil
+					return common.FromHex("8129fc1c"), nil
 				},
 			},
 			{
 				Name:         "GovernanceTimelock",
 				ContractAddr: GovernanceTimelockAddr,
-				Code:         breakpoint.GovernanceTimelockMetaData.BinRuntime,
+				Code:         breakpoint.GovernanceTimelockCode,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return breakpoint.NewGovernanceTimelock().PackInitialize(), nil
+					return common.FromHex("8129fc1c"), nil
 				},
 			},
 			{
 				Name:         "GovernanceExecutor",
 				ContractAddr: GovernanceExecutorAddr,
-				Code:         breakpoint.GovernanceExecutorMetaData.BinRuntime,
+				Code:         breakpoint.GovernanceExecutorCode,
 				Deploy:       true,
 			},
 			// ##

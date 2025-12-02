@@ -119,7 +119,7 @@ func TestInitSystemContract(t *testing.T) {
 				},
 				{
 					To:   StakeHubAddr,
-					Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"), // initialize(address(0))
+					Data: common.FromHex("8129fc1c"), // initialize()
 				},
 				{
 					To:   ValidatorSlashAddr,
@@ -127,7 +127,7 @@ func TestInitSystemContract(t *testing.T) {
 				},
 				{
 					To:   GovernorAddr,
-					Data: common.FromHex("c4d66de80000000000000000000000000000000000000000000000000000000000000000"), // initialize(address(0))
+					Data: common.FromHex("8129fc1c"), // initialize()
 				},
 				{
 					To:   GovernanceTokenAddr,

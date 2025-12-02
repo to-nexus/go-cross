@@ -20,6 +20,7 @@ var (
 	StakeHubAddr           = common.HexToAddress("0x0000000000000000000000000000000000001002")
 	ValidatorShareAddr     = common.HexToAddress("0x0000000000000000000000000000000000001003")
 	ValidatorSlashAddr     = common.HexToAddress("0x0000000000000000000000000000000000001004")
+	SystemRewardAddr       = common.HexToAddress("0x0000000000000000000000000000000000001005")
 	GovernorAddr           = common.HexToAddress("0x0000000000000000000000000000000000001010")
 	GovernanceTokenAddr    = common.HexToAddress("0x0000000000000000000000000000000000001011")
 	GovernanceTimelockAddr = common.HexToAddress("0x0000000000000000000000000000000000001012")
@@ -32,6 +33,7 @@ var systemContracts = map[common.Address]bool{
 	ValidatorSetAddr:       true,
 	StakeHubAddr:           true,
 	ValidatorSlashAddr:     true,
+	SystemRewardAddr:       true,
 	GovernorAddr:           true,
 	GovernanceTokenAddr:    true,
 	GovernanceTimelockAddr: true,
