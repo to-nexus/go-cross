@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core"
@@ -17,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -665,104 +667,183 @@ func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByInd
 }
 
 // ##CROSS: validator slash
-type mockIstanbulPoS struct {
-	offlineValidators []common.Address
-}
-
-func (m *mockIstanbulPoS) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	return false, nil
-}
-func (m *mockIstanbulPoS) IsSystemContract(to *common.Address) bool {
-	return false
-}
-func (m *mockIstanbulPoS) SyncIstanbulParam(header *types.Header) error {
-	return nil
-}
-func (m *mockIstanbulPoS) OfflineValidators(chain consensus.ChainHeaderReader, number uint64) []common.Address {
-	return m.offlineValidators
-}
-
 func TestSlashValidators(t *testing.T) {
+	validators := []common.Address{
+		common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		common.HexToAddress("0x2222222222222222222222222222222222222222"),
+		common.HexToAddress("0x3333333333333333333333333333333333333333"),
+	}
+
 	tests := []struct {
-		name          string
-		header        *types.Header
-		pos           *mockIstanbulPoS
-		expectedTxLen int
+		name            string
+		setupHeaders    func() map[common.Hash]*types.Header
+		proposerPolicy  *istanbul.ProposerPolicy
+		expectedSlashed int
 	}{
 		{
-			name:          "no offline validators",
-			header:        &types.Header{Number: big.NewInt(100)},
-			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{}},
-			expectedTxLen: 0,
+			name: "proposer policy is not RoundRobin",
+			setupHeaders: func() map[common.Hash]*types.Header {
+				headers := make(map[common.Hash]*types.Header)
+				h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+				h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[2], validators, 1)
+				h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[0], validators, 0)
+				headers[h0.Hash()] = h0
+				headers[h1.Hash()] = h1
+				headers[h2.Hash()] = h2
+				return headers
+			},
+			proposerPolicy:  istanbul.NewStickyProposerPolicy(),
+			expectedSlashed: 0,
 		},
 		{
-			name: "success single",
-			header: &types.Header{
-				Number:     big.NewInt(100),
-				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-				BaseFee:    big.NewInt(0),
-				GasLimit:   10000000,
-				Difficulty: big.NewInt(0),
-				Time:       1000000000,
+			name: "round 0",
+			setupHeaders: func() map[common.Hash]*types.Header {
+				headers := make(map[common.Hash]*types.Header)
+				h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+				h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[1], validators, 0)
+				h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[2], validators, 0)
+				headers[h0.Hash()] = h0
+				headers[h1.Hash()] = h1
+				headers[h2.Hash()] = h2
+				return headers
 			},
-			pos:           &mockIstanbulPoS{offlineValidators: []common.Address{common.HexToAddress("0x1111111111111111111111111111111111111111")}},
-			expectedTxLen: 1,
+			proposerPolicy:  istanbul.NewRoundRobinProposerPolicy(),
+			expectedSlashed: 0,
 		},
 		{
-			name: "success multiple",
-			header: &types.Header{
-				Number:     big.NewInt(100),
-				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-				BaseFee:    big.NewInt(0),
-				GasLimit:   10000000,
-				Difficulty: big.NewInt(0),
-				Time:       1000000000,
+			name: "single slash",
+			setupHeaders: func() map[common.Hash]*types.Header {
+				headers := make(map[common.Hash]*types.Header)
+				h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+				h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[2], validators, 1)
+				h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[0], validators, 0)
+				headers[h0.Hash()] = h0
+				headers[h1.Hash()] = h1
+				headers[h2.Hash()] = h2
+				return headers
 			},
-			pos: &mockIstanbulPoS{offlineValidators: []common.Address{
-				common.HexToAddress("0x1111111111111111111111111111111111111111"),
-				common.HexToAddress("0x2222222222222222222222222222222222222222"),
-				common.HexToAddress("0x3333333333333333333333333333333333333333"),
-			}},
-			expectedTxLen: 3,
+			proposerPolicy:  istanbul.NewRoundRobinProposerPolicy(),
+			expectedSlashed: 1,
+		},
+		{
+			name: "multiple slashes",
+			setupHeaders: func() map[common.Hash]*types.Header {
+				headers := make(map[common.Hash]*types.Header)
+				h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+				h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[0], validators, 3)
+				h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[1], validators, 0)
+				headers[h0.Hash()] = h0
+				headers[h1.Hash()] = h1
+				headers[h2.Hash()] = h2
+				return headers
+			},
+			proposerPolicy:  istanbul.NewRoundRobinProposerPolicy(),
+			expectedSlashed: 3,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// setup
 			memdb := rawdb.NewMemoryDatabase()
 			triedb := triedb.NewDatabase(memdb, nil)
 			sdb := state.NewDatabase(triedb, nil)
 			statedb, _ := state.New(types.EmptyRootHash, sdb)
 
-			chainConfig := params.TestChainConfig
-			cx := &chainContext{
-				Chain:  &mockChainContext{config: chainConfig},
-				engine: nil,
+			mockChain := &mockChainHeaderReader{
+				headers: tt.setupHeaders(),
+				config:  params.TestChainConfig,
 			}
+			cx := &chainContext{Chain: mockChain}
+
+			policy := tt.proposerPolicy
+			if policy == nil {
+				policy = istanbul.NewRoundRobinProposerPolicy()
+			}
+			cfg := &istanbul.Config{
+				ProposerPolicy: policy,
+			}
+
+			engine := &Engine{
+				cfg:            cfg,
+				signer:         validators[0],
+				validatorSlash: breakpoint.NewValidatorSlash(),
+				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+					return tx, nil
+				},
+			}
+
+			header := mockChain.GetHeaderByNumber(100)
+			require.NotNil(t, header)
 
 			var txs []*types.Transaction
 			var receipts []*types.Receipt
 			var usedGas uint64
 
-			signer := common.HexToAddress("0x1111111111111111111111111111111111111111")
-			engine := &Engine{
-				contractBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
-				validatorSlash:  breakpoint.NewValidatorSlash(),
-				signer:          signer,
-				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-					require.Equal(t, account.Address, signer)
-					return tx, nil
-				},
-				pos: tt.pos,
-			}
-
-			err := engine.slashValidators(tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
-
+			err := engine.slashValidators(header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedTxLen, len(txs))
-			assert.Equal(t, tt.expectedTxLen, len(receipts))
+
+			assert.Equal(t, tt.expectedSlashed, len(txs))
+			for _, tx := range txs {
+				assert.Equal(t, contracts.ValidatorSlashAddr, *tx.To())
+			}
 		})
+	}
+}
+
+// mockChainHeaderReader implements consensus.ChainHeaderReader for testing
+type mockChainHeaderReader struct {
+	headers map[common.Hash]*types.Header
+	config  *params.ChainConfig
+}
+
+func (m *mockChainHeaderReader) Config() *params.ChainConfig {
+	return m.config
+}
+func (m *mockChainHeaderReader) CurrentHeader() *types.Header {
+	return nil
+}
+func (m *mockChainHeaderReader) GetHeader(hash common.Hash, number uint64) *types.Header {
+	return m.headers[hash]
+}
+func (m *mockChainHeaderReader) GetHeaderByNumber(number uint64) *types.Header {
+	for _, header := range m.headers {
+		if header.Number.Uint64() == number {
+			return header
+		}
+	}
+	return nil
+}
+func (m *mockChainHeaderReader) GetHeaderByHash(hash common.Hash) *types.Header {
+	return m.headers[hash]
+}
+func (m *mockChainHeaderReader) GetTd(hash common.Hash, number uint64) *big.Int {
+	return nil
+}
+
+// createHeaderWithIstanbulExtra creates a header with Istanbul extra data
+func createHeaderWithIstanbulExtra(t *testing.T, number uint64, parentHash common.Hash, coinbase common.Address, validators []common.Address, round uint32) *types.Header {
+	t.Helper()
+
+	extra := &types.IstanbulExtra{
+		VanityData:    make([]byte, types.IstanbulExtraVanity),
+		Validators:    validators,
+		Vote:          nil,
+		Round:         round,
+		CommittedSeal: [][]byte{},
+		RandomReveal:  []byte{},
+	}
+
+	extraBytes, err := rlp.EncodeToBytes(extra)
+	require.NoError(t, err)
+
+	return &types.Header{
+		Number:     big.NewInt(int64(number)),
+		ParentHash: parentHash,
+		Coinbase:   coinbase,
+		Extra:      extraBytes,
+		BaseFee:    big.NewInt(0),
+		GasLimit:   10000000,
+		Difficulty: big.NewInt(0),
 	}
 }
 

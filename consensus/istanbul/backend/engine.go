@@ -499,40 +499,13 @@ func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, chain cons
 	snapCpy := snap.copy()
 
 	for _, header := range headers {
-		number := header.Number.Uint64()
-
 		err := sb.snapApplyHeader(snapCpy, header, chain)
 		if err != nil {
 			return nil, err
 		}
-
-		// ##CROSS: validator slash
-		if chain.Config().IsBreakpoint(header.Number, header.Time) {
-			// Validator slash will be activated at the Crossway fork, but Recents should be updated before the fork,
-			// so we update Recents at the Breakpoint fork.
-			if snapCpy.Recents == nil {
-				snapCpy.Recents = make(map[uint64]common.Address)
-			}
-			author, _ := sb.Engine().Author(header)
-			snapCpy.Recents[number] = author
-		}
-		// ##
 	}
 	snapCpy.Number += uint64(len(headers))
 	snapCpy.Hash = headers[len(headers)-1].Hash()
-
-	// ##CROSS: validator slash
-	if snapCpy.Recents != nil {
-		if checkLen := snapCpy.historyCheckLen(); snapCpy.Number > checkLen {
-			oldest := snapCpy.Number - checkLen
-			for number := range snapCpy.Recents {
-				if number < oldest {
-					delete(snapCpy.Recents, number)
-				}
-			}
-		}
-	}
-	// ##
 
 	return snapCpy, nil
 }
@@ -635,27 +608,3 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 	}
 	return nil
 }
-
-// ##CROSS: validator slash
-func (sb *Backend) OfflineValidators(chain consensus.ChainHeaderReader, number uint64) []common.Address {
-	bn := new(big.Int).SetUint64(number)
-	if chain.Config().GetProposerPolicy(bn) != uint64(istanbul.RoundRobin) {
-		// Only round robin policy is supported for finding offline validators
-		return nil
-	}
-
-	snap, err := sb.snapshot(chain, number, sb.chain.GetHeaderByNumber(number).Hash(), nil)
-	if err != nil {
-		log.Error("Failed to get snapshot", "err", err, "number", number)
-		return nil
-	}
-
-	if epochLength := chain.Config().GetEpochLength(bn); epochLength == 0 || number%epochLength < uint64(snap.ValSet.Size()) {
-		// Not enough blocks have passed since the last checkpoint, so not enough recent proposers have been collected.
-		return nil
-	}
-
-	return snap.OfflineValidators()
-}
-
-// ##

@@ -9,6 +9,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -176,7 +179,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	data := e.validatorSet.PackUpdateValidators(validators)
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSetAddr, data, nil)
 
-	log.Info("Updating validator set", "number", header.Number.Uint64(), "validators", validators)
+	log.Info("Updating validator set", "number", header.Number.Uint64(), "validators", validators, "isMining", systemTxs == nil)
 	if systemTxs != nil {
 		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 	} else {
@@ -241,19 +244,35 @@ func (e *Engine) getValidatorThreshold(number uint64) (uint64, error) {
 // ##CROSS: validator slash
 // slashValidators slashes validators who failed to propose blocks in the previous sequence
 func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *chainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
-	if e.pos == nil || header.Number.Uint64() == 0 {
+	if header == nil || header.Number.Uint64() == 0 {
 		return nil
 	}
-	number := header.Number.Uint64() - 1 // read from parent block
 
-	idleValidators := e.pos.OfflineValidators(cx.Chain, number)
-	for _, validator := range idleValidators {
-		log.Info("Slashing idle validator", "number", header.Number.Uint64(), "validator", validator)
+	// Slash offline proposers of the parent block
+	parent := cx.Chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent == nil || parent.Number.Uint64() == 0 {
+		return nil
+	}
 
-		data := e.validatorSlash.PackSlashOffline(validator)
+	slashed, err := e.offlineProposers(cx.Chain, parent)
+	if err != nil {
+		return err
+	}
+	if len(slashed) == 0 {
+		return nil
+	}
+
+	for round, proposer := range slashed {
+		log.Info("Slashing offline proposer",
+			"number", header.Number.Uint64(),
+			"block", parent.Number.Uint64(),
+			"round", round,
+			"proposer", proposer,
+			"isMining", systemTxs == nil)
+
+		data := e.validatorSlash.PackSlashOffline(proposer)
 		msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
 
-		var err error
 		if systemTxs != nil {
 			err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 		} else {
@@ -263,23 +282,97 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 			return err
 		}
 	}
-
 	return nil
+}
+
+// offlineProposers collects the offline proposers of the given header.
+func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+	if header == nil || header.Number.Uint64() == 0 {
+		return nil, nil
+	}
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent == nil || parent.Number.Uint64() == 0 {
+		return nil, nil
+	}
+
+	// Only round robin policy is supported
+	policy := e.cfg.GetConfig(header.Number).ProposerPolicy
+	if policy == nil || policy.Id != istanbul.RoundRobin {
+		return nil, nil
+	}
+
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
+		return nil, err
+	}
+	if extra.Round == 0 {
+		return nil, nil
+	}
+
+	// If extra.Round > 0, collect proposers of previous rounds
+	valSet := validator.NewSet(extra.Validators, policy)
+	lastProposer, _ := e.Author(parent)
+	proposers := make([]common.Address, 0, extra.Round)
+	for round := uint32(0); round < extra.Round; round++ {
+		valSet.CalcProposer(lastProposer, uint64(round))
+		proposer := valSet.GetProposer()
+		proposers = append(proposers, proposer.Address())
+		lastProposer = proposer.Address()
+	}
+
+	return proposers, nil
+}
+
+// reduceSlashCounters reduces the slash counters of all slashed validators by configured rate
+func (e *Engine) reduceSlashCounters(header *types.Header, state vm.StateDB, cx *chainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	if header == nil || header.Number.Uint64() == 0 {
+		return nil
+	}
+
+	validatorSlashInstance := e.validatorSlash.Instance(e.contractBackend, contracts.ValidatorSlashAddr)
+
+	number := header.Number.Uint64() - 1 // read from parent block
+	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
+	calldata := e.validatorSlash.PackGetSlashedValidators()
+	slashed, err := bind.Call(validatorSlashInstance, callopts, calldata, e.validatorSlash.UnpackGetSlashedValidators)
+	if err != nil {
+		if errors.Is(err, bind.ErrNoCode) {
+			// contract is not deployed
+			return nil
+		}
+		log.Error("Failed to call getSlashedValidators", "error", err)
+		return err
+	}
+
+	if len(slashed) == 0 {
+		// No slashed validators
+		return nil
+	}
+
+	data := e.validatorSlash.PackReduceCount()
+	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
+
+	log.Info("Reducing slash counters", "number", header.Number.Uint64(), "isMining", systemTxs == nil)
+	if systemTxs != nil {
+		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+	} else {
+		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+	}
+	return err
 }
 
 // ##
 
 // ##CROSS: validator reward
 func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
-	// move collected rewards to the validator
 	coinbase := header.Coinbase
 	if coinbase == (common.Address{}) {
 		coinbase = e.signer
 	}
 
-	// Calculate total transaction fees
-	// totalFee := state.GetBalance(params.SystemAddress)
+	// totalFee := state.GetBalance(params.SystemAddress) // Total fee is already transferred to the system address in the state transition
 
+	// Calculate total transaction fees by summing up the fees of all transactions
 	totalFee := new(uint256.Int)
 	for i, tx := range *txs {
 		if isSystemTx, err := e.IsSystemTransaction(tx, header); err != nil {
@@ -311,9 +404,14 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 	// state.SubBalance(params.SystemAddress, totalFee, tracing.BalanceDecreaseDistributeReward)
 	// state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseDistributeReward)
 	state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseRewardTransactionFee)
-	log.Trace("Distributing rewards", "number", header.Number.Uint64(), "validator", coinbase, "totalFee", totalFee, "usedGas", *usedGas)
+	log.Trace("Distributing rewards",
+		"number", header.Number.Uint64(),
+		"validator", coinbase,
+		"totalFee", totalFee,
+		"usedGas", *usedGas,
+		"isMining", systemTxs == nil)
 
-	// call 'distributeReward' function to send the collected rewards to the validator share contract
+	// Call 'distributeReward' function to send the collected rewards to the validator share contract
 	data := e.stakeHub.PackDistributeReward(coinbase)
 	msg := newSystemMessage(coinbase, contracts.StakeHubAddr, data, totalFee.ToBig())
 

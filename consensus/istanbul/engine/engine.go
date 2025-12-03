@@ -577,9 +577,18 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 		// ##
 
-		// Update validator set at the end of epoch (block N-1) so that block N (new epoch start) can read it in Prepare()
+		// At the end of epoch
 		nextNumber := new(big.Int).Add(header.Number, common.Big1)
 		if e.cfg.OnNewEpoch(nextNumber) {
+			// ##CROSS: validator slash
+			if err := e.reduceSlashCounters(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+				log.Error("Failed to reduce slash counters", "error", err, "number", header.Number.Uint64())
+				return err
+			}
+			// ##
+
+			// ##CROSS: validator set
+			// Update validator set so it can be used in the next epoch
 			log.Info("Finalize: updating validator set for next epoch", "nextBlockNumber", nextNumber.Uint64())
 			if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 				log.Error("Failed to update validator set", "error", err, "nextBlockNumber", nextNumber.Uint64())
@@ -649,9 +658,17 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 		// ##
 
-		// Update validator set at the end of epoch (block N-1) so that block N (new epoch start) can read it in Prepare()
+		// At the end of epoch
 		nextNumber := new(big.Int).Add(header.Number, common.Big1)
 		if e.cfg.OnNewEpoch(nextNumber) {
+			// ##CROSS: validator slash
+			if err := e.reduceSlashCounters(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+				log.Error("Failed to reduce slash counters", "error", err, "number", header.Number.Uint64())
+				return nil, nil, err
+			}
+			// ##
+
+			// Update validator set so it can be used in the next epoch
 			log.Info("FinalizeAndAssemble: updating validator set for next epoch", "nextBlockNumber", nextNumber.Uint64())
 			if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 				log.Error("Failed to update validator set", "error", err, "nextBlockNumber", nextNumber.Uint64())
@@ -661,7 +678,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	}
 	// ##
 
-	// should not happen. Once happen, stopping the node is better than broadcasting the block
+	// Should not happen. Once happen, stopping the node is better than broadcasting the block
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}

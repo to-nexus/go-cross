@@ -159,8 +159,7 @@ type IstanbulPeer interface {
 type IstanbulPoS interface {
 	IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error)
 	IsSystemContract(to *common.Address) bool
-	SyncIstanbulParam(header *types.Header) error                              // ##CROSS: istanbul param
-	OfflineValidators(chain ChainHeaderReader, number uint64) []common.Address // ##CROSS: validator slash
+	SyncIstanbulParam(header *types.Header) error // ##CROSS: istanbul param
 }
 
 // ToIstanbulPoS converts an Engine to an IstanbulPoS if possible
