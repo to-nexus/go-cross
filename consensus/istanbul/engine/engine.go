@@ -577,9 +577,8 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 		// ##
 
-		// At the end of epoch
-		nextNumber := new(big.Int).Add(header.Number, common.Big1)
-		if e.cfg.OnNewEpoch(nextNumber) {
+		// At the beginning of a new day
+		if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.reduceSlashCounters(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 				log.Error("Failed to reduce slash counters", "error", err, "number", header.Number.Uint64())
@@ -588,10 +587,10 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			// ##
 
 			// ##CROSS: validator set
-			// Update validator set so it can be used in the next epoch
-			log.Info("Finalize: updating validator set for next epoch", "nextBlockNumber", nextNumber.Uint64())
+			// Update validator set so it can be used in the new day
+			log.Info("Finalize: updating validator set for the new day", "number", header.Number.Uint64(), "blockTime", header.Time)
 			if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
-				log.Error("Failed to update validator set", "error", err, "nextBlockNumber", nextNumber.Uint64())
+				log.Error("Failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
 				return err
 			}
 		}
@@ -658,9 +657,8 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 		// ##
 
-		// At the end of epoch
-		nextNumber := new(big.Int).Add(header.Number, common.Big1)
-		if e.cfg.OnNewEpoch(nextNumber) {
+		// At the beginning of a new day
+		if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.reduceSlashCounters(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 				log.Error("Failed to reduce slash counters", "error", err, "number", header.Number.Uint64())
@@ -668,10 +666,10 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 			}
 			// ##
 
-			// Update validator set so it can be used in the next epoch
-			log.Info("FinalizeAndAssemble: updating validator set for next epoch", "nextBlockNumber", nextNumber.Uint64())
+			// Update validator set so it can be used in the new day
+			log.Info("FinalizeAndAssemble: updating validator set for the new day", "number", header.Number.Uint64(), "blockTime", header.Time)
 			if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
-				log.Error("Failed to update validator set", "error", err, "nextBlockNumber", nextNumber.Uint64())
+				log.Error("Failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
 				return nil, nil, err
 			}
 		}

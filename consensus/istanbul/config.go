@@ -270,8 +270,7 @@ func (c *Config) String() string {
 	return "istanbul"
 }
 
-// OnNewEpoch checks if the given block number is on the beginning of a new epoch
-func (c *Config) OnNewEpoch(blockNumber *big.Int) bool {
-	epoch := c.GetConfig(blockNumber).Epoch
-	return blockNumber.Uint64()%epoch == 0
+// OnNewDay checks if the given block time is on the beginning of a new day
+func (c *Config) OnNewDayBlock(lastBlockTime, currentBlockTime uint64) bool {
+	return lastBlockTime != 0 && lastBlockTime/86400 != currentBlockTime/86400
 }

@@ -27,7 +27,7 @@ import (
 // SyncIstanbulParam reads the istanbul parameters from the IstanbulParam contract.
 // It reads all checkpoints up to the given timepoint and caches them.
 func (e *Engine) SyncIstanbulParam(header *types.Header) error {
-	timepoint := header.Number
+	timepoint := header.Time
 	istanbulParamInstance := e.istanbulParam.Instance(e.contractBackend, contracts.IstanbulParamAddr)
 
 	length, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackNumCheckpoints(), e.istanbulParam.UnpackNumCheckpoints)

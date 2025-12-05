@@ -414,7 +414,7 @@ func packValidatorThresholdResponse(t *testing.T, threshold uint64) []byte {
 func TestSyncIstanbulParam(t *testing.T) {
 	code := []byte{1, 2, 3}
 	methodNumCheckpoints := string(breakpoint.NewIstanbulParam().PackNumCheckpoints()[:4])
-	methodGetParamIndex := string(breakpoint.NewIstanbulParam().PackGetParamIndex(big.NewInt(100))[:4])
+	methodGetParamIndex := string(breakpoint.NewIstanbulParam().PackGetParamIndex(100)[:4])
 	methodGetParamsByIndex := string(breakpoint.NewIstanbulParam().PackGetParamsByIndex(0)[:4])
 	callContractErr := errors.New("call contract error")
 
