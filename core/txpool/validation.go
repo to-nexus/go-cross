@@ -143,6 +143,18 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if tx.GasTipCapIntCmp(opts.MinTip) < 0 {
 		return fmt.Errorf("%w: gas tip cap %v, minimum needed %v", ErrTxGasPriceTooLow, tx.GasTipCap(), opts.MinTip)
 	}
+	// ##CROSS: istanbul param
+	if types.IsIstanbulDigest(head.MixDigest) {
+		// Ensure tx.GasFeeCap() >= (MinBaseFee + MinTip) as required by the Istanbul consensus fee policy.
+		// Reject the transaction if its max fee cap is below the minimum acceptable gas fee.
+		if minBaseFee := opts.Config.GetMinBaseFee(head.Number); minBaseFee != nil && opts.MinTip != nil {
+			minFeeCap := new(big.Int).Add(opts.MinTip, opts.Config.GetMinBaseFee(head.Number))
+			if minFeeCap.Cmp(tx.GasFeeCap()) > 0 {
+				return fmt.Errorf("%w: gas fee cap %v, minimum needed %v", ErrTxGasPriceTooLow, tx.GasFeeCap(), minFeeCap)
+			}
+		}
+	}
+	// ##
 	if tx.Type() == types.BlobTxType {
 		// Ensure the blob fee cap satisfies the minimum blob gas price
 		if tx.BlobGasFeeCapIntCmp(blobTxMinBlobGasPrice) < 0 {
