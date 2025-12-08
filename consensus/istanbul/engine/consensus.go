@@ -27,7 +27,7 @@ import (
 // SyncIstanbulParam reads the istanbul parameters from the IstanbulParam contract.
 // It reads all checkpoints up to the given timepoint and caches them.
 func (e *Engine) SyncIstanbulParam(header *types.Header) error {
-	timepoint := header.Time
+	timepoint := header.Number.Uint64()
 	istanbulParamInstance := e.istanbulParam.Instance(e.contractBackend, contracts.IstanbulParamAddr)
 
 	length, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackNumCheckpoints(), e.istanbulParam.UnpackNumCheckpoints)
@@ -379,6 +379,9 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 			return err
 		} else if isSystemTx {
 			// All remaining transactions are system transactions
+			break
+		}
+		if i >= len(*receipts) {
 			break
 		}
 

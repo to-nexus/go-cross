@@ -61,7 +61,6 @@ func setDefaults(cfg *Config) {
 			cancunTime     = uint64(0)
 			adventureTime  = uint64(0) // ##CROSS: fork adventure
 			breakpointTime = uint64(0) // ##CROSS: fork breakpoint
-			crosswayTime   = uint64(0) // ##CROSS: fork crossway
 		)
 		cfg.ChainConfig = &params.ChainConfig{
 			ChainID:                 big.NewInt(1),
@@ -86,7 +85,6 @@ func setDefaults(cfg *Config) {
 			AdventureTime:           &adventureTime, // ##CROSS: fork adventure
 			CancunTime:              &cancunTime,
 			BreakpointTime:          &breakpointTime, // ##CROSS: fork breakpoint
-			CrosswayTime:            &crosswayTime,   // ##CROSS: fork crossway
 		}
 	}
 	if cfg.Difficulty == nil {

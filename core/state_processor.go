@@ -71,12 +71,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// ##CROSS: istanbul param
-	posEngine, isPoS := consensus.ToIstanbulPoS(p.chain.engine)
-	parent := p.chain.GetHeaderByHash(block.ParentHash())
-	if isPoS && p.config.IsBreakpoint(block.Number(), block.Time()) &&
-		parent != nil && !p.config.IsOnBreakpoint(block.Number(), parent.Time, block.Time()) {
-		// sync istanbul parameter after breakpoint + 1 block
-		if err := posEngine.SyncIstanbulParam(header); err != nil {
+	posa, isPoSA := consensus.ToIstanbulPoSA(p.chain.engine)
+	if isPoSA && p.config.IsIstanbulPoSA(block.Number(), block.Time()) {
+		// sync istanbul parameter after PoSA activation
+		if err := posa.SyncIstanbulParam(header); err != nil {
 			return nil, err
 		}
 	}
@@ -111,8 +109,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
 		// ##CROSS: consensus system contract
-		if isPoS {
-			if isSystemTx, err := posEngine.IsSystemTransaction(tx, header); err != nil {
+		if isPoSA {
+			if isSystemTx, err := posa.IsSystemTransaction(tx, header); err != nil {
 				return nil, fmt.Errorf("could not check if tx %d [%v] is system tx: %w", i, tx.Hash().Hex(), err)
 			} else if isSystemTx {
 				// system txs will be handled by the consensus engine, so skip here

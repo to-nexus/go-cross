@@ -237,11 +237,10 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 	}
 
 	// ##CROSS: istanbul param
-	if eth.blockchain.Config().IsBreakpoint(block.Number(), block.Time()) &&
-		!eth.blockchain.Config().IsOnBreakpoint(block.Number(), parent.Time(), block.Time()) {
-		// sync istanbul parameter after breakpoint + 1 block
-		if posEngine, isPoS := consensus.ToIstanbulPoS(eth.engine); isPoS {
-			if err := posEngine.SyncIstanbulParam(block.Header()); err != nil {
+	if eth.blockchain.Config().IsIstanbulPoSA(block.Number(), block.Time()) {
+		// sync istanbul parameter after PoSA activation
+		if posa, isPoSA := consensus.ToIstanbulPoSA(eth.engine); isPoSA {
+			if err := posa.SyncIstanbulParam(block.Header()); err != nil {
 				return nil, vm.BlockContext{}, nil, nil, err
 			}
 		}

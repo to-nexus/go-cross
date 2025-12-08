@@ -43,7 +43,7 @@ const (
 )
 
 // ##CROSS: consensus system contract
-var _ consensus.IstanbulPoS = (*Backend)(nil)
+var _ consensus.IstanbulPoSA = (*Backend)(nil)
 
 func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	return sb.Engine().IsSystemTransaction(tx, header)
@@ -536,7 +536,16 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		return istanbul.ErrUnauthorized
 	}
 
-	if !chain.Config().IsCrossway(header.Number, header.Time) { // ##CROSS: consensus system contract
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: istanbul posa
+		// Validators are managed by the system contract, we don't check the votes anymore
+		validators, err := sb.Engine().ExtractValidators(header)
+		if err != nil {
+			return err
+		}
+		snap.ValSet = validator.NewSet(validators, sb.config.GetConfig(header.Number).ProposerPolicy)
+		// ##
+	} else {
 		// Read vote from header
 		candidate, authorize, err := sb.Engine().ReadVote(header)
 		if err != nil {
@@ -599,12 +608,6 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 			}
 			delete(snap.Tally, candidate)
 		}
-	} else { // ##CROSS: consensus system contract
-		validators, err := sb.Engine().ExtractValidators(header)
-		if err != nil {
-			return err
-		}
-		snap.ValSet = validator.NewSet(validators, sb.config.GetConfig(header.Number).ProposerPolicy) // ##CROSS: istanbul param
 	}
 	return nil
 }

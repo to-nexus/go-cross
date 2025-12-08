@@ -156,19 +156,19 @@ type IstanbulPeer interface {
 }
 
 // ##CROSS: consensus system contract
-type IstanbulPoS interface {
+type IstanbulPoSA interface {
 	IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error)
 	IsSystemContract(to *common.Address) bool
 	SyncIstanbulParam(header *types.Header) error // ##CROSS: istanbul param
 }
 
-// ToIstanbulPoS converts an Engine to an IstanbulPoS if possible
-func ToIstanbulPoS(engine Engine) (IstanbulPoS, bool) {
-	if pos, ok := engine.(IstanbulPoS); ok {
+// ToIstanbulPoSA converts an Engine to an IstanbulPoSA if possible
+func ToIstanbulPoSA(engine Engine) (IstanbulPoSA, bool) {
+	if pos, ok := engine.(IstanbulPoSA); ok {
 		return pos, true
 	}
 	if e, ok := engine.(interface{ InnerEngine() Engine }); ok {
-		pos, ok := e.InnerEngine().(IstanbulPoS)
+		pos, ok := e.InnerEngine().(IstanbulPoSA)
 		return pos, ok
 	}
 	return nil, false

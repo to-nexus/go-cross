@@ -50,7 +50,7 @@ type Engine struct {
 	contractBackend bind.ContractBackend
 	signTx          SignerTxFn
 	consensus       consensus.Engine
-	pos             consensus.IstanbulPoS
+	posa            consensus.IstanbulPoSA
 
 	// system contracts
 	istanbulParam  *breakpoint.IstanbulParam
@@ -75,7 +75,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		validatorSlash:  breakpoint.NewValidatorSlash(),
 		// ##
 	}
-	e.pos, _ = consensus.ToIstanbulPoS(ce)
+	e.posa, _ = consensus.ToIstanbulPoSA(ce)
 	return e
 }
 
@@ -481,9 +481,9 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 
 	// update validator list
 	var validatorsList []common.Address
-	if chain.Config().IsCrossway(header.Number, header.Time) {
-		// ##CROSS: consensus system contract
-		// since crossway, validator list is managed by the system contract
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: istanbul posa
+		// validator list is managed by the system contract
 		newList, err := e.getCurrentValidators(parent.Number.Uint64())
 		if err != nil {
 			return err
@@ -561,8 +561,8 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 	// ##
 
-	// ##CROSS: consensus system contract
-	if chain.Config().IsCrossway(header.Number, header.Time) {
+	// ##CROSS: istanbul posa
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: validator slash
 		if err := e.slashValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
@@ -641,8 +641,8 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	}
 	// ##
 
-	// ##CROSS: consensus system contract
-	if chain.Config().IsCrossway(header.Number, header.Time) {
+	// ##CROSS: istanbul posa
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: validator slash
 		if err := e.slashValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())

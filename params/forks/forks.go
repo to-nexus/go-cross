@@ -42,7 +42,6 @@ const (
 	Prague
 	Breakpoint // ##CROSS: fork breakpoint
 	Osaka
-	Crossway // ##CROSS: fork crossway
 )
 
 // String implements fmt.Stringer.
@@ -77,5 +76,4 @@ var forkToString = map[Fork]string{
 	Prague:           "Prague",
 	Breakpoint:       "Breakpoint", // ##CROSS: fork breakpoint
 	Osaka:            "Osaka",
-	Crossway:         "Crossway", // ##CROSS: fork crossway
 }

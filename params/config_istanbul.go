@@ -29,6 +29,9 @@ type IstanbulConfig struct {
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator"` // Bounds the amount the base fee can change between blocks.
 	MaxBaseFee               *math.HexOrDecimal256 `json:"maxbasefee,omitempty"`     // MaxBaseFee
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`     // MinBaseFee
+
+	// ##CROSS: istanbul posa
+	PoSAActivationSeconds *uint64 `json:"posaActivationSeconds"` // PoSA activation time in seconds
 }
 
 func (c IstanbulConfig) String() string {

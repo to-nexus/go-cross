@@ -82,7 +82,6 @@ var (
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
-		CrosswayTime:            nil, // ##CROSS: fork crossway
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -119,6 +118,8 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
 		},
 		Transitions: []Transition{},
 	}
@@ -147,7 +148,6 @@ var (
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
-		CrosswayTime:            nil, // ##CROSS: fork crossway
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
@@ -171,6 +171,8 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
 		},
 		Transitions: []Transition{},
 	}
@@ -199,7 +201,6 @@ var (
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
-		CrosswayTime:            nil, // ##CROSS: fork crossway
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
@@ -223,6 +224,8 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
 		},
 		Transitions: []Transition{
 			// ##CROSS: gas limit upgrade
@@ -279,6 +282,8 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
 		},
 		Transitions: []Transition{
 			// ##CROSS: gas limit upgrade
@@ -670,7 +675,6 @@ type ChainConfig struct {
 	CancunTime     *uint64 `json:"cancunTime,omitempty"`     // Cancun switch time (nil = no fork, 0 = already on cancun)
 	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
 	BreakpointTime *uint64 `json:"breakpointTime,omitempty"` // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
-	CrosswayTime   *uint64 `json:"crosswayTime,omitempty"`   // Crossway switch time (nil = no fork, 0 = already on crossway) ##CROSS: fork crossway
 	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
@@ -770,11 +774,6 @@ func (c *ChainConfig) Description() string {
 	if c.OsakaTime != nil {
 		banner += fmt.Sprintf(" - Osaka:                       @%-10v\n", *c.OsakaTime)
 	}
-	// ##CROSS: fork crossway
-	if c.CrosswayTime != nil {
-		banner += fmt.Sprintf(" - Crossway:                    @%-10v\n", *c.CrosswayTime)
-	}
-	// ##
 	if c.VerkleTime != nil {
 		banner += fmt.Sprintf(" - Verkle:                      @%-10v\n", *c.VerkleTime)
 	}
@@ -922,19 +921,12 @@ func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime 
 
 // ##
 
-// ##CROSS: fork crossway
-// IsCrossway returns whether time is either equal to the Crossway fork time or greater.
-func (c *ChainConfig) IsCrossway(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.CrosswayTime, time)
-}
-
-// IsOnCrossway returns whether currentBlockTime is either equal to the Crossway fork time or greater firstly.
-func (c *ChainConfig) IsOnCrossway(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
-	lastBlockNumber := new(big.Int)
-	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
-		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+// ##CROSS: istanbul posa
+func (c *ChainConfig) IsIstanbulPoSA(num *big.Int, time uint64) bool {
+	if c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSAActivationSeconds == nil {
+		return false
 	}
-	return !c.IsCrossway(lastBlockNumber, lastBlockTime) && c.IsCrossway(currentBlockNumber, currentBlockTime)
+	return c.IsBreakpoint(num, time) && *c.BreakpointTime+*c.Istanbul.PoSAActivationSeconds <= time
 }
 
 // ##
@@ -1033,7 +1025,6 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
 		{name: "breakpointTime", timestamp: c.BreakpointTime, optional: true}, // ##CROSS: fork breakpoint
 		{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
-		{name: "crosswayTime", timestamp: c.CrosswayTime, optional: true}, // ##CROSS: fork crossway
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
 		if lastFork.name != "" {
@@ -1191,11 +1182,6 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
 		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
 	}
-	// ##CROSS: fork crossway
-	if isForkTimestampIncompatible(c.CrosswayTime, newcfg.CrosswayTime, headTimestamp) {
-		return newTimestampCompatError("Crossway fork timestamp", c.CrosswayTime, newcfg.CrosswayTime)
-	}
-	// ##
 	if isForkTimestampIncompatible(c.VerkleTime, newcfg.VerkleTime, headTimestamp) {
 		return newTimestampCompatError("Verkle fork timestamp", c.VerkleTime, newcfg.VerkleTime)
 	}
@@ -1218,8 +1204,6 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	london := c.LondonBlock
 
 	switch {
-	case c.IsCrossway(london, time): // ##CROSS: fork crossway
-		return forks.Crossway
 	case c.IsOsaka(london, time):
 		return forks.Osaka
 	case c.IsBreakpoint(london, time): // ##CROSS: fork breakpoint
@@ -1241,8 +1225,6 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch fork {
-	case forks.Crossway: // ##CROSS: fork crossway
-		return c.CrosswayTime
 	case forks.Osaka:
 		return c.OsakaTime
 	case forks.Breakpoint: // ##CROSS: fork breakpoint
@@ -1402,7 +1384,7 @@ type Rules struct {
 	IsBerlin, IsLondon                                      bool
 	IsMerge, IsShanghai, IsCancun, IsPrague, IsOsaka        bool
 	IsVerkle                                                bool
-	IsAdventure, IsBreakpoint, IsCrossway                   bool // ##CROSS: fork
+	IsAdventure, IsBreakpoint                               bool // ##CROSS: fork
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -1435,7 +1417,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsPrague:         (isMerge || isAdventure) && c.IsPrague(num, timestamp),
 		IsBreakpoint:     c.IsBreakpoint(num, timestamp), // ##CROSS: fork breakpoint
 		IsOsaka:          isMerge && c.IsOsaka(num, timestamp),
-		IsCrossway:       c.IsCrossway(num, timestamp), // ##CROSS: fork crossway
 		IsVerkle:         isVerkle,
 		IsEIP4762:        isVerkle,
 	}
