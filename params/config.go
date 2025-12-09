@@ -197,9 +197,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              nil,
-		PragueTime:              nil,
-		BreakpointTime:          nil, // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1765324800),
+		PragueTime:              newUint64(1765324800),
+		BreakpointTime:          newUint64(1765324800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -225,7 +225,7 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
+			PoSAActivationSeconds: newUint64(9 * 3600), // 9 hours
 		},
 		Transitions: []Transition{
 			// ##CROSS: gas limit upgrade
