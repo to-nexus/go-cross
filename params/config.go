@@ -923,7 +923,7 @@ func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime 
 
 // ##CROSS: istanbul posa
 func (c *ChainConfig) IsIstanbulPoSA(num *big.Int, time uint64) bool {
-	if c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSAActivationSeconds == nil {
+	if num.Cmp(big.NewInt(1)) <= 0 || c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSAActivationSeconds == nil {
 		return false
 	}
 	return c.IsBreakpoint(num, time) && *c.BreakpointTime+*c.Istanbul.PoSAActivationSeconds <= time
