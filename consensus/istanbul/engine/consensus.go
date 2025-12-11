@@ -30,15 +30,6 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 	timepoint := header.Number.Uint64()
 	istanbulParamInstance := e.istanbulParam.Instance(e.contractBackend, contracts.IstanbulParamAddr)
 
-	length, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackNumCheckpoints(), e.istanbulParam.UnpackNumCheckpoints)
-	if err != nil {
-		log.Error("Failed to call numCheckpoints", "error", err)
-		return err
-	}
-	if length == 0 {
-		return nil
-	}
-
 	// get the latest param index at this timepoint
 	latestIndex, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamIndex(timepoint), e.istanbulParam.UnpackGetParamIndex)
 	if err != nil {
@@ -50,19 +41,11 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 		return err
 	}
 
-	// if no params exist yet, nothing to sync
-	if latestIndex == length {
-		return nil
-	}
+	// get the number of cached configs
+	length := params.IstanbulConfigLength()
 
-	// iterate through all param indices to latestIndex
-	for index := uint64(0); index <= latestIndex; index++ {
-		if params.IstanbulConfigByIndex(index) != nil {
-			// already cached
-			continue
-		}
-
-		// read the config from the contract and cache it
+	// read uncached configs from the contract
+	for index := uint64(length); index <= latestIndex; index++ {
 		result, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamsByIndex(index), e.istanbulParam.UnpackGetParamsByIndex)
 		if err != nil {
 			log.Error("Failed to call getParamsByIndex", "index", index, "error", err)
@@ -97,7 +80,7 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 			config.MinBaseFee = (*math.HexOrDecimal256)(result.MinBaseFee)
 		}
 
-		params.SetIstanbulConfig(index, &config, result.Timepoint)
+		params.AddIstanbulConfig(&config, result.Timepoint)
 	}
 	return nil
 }

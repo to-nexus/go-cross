@@ -28,10 +28,11 @@ var _ core.ChainContext = (*mockChainContext)(nil)
 
 // mockContractBackend implements bind.ContractBackend for testing
 type mockContractBackend struct {
-	codeAtBytes           []byte
-	codeAtErr             error
-	callContractResponses map[string][][]byte // method selector => responses
-	callContractErr       error
+	codeAtBytes   []byte
+	codeAtErr     error
+	callResponses map[string][][]byte // method selector => responses
+	callErr       error
+	callCnt       int
 }
 
 func (m *mockContractBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
@@ -41,15 +42,16 @@ func (m *mockContractBackend) CallContract(ctx context.Context, call ethereum.Ca
 	return m.callContract(call)
 }
 func (m *mockContractBackend) callContract(call ethereum.CallMsg) ([]byte, error) {
-	if m.callContractResponses != nil && len(call.Data) >= 4 {
+	if m.callResponses != nil && len(call.Data) >= 4 {
 		methodSelector := string(call.Data[:4])
-		if responses, ok := m.callContractResponses[methodSelector]; ok && len(responses) > 0 {
+		if responses, ok := m.callResponses[methodSelector]; ok && len(responses) > 0 {
 			response := responses[0]
-			m.callContractResponses[methodSelector] = responses[1:]
-			return response, m.callContractErr
+			m.callResponses[methodSelector] = responses[1:]
+			m.callCnt++
+			return response, m.callErr
 		}
 	}
-	return nil, m.callContractErr
+	return nil, m.callErr
 }
 
 func (m *mockContractBackend) CodeAtHash(ctx context.Context, contract common.Address, hash common.Hash) ([]byte, error) {
@@ -103,7 +105,7 @@ func TestGetCurrentValidators(t *testing.T) {
 			number: 100,
 			mockCaller: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
+				callResponses: map[string][][]byte{
 					method: {packValidatorsResponse(t, []common.Address{
 						common.HexToAddress("0x2222222222222222222222222222222222222222"),
 						common.HexToAddress("0x1111111111111111111111111111111111111111"),
@@ -123,7 +125,7 @@ func TestGetCurrentValidators(t *testing.T) {
 			number: 100,
 			mockCaller: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
+				callResponses: map[string][][]byte{
 					method: {packValidatorsResponse(t, []common.Address{})},
 				},
 			},
@@ -143,8 +145,8 @@ func TestGetCurrentValidators(t *testing.T) {
 			name:   "error from CallContract",
 			number: 100,
 			mockCaller: &mockContractBackend{
-				codeAtBytes:     []byte{1, 2, 3},
-				callContractErr: callContractErr,
+				codeAtBytes: []byte{1, 2, 3},
+				callErr:     callContractErr,
 			},
 			expectedValidators: nil,
 			expectedErr:        callContractErr,
@@ -236,7 +238,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 			threshold: 2,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
+				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
 						[]common.Address{
 							common.HexToAddress("0x1111111111111111111111111111111111111111"),
@@ -259,7 +261,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 			threshold: 2,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: []byte{1, 2, 3},
-				callContractResponses: map[string][][]byte{
+				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
 						[]common.Address{},
 						[]*big.Int{},
@@ -280,7 +282,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 			threshold: 0,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
+				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
 						[]common.Address{
 							common.HexToAddress("0x1111111111111111111111111111111111111111"),
@@ -300,8 +302,8 @@ func TestUpdateValidatorSet(t *testing.T) {
 			}{},
 			threshold: 2,
 			mockBackend: &mockContractBackend{
-				codeAtBytes:     code,
-				callContractErr: errors.New("getValidatorInfo error"),
+				codeAtBytes: code,
+				callErr:     errors.New("getValidatorInfo error"),
 			},
 			expectedErr: errors.New("getValidatorInfo error"),
 		},
@@ -316,7 +318,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 			threshold: 2,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
+				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
 						[]common.Address{
 							common.HexToAddress("0x1111111111111111111111111111111111111111"),
@@ -324,7 +326,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 						[]*big.Int{big.NewInt(1000)},
 					)},
 				},
-				callContractErr: errors.New("getValidatorThreshold error"),
+				callErr: errors.New("getValidatorThreshold error"),
 			},
 			expectedErr: errors.New("getValidatorThreshold error"),
 		},
@@ -413,7 +415,6 @@ func packValidatorThresholdResponse(t *testing.T, threshold uint64) []byte {
 // ##CROSS: istanbul param
 func TestSyncIstanbulParam(t *testing.T) {
 	code := []byte{1, 2, 3}
-	methodNumCheckpoints := string(breakpoint.NewIstanbulParam().PackNumCheckpoints()[:4])
 	methodGetParamIndex := string(breakpoint.NewIstanbulParam().PackGetParamIndex(100)[:4])
 	methodGetParamsByIndex := string(breakpoint.NewIstanbulParam().PackGetParamsByIndex(0)[:4])
 	callContractErr := errors.New("call contract error")
@@ -422,6 +423,7 @@ func TestSyncIstanbulParam(t *testing.T) {
 		name        string
 		header      *types.Header
 		mockBackend *mockContractBackend
+		precached   int
 		expectedErr error
 		validate    func(t *testing.T)
 	}{
@@ -430,9 +432,8 @@ func TestSyncIstanbulParam(t *testing.T) {
 			header: &types.Header{Number: big.NewInt(100)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
-					methodNumCheckpoints: {packNumCheckpointsResponse(t, 1)},
-					methodGetParamIndex:  {packGetParamIndexResponse(t, 0)},
+				callResponses: map[string][][]byte{
+					methodGetParamIndex: {packGetParamIndexResponse(t, 0)},
 					methodGetParamsByIndex: {packGetParamsByIndexResponse(t, breakpoint.GetParamsByIndexOutput{
 						Timepoint:                100,
 						EpochLength:              1000,
@@ -451,43 +452,18 @@ func TestSyncIstanbulParam(t *testing.T) {
 			},
 			expectedErr: nil,
 			validate: func(t *testing.T) {
-				config := params.IstanbulConfigByIndex(0)
+				config := params.IstanbulConfigAt(100)
 				require.NotNil(t, config)
 				assert.EqualValues(t, 1000, config.EpochLength)
 				assert.EqualValues(t, 5, config.BlockPeriodSeconds)
 			},
 		},
 		{
-			name:   "numCheckpoints is 0",
-			header: &types.Header{Number: big.NewInt(100)},
-			mockBackend: &mockContractBackend{
-				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
-					methodNumCheckpoints: {packNumCheckpointsResponse(t, 0)},
-				},
-			},
-			expectedErr: nil,
-			validate:    func(t *testing.T) {},
-		},
-		{
-			name:   "error from numCheckpoints",
-			header: &types.Header{Number: big.NewInt(100)},
-			mockBackend: &mockContractBackend{
-				codeAtBytes:     code,
-				callContractErr: callContractErr,
-			},
-			expectedErr: callContractErr,
-			validate:    func(t *testing.T) {},
-		},
-		{
 			name:   "error from getParamIndex",
 			header: &types.Header{Number: big.NewInt(100)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
-					methodNumCheckpoints: {packNumCheckpointsResponse(t, 1)},
-				},
-				callContractErr: callContractErr,
+				callErr:     callContractErr,
 			},
 			expectedErr: callContractErr,
 			validate:    func(t *testing.T) {},
@@ -497,11 +473,11 @@ func TestSyncIstanbulParam(t *testing.T) {
 			header: &types.Header{Number: big.NewInt(100)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
-					methodNumCheckpoints: {packNumCheckpointsResponse(t, 2)},
-					methodGetParamIndex:  {packGetParamIndexResponse(t, 2)},
+				callResponses: map[string][][]byte{
+					methodGetParamIndex: {packGetParamIndexResponse(t, 2)},
 				},
 			},
+			precached:   3,
 			expectedErr: nil,
 			validate:    func(t *testing.T) {},
 		},
@@ -510,11 +486,10 @@ func TestSyncIstanbulParam(t *testing.T) {
 			header: &types.Header{Number: big.NewInt(100)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
-					methodNumCheckpoints: {packNumCheckpointsResponse(t, 1)},
-					methodGetParamIndex:  {packGetParamIndexResponse(t, 0)},
+				callResponses: map[string][][]byte{
+					methodGetParamIndex: {packGetParamIndexResponse(t, 0)},
 				},
-				callContractErr: callContractErr,
+				callErr: callContractErr,
 			},
 			expectedErr: callContractErr,
 			validate:    func(t *testing.T) {},
@@ -524,9 +499,8 @@ func TestSyncIstanbulParam(t *testing.T) {
 			header: &types.Header{Number: big.NewInt(200)},
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
-				callContractResponses: map[string][][]byte{
-					methodNumCheckpoints: {packNumCheckpointsResponse(t, 3)},
-					methodGetParamIndex:  {packGetParamIndexResponse(t, 2)},
+				callResponses: map[string][][]byte{
+					methodGetParamIndex: {packGetParamIndexResponse(t, 2)},
 					methodGetParamsByIndex: {
 						packGetParamsByIndexResponse(t, breakpoint.GetParamsByIndexOutput{
 							Timepoint:                100,
@@ -575,16 +549,15 @@ func TestSyncIstanbulParam(t *testing.T) {
 			},
 			expectedErr: nil,
 			validate: func(t *testing.T) {
-				// Verify configs are cached (0, 1, 2)
-				config0 := params.IstanbulConfigByIndex(0)
+				config0 := params.IstanbulConfigAt(100)
 				require.NotNil(t, config0)
 				assert.EqualValues(t, 1000, config0.EpochLength)
 
-				config1 := params.IstanbulConfigByIndex(1)
+				config1 := params.IstanbulConfigAt(150)
 				require.NotNil(t, config1)
 				assert.EqualValues(t, 2000, config1.EpochLength)
 
-				config2 := params.IstanbulConfigByIndex(2)
+				config2 := params.IstanbulConfigAt(200)
 				require.NotNil(t, config2)
 				assert.EqualValues(t, 3000, config2.EpochLength)
 			},
@@ -593,34 +566,28 @@ func TestSyncIstanbulParam(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			params.ClearCachedIstanbulConfigs()
+
 			engine := &Engine{
 				contractBackend: tt.mockBackend,
 				istanbulParam:   breakpoint.NewIstanbulParam(),
 			}
+			expResponse := 0
+			for _, responses := range tt.mockBackend.callResponses {
+				expResponse += len(responses)
+			}
+			for i := range tt.precached {
+				params.AddIstanbulConfig(&params.IstanbulConfig{}, uint64(i+1))
+			}
 
-			params.ClearCachedIstanbulConfigs()
 			err := engine.SyncIstanbulParam(tt.header)
 
 			require.ErrorIs(t, err, tt.expectedErr)
 
+			assert.Equal(t, expResponse, tt.mockBackend.callCnt)
 			tt.validate(t)
 		})
 	}
-}
-
-func packNumCheckpointsResponse(t *testing.T, count uint64) []byte {
-	t.Helper()
-
-	parsedABI, err := breakpoint.IstanbulParamMetaData.ParseABI()
-	require.NoError(t, err)
-
-	method, ok := parsedABI.Methods["numCheckpoints"]
-	require.True(t, ok)
-
-	retPacked, err := method.Outputs.Pack(count)
-	require.NoError(t, err)
-
-	return retPacked
 }
 
 func packGetParamIndexResponse(t *testing.T, index uint64) []byte {

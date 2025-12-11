@@ -270,7 +270,7 @@ func (c *Config) String() string {
 	return "istanbul"
 }
 
-// OnNewDay checks if the given block time is on the beginning of a new day
+// OnNewDayBlock checks if the given block time is on the beginning of a new day
 func (c *Config) OnNewDayBlock(lastBlockTime, currentBlockTime uint64) bool {
 	return lastBlockTime != 0 && lastBlockTime/86400 != currentBlockTime/86400
 }
