@@ -53,6 +53,10 @@ func (sb *Backend) IsSystemContract(to *common.Address) bool {
 	return sb.Engine().IsSystemContract(to)
 }
 
+func (sb *Backend) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+	return sb.Engine().EstimateGasForSystemTxs(chain, header)
+}
+
 func (sb *Backend) SyncIstanbulParam(header *types.Header) error { // ##CROSS: istanbul param
 	return sb.Engine().SyncIstanbulParam(header)
 }

@@ -134,7 +134,9 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return err
 	}
 	if len(validatorInfos) == 0 {
-		return errors.New("no validator info")
+		// do not update validator set, it will use the legacy validators from the header
+		log.Warn("No validator info", "number", header.Number.Uint64())
+		return nil
 	}
 
 	threshold, err := e.getValidatorThreshold(number)

@@ -875,6 +875,19 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
+		// ##CROSS: consensus system contract
+		if posa, isPoSA := consensus.ToIstanbulPoSA(w.engine); isPoSA {
+			if gasReserved := posa.EstimateGasForSystemTxs(w.chain, env.header); gasReserved > 0 {
+				env.gasPool.SubGas(gasReserved)
+				log.Debug("Reserved gas for system transactions",
+					"number", env.header.Number.Uint64(),
+					"time", env.header.Time,
+					"reserved", gasReserved,
+					"available", env.gasPool.Gas(),
+				)
+			}
+		}
+		// ##
 	}
 	var coalescedLogs []*types.Log
 

@@ -50,7 +50,6 @@ type Engine struct {
 	contractBackend bind.ContractBackend
 	signTx          SignerTxFn
 	consensus       consensus.Engine
-	posa            consensus.IstanbulPoSA
 
 	// system contracts
 	istanbulParam  *breakpoint.IstanbulParam
@@ -75,7 +74,6 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		validatorSlash:  breakpoint.NewValidatorSlash(),
 		// ##
 	}
-	e.posa, _ = consensus.ToIstanbulPoSA(ce)
 	return e
 }
 
@@ -103,6 +101,38 @@ func (e *Engine) IsSystemContract(to *common.Address) bool {
 		return false
 	}
 	return contracts.IsSystemContract(*to)
+}
+
+const (
+	systemTxsGasBreakpoint = 2_000_000
+	systemTxsGasNewDay     = 1_500_000
+	systemTxsGasUsual      = 1_000_000
+)
+
+func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+	if !chain.Config().IsBreakpoint(header.Number, header.Time) {
+		// No system transactions yet
+		return 0
+	}
+
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent != nil {
+		// Possible system transactions and approx. gas costs:
+		//   Initialize system contracts (on hardfork): 1,100,000 on Breakpoint
+		//   Slash and jail a validator: 300,000
+		//   Distribute rewards: 200,000
+		//   Reduce slash counters (on new day block): 30,000
+		//   Update validator set (on new day block): 70,000
+		if chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
+			return systemTxsGasBreakpoint
+		}
+		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+			if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
+				return systemTxsGasNewDay
+			}
+		}
+	}
+	return systemTxsGasUsual
 }
 
 // ##
@@ -545,7 +575,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
 		if len(initData) > 0 {
 			// all initData should be included in systemTxs, in same order
-			if len(*systemTxs) < len(initData) {
+			if systemTxs == nil || len(*systemTxs) < len(initData) {
 				return errors.New("systemTxs is not enough")
 			}
 

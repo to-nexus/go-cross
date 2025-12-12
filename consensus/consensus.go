@@ -157,9 +157,10 @@ type IstanbulPeer interface {
 
 // ##CROSS: consensus system contract
 type IstanbulPoSA interface {
-	IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error)
-	IsSystemContract(to *common.Address) bool
-	SyncIstanbulParam(header *types.Header) error // ##CROSS: istanbul param
+	IsSystemTransaction(*types.Transaction, *types.Header) (bool, error)
+	IsSystemContract(*common.Address) bool
+	EstimateGasForSystemTxs(ChainHeaderReader, *types.Header) uint64
+	SyncIstanbulParam(*types.Header) error // ##CROSS: istanbul param
 }
 
 // ToIstanbulPoSA converts an Engine to an IstanbulPoSA if possible
