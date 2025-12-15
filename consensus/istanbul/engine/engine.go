@@ -610,8 +610,8 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		// At the beginning of a new day
 		if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
 			// ##CROSS: validator slash
-			if err := e.reduceSlashCounters(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
-				log.Error("Failed to reduce slash counters", "error", err, "number", header.Number.Uint64())
+			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
 				return err
 			}
 			// ##
@@ -639,10 +639,11 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 // All system transactions will be created and executed in this function.
 func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
 	// ##CROSS: fork
-	if body != nil {
-		if body.Transactions == nil {
-			body.Transactions = make([]*types.Transaction, 0)
-		}
+	if body == nil {
+		body = &types.Body{}
+	}
+	if body.Transactions == nil {
+		body.Transactions = make([]*types.Transaction, 0)
 	}
 	if receipts == nil {
 		receipts = make([]*types.Receipt, 0)
@@ -690,8 +691,8 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		// At the beginning of a new day
 		if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
 			// ##CROSS: validator slash
-			if err := e.reduceSlashCounters(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
-				log.Error("Failed to reduce slash counters", "error", err, "number", header.Number.Uint64())
+			if err := e.mitigateSlashedValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
 				return nil, nil, err
 			}
 			// ##

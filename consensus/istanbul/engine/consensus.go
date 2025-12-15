@@ -308,8 +308,8 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 	return proposers, nil
 }
 
-// reduceSlashCounters reduces the slash counters of all slashed validators by configured rate
-func (e *Engine) reduceSlashCounters(header *types.Header, state vm.StateDB, cx *chainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+// mitigateSlashedValidators mitigates the slashed validators by configured rate
+func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateDB, cx *chainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	if header == nil || header.Number.Uint64() == 0 {
 		return nil
 	}
@@ -334,10 +334,10 @@ func (e *Engine) reduceSlashCounters(header *types.Header, state vm.StateDB, cx 
 		return nil
 	}
 
-	data := e.validatorSlash.PackReduceCount()
+	data := e.validatorSlash.PackMitigate()
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
 
-	log.Info("Reducing slash counters", "number", header.Number.Uint64(), "isMining", systemTxs == nil)
+	log.Info("Mitigating slashed validators", "number", header.Number.Uint64(), "slashed", slashed, "isMining", systemTxs == nil)
 	if systemTxs != nil {
 		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 	} else {

@@ -26,9 +26,9 @@ var (
 
 // ValidatorSlashMetaData contains all meta data concerning the ValidatorSlash contract.
 var ValidatorSlashMetaData = bind.MetaData{
-	ABI:        "[{\"type\":\"function\",\"name\":\"REDUCE_COUNT_RATE\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getSlashInfo\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"height\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"count\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getSlashedValidators\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address[]\",\"internalType\":\"address[]\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"offlineSlashThreshold\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"reduceCount\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setOfflineSlashThreshold\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"slashOffline\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineSlashThresholdUpdated\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValue\",\"inputs\":[{\"name\":\"key\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"value\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotValidator\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OncePerBlock\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyCoinbase\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlySystemContract\",\"inputs\":[{\"name\":\"contractAddr\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OnlyZeroGasPrice\",\"inputs\":[]}]",
+	ABI:        "[{\"type\":\"function\",\"name\":\"MITIGATE_RATE\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getSlashInfo\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"height\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"count\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getSlashedValidators\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address[]\",\"internalType\":\"address[]\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"mitigate\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"offlineSlashThreshold\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"setOfflineSlashThreshold\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"slashOffline\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OfflineSlashThresholdUpdated\",\"inputs\":[{\"name\":\"threshold\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorMitigated\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"count\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ValidatorSlashed\",\"inputs\":[{\"name\":\"validatorAddr\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"count\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidValue\",\"inputs\":[{\"name\":\"key\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"value\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotValidator\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OncePerBlock\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlyCoinbase\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OnlySystemContract\",\"inputs\":[{\"name\":\"contractAddr\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OnlyZeroGasPrice\",\"inputs\":[]}]",
 	ID:         "ValidatorSlash",
-	BinRuntime: "0x6080806040526004361015610012575f80fd5b5f905f3560e01c9081630fa2f647146105cc575080632ea22d0b1461054a57806344690e5c146103a95780634ac9302e146102ea5780635b19c262146102cc5780637ac6010d1461021b5780638129fc1c146100be5763c786872914610076575f80fd5b346100bb57806003193601126100bb574133036100ac573a61009d5761009a610607565b80f35b6383f1b1d360e01b8152600490fd5b63022d8c9560e31b8152600490fd5b80fd5b50346100bb57806003193601126100bb575f5160206108225f395f51905f525460ff8160401c16159067ffffffffffffffff811680159081610213575b6001149081610209575b159081610200575b506101f15767ffffffffffffffff1981166001175f5160206108225f395f51905f5255816101c5575b504133036101b6573a6101a757603260035561014f5780f35b68ff0000000000000000195f5160206108225f395f51905f5254165f5160206108225f395f51905f52557fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2602060405160018152a180f35b6383f1b1d360e01b8252600482fd5b63022d8c9560e31b8252600482fd5b68ffffffffffffffffff191668010000000000000001175f5160206108225f395f51905f52555f610136565b63f92ee8a960e01b8352600483fd5b9050155f61010d565b303b159150610105565b8391506100fb565b50346100bb5760203660031901126100bb5760043561101333036102b75760048110610273576020817f44cf37fc8d2185243e5927aa52de715bc8ff0d81f4785d5d391bc8178f1a2cdc92600355604051908152a180f35b60849060405190632c648cf160e01b82526040600483015260156044830152741bd9999b1a5b9954db185cda151a1c995cda1bdb19605a1b60648301526024820152fd5b630f22c43960e41b8252611013600452602482fd5b50346100bb57806003193601126100bb576020600354604051908152f35b50346100bb57806003193601126100bb5760405180602060015491828152018091600185527fb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf690855b81811061039357505050826103499103836105e5565b604051928392602084019060208552518091526040840192915b818110610371575050500390f35b82516001600160a01b0316845285945060209384019390920191600101610363565b8254845260209093019260019283019201610333565b503461049f57602036600319011261049f576004356001600160a01b0381169081900361049f5741330361053b573a61052c5760405163facd743b60e01b8152600481018290526020816024816110015afa908115610494575f916104f1575b50156104e257805f525f60205260405f2080544381146104d3576104a357600190610433836106ec565b5081808201555b438155018054600354111561044d578280f35b5f90556110023b1561049f576040519063111a439760e21b825260048201525f81602481836110025af180156104945761048657808280f35b61049291505f906105e5565b005b6040513d5f823e3d90fd5b5f80fd5b60018101805491905f1983146104bf576001809301905561043a565b634e487b7160e01b5f52601160045260245ffd5b638aaaa79d60e01b5f5260045ffd5b632ec5b44960e01b5f5260045ffd5b90506020813d602011610524575b8161050c602093836105e5565b8101031261049f5751801515810361049f575f610409565b3d91506104ff565b6383f1b1d360e01b5f5260045ffd5b63022d8c9560e31b5f5260045ffd5b3461049f57602036600319011261049f576004356001600160a01b0381169081900361049f575f525f60205260405f20604051906040820182811067ffffffffffffffff8211176105b857604092602091845260018354938483520154918291015282519182526020820152f35b634e487b7160e01b5f52604160045260245ffd5b3461049f575f36600319011261049f5780600460209252f35b90601f8019910116810190811067ffffffffffffffff8211176105b857604052565b60015480156106d45760035460021c90805b610621575050565b5f1981018181116104bf5760015411156106c0577fb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf58101546001600160a01b03165f818152602081905260409020600101805490919084101561069d57508054908382039182116104bf57555b80156104bf575f190180610619565b6106ba9150805f525f6020525f600160408220828155015561075c565b5061068e565b634e487b7160e01b5f52603260045260245ffd5b50565b80548210156106c0575f5260205f2001905f90565b805f52600260205260405f2054155f1461075757600154680100000000000000008110156105b85761074061072a82600185940160015560016106d7565b819391549060031b91821b915f19901b19161790565b9055600154905f52600260205260405f2055600190565b505f90565b5f81815260026020526040902054801561081b575f1981018181116104bf576001545f198101919082116104bf578181036107e3575b50505060015480156107cf575f19016107ac8160016106d7565b8154905f199060031b1b191690556001555f5260026020525f6040812055600190565b634e487b7160e01b5f52603160045260245ffd5b6108056107f461072a9360016106d7565b90549060031b1c92839260016106d7565b90555f52600260205260405f20555f8080610792565b50505f9056fef0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00a26469706673582212206809b9d2c5cb3024f590eb97ae9c247bcfb0bd5ecdb113f8f2cece4e353a800064736f6c634300081c0033",
+	BinRuntime: "0x6080806040526004361015610012575f80fd5b5f905f3560e01c9081632ea22d0b1461059d5750806344690e5c146103c55780634ac9302e146103065780635b19c262146102e85780637ac6010d146102375780638129fc1c146100da5780638d02d4be146100945763e2b33d5b14610076575f80fd5b34610091578060031936011261009157602060405160048152f35b80fd5b50346100915780600319360112610091574133036100cb573a6100bc576100b961063d565b80f35b6383f1b1d360e01b8152600490fd5b63022d8c9560e31b8152600490fd5b50346100915780600319360112610091575f5160206108ab5f395f51905f525460ff8160401c16159067ffffffffffffffff81168015908161022f575b6001149081610225575b15908161021c575b5061020d5767ffffffffffffffff1981166001175f5160206108ab5f395f51905f5255816101e1575b504133036101d2573a6101c357603260035561016b5780f35b68ff0000000000000000195f5160206108ab5f395f51905f5254165f5160206108ab5f395f51905f52557fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2602060405160018152a180f35b6383f1b1d360e01b8252600482fd5b63022d8c9560e31b8252600482fd5b68ffffffffffffffffff191668010000000000000001175f5160206108ab5f395f51905f52555f610152565b63f92ee8a960e01b8352600483fd5b9050155f610129565b303b159150610121565b839150610117565b50346100915760203660031901126100915760043561101333036102d3576004811061028f576020817f44cf37fc8d2185243e5927aa52de715bc8ff0d81f4785d5d391bc8178f1a2cdc92600355604051908152a180f35b60849060405190632c648cf160e01b82526040600483015260156044830152741bd9999b1a5b9954db185cda151a1c995cda1bdb19605a1b60648301526024820152fd5b630f22c43960e41b8252611013600452602482fd5b50346100915780600319360112610091576020600354604051908152f35b503461009157806003193601126100915760405180602060015491828152018091600185527fb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf690855b8181106103af575050508261036591038361061b565b604051928392602084019060208552518091526040840192915b81811061038d575050500390f35b82516001600160a01b031684528594506020938401939092019160010161037f565b825484526020909301926001928301920161034f565b50346104f25760203660031901126104f2576004356001600160a01b038116908190036104f25741330361058e573a61057f5760405163facd743b60e01b8152600481018290526020816024816110015afa9081156104e7575f91610544575b501561053557805f525f60205260405f208054438114610526576104f65760019061044f83610775565b5081808201555b4381550180546003541115610495575b60207f17bddadfd7ec8898c3b9eadd0cf5ae77ba8d5df3a50e96ab86ec2dd711aa8fbb9154604051908152a280f35b5f81556110023b156104f25760405163111a439760e21b8152600481018390525f81602481836110025af180156104e7576104d1575b50610466565b6104de9193505f9061061b565b5f9160206104cb565b6040513d5f823e3d90fd5b5f80fd5b60018101805491905f1983146105125760018093019055610456565b634e487b7160e01b5f52601160045260245ffd5b638aaaa79d60e01b5f5260045ffd5b632ec5b44960e01b5f5260045ffd5b90506020813d602011610577575b8161055f6020938361061b565b810103126104f2575180151581036104f2575f610425565b3d9150610552565b6383f1b1d360e01b5f5260045ffd5b63022d8c9560e31b5f5260045ffd5b346104f25760203660031901126104f2576004356001600160a01b038116908190036104f2575f525f60205260405f206040820182811067ffffffffffffffff82111761060757604092602091845260018354938483520154918291015282519182526020820152f35b634e487b7160e01b5f52604160045260245ffd5b90601f8019910116810190811067ffffffffffffffff82111761060757604052565b600154801561075d5760035460021c90805b610657575050565b5f198101818111610512576001541115610749577fb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf58101546001600160a01b03165f81815260208190526040902060010180548410156106fc5780549084820391821161051257817f5bd07e8a6722365853b9a8e0af5f9e09a944cbdfc7e86bb21c93cc71486036bd9260209255604051908152a25b8015610512575f19018061064f565b50805f525f6020525f6001604082208281550155610719816107e5565b507f5bd07e8a6722365853b9a8e0af5f9e09a944cbdfc7e86bb21c93cc71486036bd60206040515f8152a26106ed565b634e487b7160e01b5f52603260045260245ffd5b50565b8054821015610749575f5260205f2001905f90565b805f52600260205260405f2054155f146107e05760015468010000000000000000811015610607576107c96107b38260018594016001556001610760565b819391549060031b91821b915f19901b19161790565b9055600154905f52600260205260405f2055600190565b505f90565b5f8181526002602052604090205480156108a4575f198101818111610512576001545f198101919082116105125781810361086c575b5050506001548015610858575f1901610835816001610760565b8154905f199060031b1b191690556001555f5260026020525f6040812055600190565b634e487b7160e01b5f52603160045260245ffd5b61088e61087d6107b3936001610760565b90549060031b1c9283926001610760565b90555f52600260205260405f20555f808061081b565b50505f9056fef0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00a264697066735822122009c8838bb34177ee43ac015120d1061326927af3a080ec55d5380e637a55e70f64736f6c634300081c0033",
 }
 
 // ValidatorSlash is an auto generated Go binding around an Ethereum contract.
@@ -51,24 +51,24 @@ func (c *ValidatorSlash) Instance(backend bind.ContractBackend, addr common.Addr
 	return bind.NewBoundContract(addr, c.abi, backend, backend, backend)
 }
 
-// PackREDUCECOUNTRATE is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0x0fa2f647.
+// PackMITIGATERATE is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xe2b33d5b.
 //
-// Solidity: function REDUCE_COUNT_RATE() view returns(uint256)
-func (validatorSlash *ValidatorSlash) PackREDUCECOUNTRATE() []byte {
-	enc, err := validatorSlash.abi.Pack("REDUCE_COUNT_RATE")
+// Solidity: function MITIGATE_RATE() view returns(uint256)
+func (validatorSlash *ValidatorSlash) PackMITIGATERATE() []byte {
+	enc, err := validatorSlash.abi.Pack("MITIGATE_RATE")
 	if err != nil {
 		panic(err)
 	}
 	return enc
 }
 
-// UnpackREDUCECOUNTRATE is the Go binding that unpacks the parameters returned
-// from invoking the contract method with ID 0x0fa2f647.
+// UnpackMITIGATERATE is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0xe2b33d5b.
 //
-// Solidity: function REDUCE_COUNT_RATE() view returns(uint256)
-func (validatorSlash *ValidatorSlash) UnpackREDUCECOUNTRATE(data []byte) (*big.Int, error) {
-	out, err := validatorSlash.abi.Unpack("REDUCE_COUNT_RATE", data)
+// Solidity: function MITIGATE_RATE() view returns(uint256)
+func (validatorSlash *ValidatorSlash) UnpackMITIGATERATE(data []byte) (*big.Int, error) {
+	out, err := validatorSlash.abi.Unpack("MITIGATE_RATE", data)
 	if err != nil {
 		return new(big.Int), err
 	}
@@ -148,6 +148,18 @@ func (validatorSlash *ValidatorSlash) PackInitialize() []byte {
 	return enc
 }
 
+// PackMitigate is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x8d02d4be.
+//
+// Solidity: function mitigate() returns()
+func (validatorSlash *ValidatorSlash) PackMitigate() []byte {
+	enc, err := validatorSlash.abi.Pack("mitigate")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
 // PackOfflineSlashThreshold is the Go binding used to pack the parameters required for calling
 // the contract method with ID 0x5b19c262.
 //
@@ -171,18 +183,6 @@ func (validatorSlash *ValidatorSlash) UnpackOfflineSlashThreshold(data []byte) (
 	}
 	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
 	return out0, err
-}
-
-// PackReduceCount is the Go binding used to pack the parameters required for calling
-// the contract method with ID 0xc7868729.
-//
-// Solidity: function reduceCount() returns()
-func (validatorSlash *ValidatorSlash) PackReduceCount() []byte {
-	enc, err := validatorSlash.abi.Pack("reduceCount")
-	if err != nil {
-		panic(err)
-	}
-	return enc
 }
 
 // PackSetOfflineSlashThreshold is the Go binding used to pack the parameters required for calling
@@ -273,6 +273,90 @@ func (validatorSlash *ValidatorSlash) UnpackOfflineSlashThresholdUpdatedEvent(lo
 		return nil, errors.New("event signature mismatch")
 	}
 	out := new(ValidatorSlashOfflineSlashThresholdUpdated)
+	if len(log.Data) > 0 {
+		if err := validatorSlash.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range validatorSlash.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// ValidatorSlashValidatorMitigated represents a ValidatorMitigated event raised by the ValidatorSlash contract.
+type ValidatorSlashValidatorMitigated struct {
+	ValidatorAddr common.Address
+	Count         *big.Int
+	Raw           *types.Log // Blockchain specific contextual infos
+}
+
+const ValidatorSlashValidatorMitigatedEventName = "ValidatorMitigated"
+
+// ContractEventName returns the user-defined event name.
+func (ValidatorSlashValidatorMitigated) ContractEventName() string {
+	return ValidatorSlashValidatorMitigatedEventName
+}
+
+// UnpackValidatorMitigatedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event ValidatorMitigated(address indexed validatorAddr, uint256 count)
+func (validatorSlash *ValidatorSlash) UnpackValidatorMitigatedEvent(log *types.Log) (*ValidatorSlashValidatorMitigated, error) {
+	event := "ValidatorMitigated"
+	if log.Topics[0] != validatorSlash.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(ValidatorSlashValidatorMitigated)
+	if len(log.Data) > 0 {
+		if err := validatorSlash.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range validatorSlash.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// ValidatorSlashValidatorSlashed represents a ValidatorSlashed event raised by the ValidatorSlash contract.
+type ValidatorSlashValidatorSlashed struct {
+	ValidatorAddr common.Address
+	Count         *big.Int
+	Raw           *types.Log // Blockchain specific contextual infos
+}
+
+const ValidatorSlashValidatorSlashedEventName = "ValidatorSlashed"
+
+// ContractEventName returns the user-defined event name.
+func (ValidatorSlashValidatorSlashed) ContractEventName() string {
+	return ValidatorSlashValidatorSlashedEventName
+}
+
+// UnpackValidatorSlashedEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event ValidatorSlashed(address indexed validatorAddr, uint256 count)
+func (validatorSlash *ValidatorSlash) UnpackValidatorSlashedEvent(log *types.Log) (*ValidatorSlashValidatorSlashed, error) {
+	event := "ValidatorSlashed"
+	if log.Topics[0] != validatorSlash.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(ValidatorSlashValidatorSlashed)
 	if len(log.Data) > 0 {
 		if err := validatorSlash.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
 			return nil, err
