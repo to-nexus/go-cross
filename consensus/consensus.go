@@ -155,22 +155,31 @@ type IstanbulPeer interface {
 	SendIstanbulConsensus(msgcode uint64, payload []byte) error
 }
 
-// ##CROSS: consensus system contract
-type IstanbulPoSA interface {
+type IstanbulEngine interface {
+	// ##CROSS: consensus system contract
+	// IsSystemTransaction checks if the transaction is a system transaction,
+	// which is a transaction to a system contract with gas price 0 and sender is the block proposer.
 	IsSystemTransaction(*types.Transaction, *types.Header) (bool, error)
+
+	// IsSystemContract checks if the address is a system contract.
 	IsSystemContract(*common.Address) bool
+
+	// EstimateGasForSystemTxs estimates the gas cost for system transactions in the given block.
 	EstimateGasForSystemTxs(ChainHeaderReader, *types.Header) uint64
+
+	// SyncIstanbulParam syncs and caches the Istanbul parameters from the system contract.
 	SyncIstanbulParam(*types.Header) error // ##CROSS: istanbul param
+	// ##
 }
 
-// ToIstanbulPoSA converts an Engine to an IstanbulPoSA if possible
-func ToIstanbulPoSA(engine Engine) (IstanbulPoSA, bool) {
-	if pos, ok := engine.(IstanbulPoSA); ok {
-		return pos, true
+// ToIstanbulEngine converts an Engine to an IstanbulEngine if possible
+func ToIstanbulEngine(engine Engine) IstanbulEngine {
+	if e, ok := engine.(IstanbulEngine); ok {
+		return e
 	}
 	if e, ok := engine.(interface{ InnerEngine() Engine }); ok {
-		pos, ok := e.InnerEngine().(IstanbulPoSA)
-		return pos, ok
+		ie, _ := e.InnerEngine().(IstanbulEngine)
+		return ie
 	}
-	return nil, false
+	return nil
 }

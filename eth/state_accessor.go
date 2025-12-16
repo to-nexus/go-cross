@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -237,12 +236,10 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 	}
 
 	// ##CROSS: istanbul param
-	if eth.blockchain.Config().IsIstanbulPoSA(block.Number(), block.Time()) {
+	if eth.istanbul != nil && eth.blockchain.Config().IsIstanbulPoSA(block.Number(), block.Time()) {
 		// sync istanbul parameter after PoSA activation
-		if posa, isPoSA := consensus.ToIstanbulPoSA(eth.engine); isPoSA {
-			if err := posa.SyncIstanbulParam(block.Header()); err != nil {
-				return nil, vm.BlockContext{}, nil, nil, err
-			}
+		if err := eth.istanbul.SyncIstanbulParam(block.Header()); err != nil {
+			return nil, vm.BlockContext{}, nil, nil, err
 		}
 	}
 	// ##

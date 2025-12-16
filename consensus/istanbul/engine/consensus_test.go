@@ -224,6 +224,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 		threshold   uint64
 		mockBackend *mockContractBackend
 		expectedErr error
+		expectTx    bool
 	}{
 		{
 			name: "success",
@@ -251,6 +252,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 				},
 			},
 			expectedErr: nil,
+			expectTx:    true,
 		},
 		{
 			name: "no validator info",
@@ -269,7 +271,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 					methodValidatorThreshold: {packValidatorThresholdResponse(t, 2)},
 				},
 			},
-			expectedErr: errors.New("no validator info"),
+			expectedErr: nil,
 		},
 		{
 			name: "zero threshold",
@@ -334,7 +336,6 @@ func TestUpdateValidatorSet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// setup
 			memdb := rawdb.NewMemoryDatabase()
 			triedb := triedb.NewDatabase(memdb, nil)
 			sdb := state.NewDatabase(triedb, nil)
@@ -375,8 +376,11 @@ func TestUpdateValidatorSet(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			// for success cases, verify that a transaction was created
-			assert.NotEmpty(t, txs)
+			if tt.expectTx {
+				assert.NotEmpty(t, txs)
+			} else {
+				assert.Empty(t, txs)
+			}
 		})
 	}
 }
@@ -941,7 +945,6 @@ func TestDistributeRewards(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// setup
 			memdb := rawdb.NewMemoryDatabase()
 			triedb := triedb.NewDatabase(memdb, nil)
 			sdb := state.NewDatabase(triedb, nil)

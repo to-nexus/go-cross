@@ -72,15 +72,20 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		hash := crypto.Keccak256Hash(header.MixDigest[:])
 		random = &hash
 	}
-	// ##CROSS: transfer log
+
 	transfer := Transfer
-	// Update Transfer function for Adventure fork
-	if chain != nil && !reflect.ValueOf(chain).IsNil() {
-		if config := chain.Config(); config != nil && config.IsAdventure(header.Number, header.Time) {
+	var isPoSA bool
+	if chain != nil && !reflect.ValueOf(chain).IsNil() && chain.Config() != nil {
+		// ##CROSS: transfer log
+		// Update Transfer function for Adventure fork
+		if chain.Config().IsAdventure(header.Number, header.Time) {
 			transfer = CrossTransfer
 		}
+		// ##
+
+		isPoSA = chain.Config().IsIstanbulPoSA(header.Number, header.Time) // ##CROSS: istanbul posa
 	}
-	// ##
+
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
 		Transfer:    transfer, // ##CROSS: transfer log
@@ -93,6 +98,7 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 		BlobBaseFee: blobBaseFee,
 		GasLimit:    header.GasLimit,
 		Random:      random,
+		PoSAActive:  isPoSA, // ##CROSS: istanbul posa
 	}
 }
 

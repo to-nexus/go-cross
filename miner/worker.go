@@ -876,8 +876,8 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
 		// ##CROSS: consensus system contract
-		if posa, isPoSA := consensus.ToIstanbulPoSA(w.engine); isPoSA {
-			if gasReserved := posa.EstimateGasForSystemTxs(w.chain, env.header); gasReserved > 0 {
+		if w.istanbulBackend != nil {
+			if gasReserved := w.istanbulBackend.EstimateGasForSystemTxs(w.chain, env.header); gasReserved > 0 {
 				env.gasPool.SubGas(gasReserved)
 				log.Debug("Reserved gas for system transactions",
 					"number", env.header.Number.Uint64(),
@@ -1069,15 +1069,13 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	}
 
 	// ##CROSS: istanbul param
-	if w.chainConfig.IsIstanbulPoSA(header.Number, header.Time) {
+	if w.istanbulBackend != nil && w.chainConfig.IsIstanbulPoSA(header.Number, header.Time) {
 		// sync istanbul parameter after PoSA activation
-		if posa, isPoSA := consensus.ToIstanbulPoSA(w.engine); isPoSA {
-			if err := posa.SyncIstanbulParam(header); err != nil {
-				return nil, err
-			}
-			if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
-				header.GasLimit = *gasLimit
-			}
+		if err := w.istanbulBackend.SyncIstanbulParam(header); err != nil {
+			return nil, err
+		}
+		if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
+			header.GasLimit = *gasLimit
 		}
 	}
 	// ##

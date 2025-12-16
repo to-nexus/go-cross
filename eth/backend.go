@@ -88,6 +88,7 @@ type Ethereum struct {
 
 	eventMux       *event.TypeMux
 	engine         consensus.Engine
+	istanbul       consensus.IstanbulEngine // ##CROSS: istanbul
 	accountManager *accounts.Manager
 
 	filterMaps      *filtermaps.FilterMaps
@@ -199,6 +200,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	eth.istanbul = consensus.ToIstanbulEngine(eth.engine) // ##CROSS: istanbul
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"

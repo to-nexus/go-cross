@@ -70,6 +70,7 @@ type HeaderChain struct {
 
 	procInterrupt func() bool
 	engine        consensus.Engine
+	istanbul      consensus.IstanbulEngine // ##CROSS: istanbul
 }
 
 // NewHeaderChain creates a new HeaderChain structure. ProcInterrupt points
@@ -83,6 +84,7 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 		numberCache:   lru.NewCache[common.Hash, uint64](numberCacheLimit),
 		procInterrupt: procInterrupt,
 		engine:        engine,
+		istanbul:      consensus.ToIstanbulEngine(engine), // ##CROSS: istanbul
 	}
 	hc.genesisHeader = hc.GetHeaderByNumber(0)
 	if hc.genesisHeader == nil {

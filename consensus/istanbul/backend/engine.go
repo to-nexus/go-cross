@@ -42,8 +42,10 @@ const (
 	inmemoryMessages   = 1024
 )
 
+var _ consensus.Engine = (*Backend)(nil)
+
 // ##CROSS: consensus system contract
-var _ consensus.IstanbulPoSA = (*Backend)(nil)
+var _ consensus.IstanbulEngine = (*Backend)(nil)
 
 func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	return sb.Engine().IsSystemTransaction(tx, header)

@@ -21,7 +21,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -71,10 +70,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// ##CROSS: istanbul param
-	posa, isPoSA := consensus.ToIstanbulPoSA(p.chain.engine)
-	if isPoSA && p.config.IsIstanbulPoSA(block.Number(), block.Time()) {
+	if p.chain.istanbul != nil && p.config.IsIstanbulPoSA(block.Number(), block.Time()) {
 		// sync istanbul parameter after PoSA activation
-		if err := posa.SyncIstanbulParam(header); err != nil {
+		if err := p.chain.istanbul.SyncIstanbulParam(header); err != nil {
 			return nil, err
 		}
 	}
@@ -109,8 +107,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
 		// ##CROSS: consensus system contract
-		if isPoSA {
-			if isSystemTx, err := posa.IsSystemTransaction(tx, header); err != nil {
+		if p.chain.istanbul != nil {
+			if isSystemTx, err := p.chain.istanbul.IsSystemTransaction(tx, header); err != nil {
 				return nil, fmt.Errorf("could not check if tx %d [%v] is system tx: %w", i, tx.Hash().Hex(), err)
 			} else if isSystemTx {
 				// system txs will be handled by the consensus engine, so skip here

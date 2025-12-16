@@ -588,8 +588,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		fee := new(uint256.Int).SetUint64(st.gasUsed())
 		fee.Mul(fee, effectiveTipU256)
 
-		if st.evm.ChainConfig().IsIstanbulPoSA(st.evm.Context.BlockNumber, st.evm.Context.Time) {
-			// ##CROSS: istanbul posa
+		if st.evm.Context.PoSAActive { // ##CROSS: istanbul posa
 			// Fee collection is deferred to the block finalization step
 
 			/* // Fee is forwarded to the system address temporarily

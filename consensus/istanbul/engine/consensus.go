@@ -334,7 +334,7 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 		return nil
 	}
 
-	data := e.validatorSlash.PackMitigate()
+	data := e.validatorSlash.PackReduceCount()
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
 
 	log.Info("Mitigating slashed validators", "number", header.Number.Uint64(), "slashed", slashed, "isMining", systemTxs == nil)
