@@ -196,7 +196,8 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
+		AdventureTime:           newUint64(0),          // ##CROSS: fork adventure
+		AdventureFixTime:        newUint64(1766124000), // ##CROSS: bridge fix
 		CancunTime:              newUint64(1765324800),
 		PragueTime:              newUint64(1765324800),
 		BreakpointTime:          newUint64(1765324800), // ##CROSS: fork breakpoint
@@ -670,13 +671,14 @@ type ChainConfig struct {
 
 	// Fork scheduling was switched from blocks to timestamps here
 
-	ShanghaiTime   *uint64 `json:"shanghaiTime,omitempty"`   // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	AdventureTime  *uint64 `json:"adventureTime,omitempty"`  // Adventure switch time (nil = no fork, 0 = already on adventure) ##CROSS: fork adventure
-	CancunTime     *uint64 `json:"cancunTime,omitempty"`     // Cancun switch time (nil = no fork, 0 = already on cancun)
-	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
-	BreakpointTime *uint64 `json:"breakpointTime,omitempty"` // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
-	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
-	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
+	ShanghaiTime     *uint64 `json:"shanghaiTime,omitempty"`     // Shanghai switch time (nil = no fork, 0 = already on shanghai)
+	AdventureTime    *uint64 `json:"adventureTime,omitempty"`    // Adventure switch time (nil = no fork, 0 = already on adventure) ##CROSS: fork adventure
+	AdventureFixTime *uint64 `json:"adventureFixTime,omitempty"` // AdventureFix time (nil = no fork, 0 = already on adventureFix) ##CROSS: bridge fix
+	CancunTime       *uint64 `json:"cancunTime,omitempty"`       // Cancun switch time (nil = no fork, 0 = already on cancun)
+	PragueTime       *uint64 `json:"pragueTime,omitempty"`       // Prague switch time (nil = no fork, 0 = already on prague)
+	BreakpointTime   *uint64 `json:"breakpointTime,omitempty"`   // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
+	OsakaTime        *uint64 `json:"osakaTime,omitempty"`        // Osaka switch time (nil = no fork, 0 = already on osaka)
+	VerkleTime       *uint64 `json:"verkleTime,omitempty"`       // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
@@ -758,6 +760,11 @@ func (c *ChainConfig) Description() string {
 	// ##CROSS: fork adventure
 	if c.AdventureTime != nil {
 		banner += fmt.Sprintf(" - Adventure:                   @%-10v\n", *c.AdventureTime)
+	}
+	// ##
+	// ##CROSS: bridge fix
+	if c.AdventureFixTime != nil {
+		banner += fmt.Sprintf(" - AdventureFix:                @%-10v\n", *c.AdventureFixTime)
 	}
 	// ##
 	if c.CancunTime != nil {
@@ -884,6 +891,23 @@ func (c *ChainConfig) IsShanghai(num *big.Int, time uint64) bool {
 func (c *ChainConfig) IsAdventure(num *big.Int, time uint64) bool { // ##CROSS: fork adventure
 	return c.IsLondon(num) && isTimestampForked(c.AdventureTime, time)
 }
+
+// ##CROSS: bridge fix
+// IsAdventureFix returns whether time is either equal to the AdventureFix fork time or greater.
+func (c *ChainConfig) IsAdventureFix(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.AdventureFixTime, time)
+}
+
+// IsOnAdventureFix returns whether currentBlockTime is either equal to the AdventureFix fork time or greater firstly.
+func (c *ChainConfig) IsOnAdventureFix(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsAdventureFix(lastBlockNumber, lastBlockTime) && c.IsAdventureFix(currentBlockNumber, currentBlockTime)
+}
+
+// ##
 
 // IsCancun returns whether time is either equal to the Cancun fork time or greater.
 func (c *ChainConfig) IsCancun(num *big.Int, time uint64) bool {
@@ -1167,6 +1191,11 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	// ##CROSS: fork adventure
 	if isForkTimestampIncompatible(c.AdventureTime, newcfg.AdventureTime, headTimestamp) {
 		return newTimestampCompatError("Adventure fork timestamp", c.AdventureTime, newcfg.AdventureTime)
+	}
+	// ##
+	// ##CROSS: bridge fix
+	if isForkTimestampIncompatible(c.AdventureFixTime, newcfg.AdventureFixTime, headTimestamp) {
+		return newTimestampCompatError("AdventureFix fork timestamp", c.AdventureFixTime, newcfg.AdventureFixTime)
 	}
 	// ##
 	if isForkTimestampIncompatible(c.CancunTime, newcfg.CancunTime, headTimestamp) {

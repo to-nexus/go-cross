@@ -43,6 +43,20 @@ var (
 )
 
 func init() {
+	// ##CROSS: bridge fix
+	upgrades[forks.AdventureFix] = &Upgrade{
+		UpgradeName: forks.AdventureFix.String(),
+		Configs: []*UpgradeConfig{
+			{
+				Name:         "CrossBridge",
+				ContractAddr: BridgeAddr,
+				Storage: map[common.Hash]common.Hash{
+					BridgeImplSlot: common.BytesToHash(BridgeImplAddr.Bytes()),
+				},
+			},
+		},
+	}
+	// ##
 	upgrades[forks.Prague] = &Upgrade{
 		UpgradeName: forks.Prague.String(),
 		Configs: []*UpgradeConfig{
@@ -54,6 +68,7 @@ func init() {
 			},
 		},
 	}
+	// ##CROSS: fork breakpoint
 	upgrades[forks.Breakpoint] = &Upgrade{
 		UpgradeName: forks.Breakpoint.String(),
 		Configs: []*UpgradeConfig{
@@ -183,6 +198,7 @@ func init() {
 			// ##
 		},
 	}
+	// ##
 }
 
 // TryUpdateSystemContract checks if the block is exactly on the fork and upgrades the system contracts if it is.
@@ -191,14 +207,22 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 		return
 	}
 
+	// ##CROSS: bridge fix
+	if config.IsOnAdventureFix(header.Number, lastBlockTime, header.Time) {
+		applySystemContractUpgrade(upgrades[forks.AdventureFix], header, statedb)
+		upgraded = true
+	}
+	// ##
 	if config.IsOnPrague(header.Number, lastBlockTime, header.Time) {
 		applySystemContractUpgrade(upgrades[forks.Prague], header, statedb)
 		upgraded = true
 	}
+	// ##CROSS: fork breakpoint
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
 		applySystemContractUpgrade(upgrades[forks.Breakpoint], header, statedb)
 		upgraded = true
 	}
+	// ##
 	return
 }
 
@@ -232,10 +256,6 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 
 		// write code
 		code := getCode(cfg)
-		if len(code) == 0 {
-			panic(fmt.Errorf("%s: failed to parse code: %s", upgrade.UpgradeName, cfg.Name))
-		}
-
 		if len(code) > 0 {
 			if cfg.Deploy {
 				if prevCode := statedb.GetCode(cfg.ContractAddr); len(prevCode) > 0 {
