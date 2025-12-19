@@ -37,7 +37,8 @@ const (
 	GrayGlacier
 	Paris
 	Shanghai
-	Adventure // ##CROSS: fork
+	Adventure    // ##CROSS: fork
+	AdventureFix // ##CROSS: bridge fix
 	Cancun
 	Prague
 	Breakpoint // ##CROSS: fork breakpoint
@@ -71,7 +72,8 @@ var forkToString = map[Fork]string{
 	GrayGlacier:      "Gray Glacier",
 	Paris:            "Paris",
 	Shanghai:         "Shanghai",
-	Adventure:        "Adventure", // ##CROSS: fork
+	Adventure:        "Adventure",    // ##CROSS: fork
+	AdventureFix:     "AdventureFix", // ##CROSS: bridge fix
 	Cancun:           "Cancun",
 	Prague:           "Prague",
 	Breakpoint:       "Breakpoint", // ##CROSS: fork breakpoint

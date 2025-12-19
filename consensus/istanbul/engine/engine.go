@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -471,6 +472,15 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			state.AddBalance(w.Address, amount, tracing.BalanceIncreaseWithdrawal)
 		}
 	}
+
+	// ##CROSS: contract upgrade
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return
+	}
+
+	contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+	// ##
 
 	// Accumulate any block and uncle rewards and commit the final state root
 	e.accumulateRewards(chain, state, header)
