@@ -105,7 +105,7 @@ func (e *Engine) IsSystemContract(to *common.Address) bool {
 
 const (
 	systemTxsGasBreakpoint = 2_000_000
-	systemTxsGasNewDay     = 1_500_000
+	systemTxsGasNewPeriod  = 1_500_000
 	systemTxsGasUsual      = 1_000_000
 )
 
@@ -127,8 +127,8 @@ func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, head
 			return systemTxsGasBreakpoint
 		}
 		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-			if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
-				return systemTxsGasNewDay
+			if e.cfg.OnNewCouncilPeriod(parent.Time, header.Time) {
+				return systemTxsGasNewPeriod
 			}
 		}
 	}
@@ -607,8 +607,8 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 		// ##
 
-		// At the beginning of a new day
-		if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
+		// At the beginning of a new council period
+		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
@@ -688,8 +688,8 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 		// ##
 
-		// At the beginning of a new day
-		if e.cfg.OnNewDayBlock(parent.Time, header.Time) {
+		// At the beginning of a new council period
+		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())

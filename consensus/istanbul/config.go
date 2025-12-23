@@ -143,6 +143,7 @@ type Config struct {
 	ValidatorContract        common.Address   `toml:",omitempty"`
 	Validators               []common.Address `toml:",omitempty"`
 	MaxRequestTimeoutSeconds uint64           `toml:",omitempty"`
+	CouncilPeriod            uint64           `toml:",omitempty"` // The period in seconds for the council to operate
 	Transitions              []params.Transition
 }
 
@@ -182,6 +183,9 @@ func NewConfig(config *params.ChainConfig) *Config {
 	if config.Istanbul.MaxRequestTimeoutSeconds != nil && *config.Istanbul.MaxRequestTimeoutSeconds > 0 {
 		c.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
 	}
+	if config.Istanbul.CouncilPeriod != nil {
+		c.CouncilPeriod = *config.Istanbul.CouncilPeriod
+	}
 	c.Transitions = config.Transitions
 
 	return &c
@@ -211,6 +215,9 @@ func (c Config) GetConfig(blockNumber *big.Int) Config {
 			}
 			if cfg.MaxRequestTimeoutSeconds != nil {
 				newConfig.MaxRequestTimeoutSeconds = *cfg.MaxRequestTimeoutSeconds
+			}
+			if cfg.CouncilPeriod != nil {
+				newConfig.CouncilPeriod = *cfg.CouncilPeriod
 			}
 			return newConfig
 		}
@@ -270,7 +277,11 @@ func (c *Config) String() string {
 	return "istanbul"
 }
 
-// OnNewDayBlock checks if the given block time is on the beginning of a new day
-func (c *Config) OnNewDayBlock(lastBlockTime, currentBlockTime uint64) bool {
-	return lastBlockTime != 0 && lastBlockTime/86400 != currentBlockTime/86400
+// OnNewCouncilPeriod checks if the given block time is the beginning of a new council period.
+func (c Config) OnNewCouncilPeriod(lastBlockTime, currentBlockTime uint64) bool {
+	period := c.CouncilPeriod
+	if period == 0 {
+		period = 86400
+	}
+	return lastBlockTime != 0 && lastBlockTime/period != currentBlockTime/period
 }

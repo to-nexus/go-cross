@@ -440,7 +440,7 @@ func TestSyncIstanbulParam(t *testing.T) {
 					methodGetParamIndex: {packGetParamIndexResponse(t, 0)},
 					methodGetParamsByIndex: {packGetParamsByIndexResponse(t, breakpoint.GetParamsByIndexOutput{
 						Timepoint:                100,
-						EpochLength:              1000,
+						CouncilPeriod:            86400,
 						BlockPeriod:              5,
 						EmptyBlockPeriod:         10,
 						RequestTimeout:           3000,
@@ -458,8 +458,24 @@ func TestSyncIstanbulParam(t *testing.T) {
 			validate: func(t *testing.T) {
 				config := params.IstanbulConfigAt(100)
 				require.NotNil(t, config)
-				assert.EqualValues(t, 1000, config.EpochLength)
+				require.NotNil(t, config.CouncilPeriod)
+				assert.EqualValues(t, 86400, *config.CouncilPeriod)
 				assert.EqualValues(t, 5, config.BlockPeriodSeconds)
+				assert.EqualValues(t, 10, config.EmptyBlockPeriodSeconds)
+				assert.EqualValues(t, 3000, config.RequestTimeoutSeconds)
+				require.NotNil(t, config.MaxRequestTimeoutSeconds)
+				assert.EqualValues(t, 6000, *config.MaxRequestTimeoutSeconds)
+				require.NotNil(t, config.ElasticityMultiplier)
+				assert.EqualValues(t, 3, *config.ElasticityMultiplier)
+				require.NotNil(t, config.BaseFeeChangeDenominator)
+				assert.EqualValues(t, 8, *config.BaseFeeChangeDenominator)
+				require.NotNil(t, config.MaxBaseFee)
+				assert.EqualValues(t, 1e18, (*big.Int)(config.MaxBaseFee).Uint64())
+				require.NotNil(t, config.MinBaseFee)
+				assert.EqualValues(t, 1e9, (*big.Int)(config.MinBaseFee).Uint64())
+				assert.EqualValues(t, 1, config.ProposerPolicy)
+				require.NotNil(t, config.GasLimit)
+				assert.EqualValues(t, 8000000, *config.GasLimit)
 			},
 		},
 		{
@@ -508,7 +524,7 @@ func TestSyncIstanbulParam(t *testing.T) {
 					methodGetParamsByIndex: {
 						packGetParamsByIndexResponse(t, breakpoint.GetParamsByIndexOutput{
 							Timepoint:                100,
-							EpochLength:              1000,
+							CouncilPeriod:            86400,
 							BlockPeriod:              5,
 							EmptyBlockPeriod:         10,
 							RequestTimeout:           3000,
@@ -522,7 +538,7 @@ func TestSyncIstanbulParam(t *testing.T) {
 						}),
 						packGetParamsByIndexResponse(t, breakpoint.GetParamsByIndexOutput{
 							Timepoint:                150,
-							EpochLength:              2000,
+							CouncilPeriod:            86400,
 							BlockPeriod:              3,
 							EmptyBlockPeriod:         5,
 							RequestTimeout:           2000,
@@ -536,7 +552,7 @@ func TestSyncIstanbulParam(t *testing.T) {
 						}),
 						packGetParamsByIndexResponse(t, breakpoint.GetParamsByIndexOutput{
 							Timepoint:                200,
-							EpochLength:              3000,
+							CouncilPeriod:            86400,
 							BlockPeriod:              2,
 							EmptyBlockPeriod:         3,
 							RequestTimeout:           1000,
@@ -555,15 +571,21 @@ func TestSyncIstanbulParam(t *testing.T) {
 			validate: func(t *testing.T) {
 				config0 := params.IstanbulConfigAt(100)
 				require.NotNil(t, config0)
-				assert.EqualValues(t, 1000, config0.EpochLength)
+				assert.EqualValues(t, 5, config0.BlockPeriodSeconds)
+				require.NotNil(t, config0.GasLimit)
+				assert.EqualValues(t, 8000000, *config0.GasLimit)
 
 				config1 := params.IstanbulConfigAt(150)
 				require.NotNil(t, config1)
-				assert.EqualValues(t, 2000, config1.EpochLength)
+				assert.EqualValues(t, 3, config1.BlockPeriodSeconds)
+				require.NotNil(t, config1.GasLimit)
+				assert.EqualValues(t, 10000000, *config1.GasLimit)
 
 				config2 := params.IstanbulConfigAt(200)
 				require.NotNil(t, config2)
-				assert.EqualValues(t, 3000, config2.EpochLength)
+				assert.EqualValues(t, 2, config2.BlockPeriodSeconds)
+				require.NotNil(t, config2.GasLimit)
+				assert.EqualValues(t, 12000000, *config2.GasLimit)
 			},
 		},
 	}
@@ -620,7 +642,7 @@ func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByInd
 
 	retPacked, err := method.Outputs.Pack(
 		result.Timepoint,
-		result.EpochLength,
+		result.CouncilPeriod,
 		result.BlockPeriod,
 		result.EmptyBlockPeriod,
 		result.RequestTimeout,

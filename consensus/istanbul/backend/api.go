@@ -284,6 +284,7 @@ type IstanbulConfig struct {
 	BaseFeeChangeDenominator uint64           `json:"baseFeeChangeDenominator"`
 	MaxBaseFee               *big.Int         `json:"maxBaseFee"`
 	MinBaseFee               *big.Int         `json:"minBaseFee"`
+	CouncilPeriod            uint64           `json:"councilPeriod"`
 }
 
 func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
@@ -307,6 +308,7 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 		Epoch:                  istConfig.Epoch,
 		AllowedFutureBlockTime: istConfig.AllowedFutureBlockTime,
 		MaxRequestTimeout:      istConfig.MaxRequestTimeoutSeconds,
+		CouncilPeriod:          istConfig.CouncilPeriod,
 	}
 	if istConfig.ProposerPolicy != nil {
 		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)

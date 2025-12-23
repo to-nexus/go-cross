@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
@@ -120,6 +121,7 @@ var (
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
 			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
+			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{},
 	}
@@ -173,6 +175,7 @@ var (
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
 			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
+			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{},
 	}
@@ -226,6 +229,7 @@ var (
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
 			PoSAActivationSeconds: newUint64(9 * 3600), // 9 hours
+			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{
 			// ##CROSS: gas limit upgrade
@@ -257,9 +261,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              nil,
-		PragueTime:              nil,
-		BreakpointTime:          nil, // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1765324800),
+		PragueTime:              newUint64(1765324800),
+		BreakpointTime:          newUint64(1765324800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -283,7 +287,8 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
+			PoSAActivationSeconds: newUint64(9 * 3600), // 9 hours
+			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{
 			// ##CROSS: gas limit upgrade
@@ -751,33 +756,45 @@ func (c *ChainConfig) Description() string {
 	// Create a list of forks with a short description of them. Forks that only
 	// makes sense for mainnet should be optional at printing to avoid bloating
 	// the output for testnets and private networks.
+	banner += "Hard forks (block based):\n[Omitted]\n\n"
 	banner += "Hard forks (timestamp based):\n"
 	if c.ShanghaiTime != nil {
-		banner += fmt.Sprintf(" - Shanghai:                    @%-10v\n", *c.ShanghaiTime)
+		banner += printFork("Shanghai", c.ShanghaiTime)
 	}
 	// ##CROSS: fork adventure
 	if c.AdventureTime != nil {
-		banner += fmt.Sprintf(" - Adventure:                   @%-10v\n", *c.AdventureTime)
+		banner += printFork("Adventure", c.AdventureTime)
 	}
 	// ##
 	if c.CancunTime != nil {
-		banner += fmt.Sprintf(" - Cancun:                      @%-10v\n", *c.CancunTime)
+		banner += printFork("Cancun", c.CancunTime)
 	}
 	if c.PragueTime != nil {
-		banner += fmt.Sprintf(" - Prague:                      @%-10v\n", *c.PragueTime)
+		banner += printFork("Prague", c.PragueTime)
 	}
 	// ##CROSS: fork breakpoint
 	if c.BreakpointTime != nil {
-		banner += fmt.Sprintf(" - Breakpoint:                  @%-10v\n", *c.BreakpointTime)
+		banner += printFork("Breakpoint", c.BreakpointTime)
 	}
 	// ##
 	if c.OsakaTime != nil {
-		banner += fmt.Sprintf(" - Osaka:                       @%-10v\n", *c.OsakaTime)
+		banner += printFork("Osaka", c.OsakaTime)
 	}
 	if c.VerkleTime != nil {
-		banner += fmt.Sprintf(" - Verkle:                      @%-10v\n", *c.VerkleTime)
+		banner += printFork("Verkle", c.VerkleTime)
 	}
 	return banner
+}
+
+func printFork(fork string, timestamp *uint64) string {
+	if timestamp == nil {
+		return ""
+	}
+	margin := max(1, 30-len(fork))
+	if *timestamp == 0 {
+		return fmt.Sprintf("%v:%[2]*v@%-10v\n", fork, margin, "", *timestamp)
+	}
+	return fmt.Sprintf("%v:%[2]*v@%-10v (%v)\n", fork, margin, "", *timestamp, time.Unix(int64(*timestamp), 0).UTC().Format("2006-01-02T15:04:05"))
 }
 
 // BlobConfig specifies the target and max blobs per block for the associated fork.

@@ -55,7 +55,6 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 		log.Info("Syncing istanbul param", "index", index, "number", result.Timepoint, "config", result)
 
 		config := params.IstanbulConfig{
-			EpochLength:             result.EpochLength,
 			BlockPeriodSeconds:      result.BlockPeriod,
 			EmptyBlockPeriodSeconds: result.EmptyBlockPeriod,
 			RequestTimeoutSeconds:   result.RequestTimeout,
@@ -78,6 +77,9 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 		}
 		if result.MinBaseFee != nil && result.MinBaseFee.Sign() > 0 {
 			config.MinBaseFee = (*math.HexOrDecimal256)(result.MinBaseFee)
+		}
+		if result.CouncilPeriod != 0 {
+			config.CouncilPeriod = &result.CouncilPeriod
 		}
 
 		params.AddIstanbulConfig(&config, result.Timepoint)

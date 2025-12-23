@@ -32,6 +32,7 @@ type IstanbulConfig struct {
 
 	// ##CROSS: istanbul posa
 	PoSAActivationSeconds *uint64 `json:"posaActivationSeconds"` // PoSA activation time in seconds
+	CouncilPeriod         *uint64 `json:"councilPeriod"`         // The period in seconds for the council to be elected
 }
 
 func (c IstanbulConfig) String() string {
@@ -73,12 +74,6 @@ func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition 
 }
 
 func (c *ChainConfig) GetEpochLength(num *big.Int) (epochLength uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.EpochLength != 0 {
-		return cfg.EpochLength
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		epochLength = c.Istanbul.EpochLength
 	}

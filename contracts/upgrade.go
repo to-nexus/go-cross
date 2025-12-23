@@ -69,7 +69,6 @@ func init() {
 				Code:         breakpoint.IstanbulParamMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					epochLength := config.GetEpochLength(header.Number)
 					blockPeriod := config.GetBlockPeriodSeconds(header.Number)
 					emptyBlockPeriod := config.GetEmptyBlockPeriodSeconds(header.Number)
 					requestTimeout := config.GetRequestTimeoutSeconds(header.Number)
@@ -89,8 +88,12 @@ func init() {
 					if limit := config.GetGasLimit(header.Number); limit != nil {
 						gasLimit = *limit
 					}
+					councilPeriod := uint64(86400)
+					if config.Istanbul != nil && config.Istanbul.CouncilPeriod != nil {
+						councilPeriod = *config.Istanbul.CouncilPeriod
+					}
 					return breakpoint.NewIstanbulParam().PackInitialize(
-						epochLength,
+						councilPeriod,
 						blockPeriod,
 						emptyBlockPeriod,
 						requestTimeout,
