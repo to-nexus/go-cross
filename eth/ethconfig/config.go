@@ -197,7 +197,7 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 	if config.Istanbul != nil {
 		*istanbulCfg = *istanbul.NewConfig(config)
 		ethClient := ethclient.NewClient(stack.Attach())
-		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), db, ethClient)), nil
+		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), stack.Config().BLSSecretKey, db, ethClient)), nil
 	}
 
 	if len(config.Transitions) > 0 && istanbulCfg != nil {

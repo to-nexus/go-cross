@@ -164,6 +164,11 @@ var (
 		utils.BeaconGenesisTimeFlag,
 		utils.BeaconCheckpointFlag,
 		utils.BeaconCheckpointFileFlag,
+		// ##CROSS: bls seal
+		utils.BLSKeyFileFlag,
+		utils.BLSKeyStoreDirFlag,
+		utils.BLSPasswordFileFlag,
+		// ##
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{

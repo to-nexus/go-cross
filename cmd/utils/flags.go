@@ -47,6 +47,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/catalyst"
@@ -1019,6 +1020,26 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.MiscCategory,
 	}
+	// ##
+
+	// ##CROSS: bls seal
+	BLSKeyFileFlag = &cli.StringFlag{
+		Name:     "bls.key",
+		Usage:    "BLS key file",
+		Category: flags.IstanbulCategory,
+	}
+	BLSKeyStoreDirFlag = &flags.DirectoryFlag{
+		Name:     "bls.keystore",
+		Usage:    "Directory for the BLS keystore (default = inside the datadir)",
+		Category: flags.IstanbulCategory,
+	}
+	BLSPasswordFileFlag = &cli.PathFlag{
+		Name:      "bls.password",
+		Usage:     "BLS password file to use for non-interactive password input",
+		TakesFile: true,
+		Category:  flags.IstanbulCategory,
+	}
+	// ##
 )
 
 var (
@@ -1429,6 +1450,29 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 }
 
+// ##CROSS: bls seal
+// setBLSKey creates a BLS key from set command line flags, loading it from a file.
+func setBLSKey(ctx *cli.Context, cfg *node.Config) {
+	var (
+		file = ctx.String(BLSKeyFileFlag.Name)
+	)
+	if file == "" {
+		return
+	}
+	keydata, err := os.ReadFile(file)
+	if err != nil {
+		Fatalf("-%s: %v", BLSKeyFileFlag.Name, err)
+	}
+
+	secretKey, err := bls.SecretKeyFromBytes(common.FromHex(strings.TrimRight(string(keydata), "\r\n")))
+	if err != nil {
+		Fatalf("-%s: %v", BLSKeyFileFlag.Name, err)
+	}
+	cfg.BLSSecretKey = secretKey
+}
+
+// ##
+
 // SetNodeConfig applies node-related command line flags to the config.
 func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	SetP2PConfig(ctx, &cfg.P2P)
@@ -1439,6 +1483,7 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setNodeUserIdent(ctx, cfg)
 	SetDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
+	setBLSKey(ctx, cfg) // ##CROSS: bls seal
 
 	if ctx.IsSet(JWTSecretFlag.Name) {
 		cfg.JWTSecret = ctx.String(JWTSecretFlag.Name)
@@ -1512,7 +1557,7 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 		cfg.DataDir = ctx.String(DataDirFlag.Name)
 	case ctx.Bool(DeveloperFlag.Name):
 		cfg.DataDir = "" // unless explicitly requested, use memory databases
-		// ##CROSS: config
+	// ##CROSS: config
 	case ctx.Bool(ZoneZeroFlag.Name) && cfg.DataDir == node.DefaultDataDir():
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "zonezero")
 	case ctx.Bool(CrossDev3Flag.Name) && cfg.DataDir == node.DefaultDataDir():
@@ -1949,9 +1994,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			cfg.Miner.GasPrice = big.NewInt(1)
 		}
 	default:
-		if cfg.NetworkId == 612055 { // ##CROSS: config
+		switch cfg.NetworkId {
+		case 612055: // ##CROSS: config
 			SetDNSDiscoveryDefaults(cfg, params.CrossGenesisHash)
-		} else if cfg.NetworkId == 1 {
+		case 1:
 			SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
 		}
 	}

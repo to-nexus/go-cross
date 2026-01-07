@@ -34,6 +34,7 @@ const (
 	VMCategory         = "VIRTUAL MACHINE"
 	LoggingCategory    = "LOGGING AND DEBUGGING"
 	MetricsCategory    = "METRICS AND STATS"
+	IstanbulCategory   = "ISTANBUL"
 	MiscCategory       = "MISC"
 	TestingCategory    = "TESTING"
 	DeprecatedCategory = "ALIASED (deprecated)"

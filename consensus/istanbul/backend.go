@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 )
 
@@ -54,6 +55,9 @@ type Backend interface {
 
 	// SignWithoutHashing sign input data with the backend's private key without hashing the input data
 	SignWithoutHashing([]byte) ([]byte, error)
+
+	// SignSeal signs the seal with the backend's private key
+	SignSeal(*types.Header, []byte) ([]byte, error) // ##CROSS: bls seal
 
 	// CheckSignature verifies the signature by checking if it's signed by
 	// the given validator

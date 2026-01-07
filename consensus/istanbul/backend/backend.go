@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -83,10 +84,12 @@ type Backend struct {
 
 	recentMessages *lru.Cache[common.Address, *lru.Cache[common.Hash, bool]] // the cache of peer's messages
 	knownMessages  *lru.Cache[common.Hash, bool]                             // the cache of self messages
+
+	blsSecretKey bls.SecretKey // ##CROSS: bls seal
 }
 
 // New creates an Ethereum backend for Istanbul core engine.
-func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Database, contractBackend bind.ContractBackend) *Backend {
+func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, blsSecretKey bls.SecretKey, db ethdb.Database, contractBackend bind.ContractBackend) *Backend {
 	// Allocate the snapshot caches and create the engine
 	recents := lru.NewCache[common.Hash, *Snapshot](inmemorySnapshots)
 	recentMessages := lru.NewCache[common.Address, *lru.Cache[common.Hash, bool]](inmemoryPeers)
@@ -105,6 +108,7 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, db ethdb.Databas
 		coreStarted:      false,
 		recentMessages:   recentMessages,
 		knownMessages:    knownMessages,
+		blsSecretKey:     blsSecretKey, // ##CROSS: bls seal
 	}
 
 	sb.engine = engine.NewEngine(sb.config, sb.address, sb.Sign, sb.SignTx, sb, contractBackend)
@@ -264,7 +268,21 @@ func (sb *Backend) SignWithoutHashing(data []byte) ([]byte, error) {
 	return crypto.Sign(data, sb.privateKey)
 }
 
+// ##CROSS: bls seal
+// SignSeal implements istanbul.Backend.SignSeal and signs the seal with the backend's private key
+func (sb *Backend) SignSeal(header *types.Header, data []byte) ([]byte, error) {
+	// If Istanbul PoSA is active, return the BLS signature
+	if sb.chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		return sb.blsSecretKey.Sign(data).Marshal(), nil
+	}
+	// Fallback to the former method
+	return sb.SignWithoutHashing(data)
+}
+
+// ##
+
 // ##CROSS: consensus system contract
+// SignTx signs the transaction with the backend's private key
 func (sb *Backend) SignTx(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 	signer := types.LatestSignerForChainID(chainID)
 	return types.SignTx(tx, signer, sb.privateKey)
