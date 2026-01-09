@@ -252,6 +252,15 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return istanbul.ErrInvalidDifficulty
 	}
 
+	// ##CROSS: istanbul param
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// Need to sync Istanbul param before verifying the header
+		if err := e.SyncIstanbulParam(header); err != nil {
+			return err
+		}
+	}
+	// ##
+
 	// Verify the existence / non-existence of cancun-specific header fields
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
 	if !cancun {
