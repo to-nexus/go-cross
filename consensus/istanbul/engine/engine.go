@@ -513,16 +513,20 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	var validatorsList []common.Address
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: istanbul posa
-		// validator list is managed by the system contract
-		newList, err := e.getCurrentValidators(parent.Number.Uint64())
-		if err != nil {
-			return err
-		}
-		validatorsList = newList
-		if len(validatorsList) == 0 {
-			// if validator list is not updated, use the validators from snapshot
-			log.Warn("Prepare: empty validator list, using snapshot", "number", header.Number.Uint64(), "validators", validators.List())
-			validatorsList = validator.SortedAddresses(validators.List())
+		// Validator list is managed by the system contract
+		// Only write validators at epoch boundaries
+		epochLength := chain.Config().GetEpochLength(header.Number)
+		if header.Number.Uint64()%epochLength == 0 {
+			newList, err := e.getCurrentValidators(parent.Number.Uint64())
+			if err != nil {
+				return err
+			}
+			validatorsList = newList
+			if len(validatorsList) == 0 {
+				// If validator list is not updated, use the validators from snapshot
+				log.Warn("Prepare: empty validator list, using snapshot", "number", header.Number.Uint64(), "validators", validators.List())
+				validatorsList = validator.SortedAddresses(validators.List())
+			}
 		}
 		// ##
 	} else {
@@ -1033,9 +1037,9 @@ func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header
 		uint256.MustFromBig(msg.Value),
 	)
 	if err != nil {
-		log.Error("apply message failed",
+		log.Error("Apply message failed",
 			"err", err,
-			"return", string(ret),
+			"return", common.Bytes2Hex(ret),
 			"from", msg.From,
 			"to", *msg.To,
 			"data", common.Bytes2Hex(msg.Data),

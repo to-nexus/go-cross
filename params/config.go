@@ -944,6 +944,10 @@ func (c *ChainConfig) IsIstanbulPoSA(num *big.Int, time uint64) bool {
 	if num.Cmp(big.NewInt(1)) <= 0 || c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSAActivationSeconds == nil {
 		return false
 	}
+	if *c.Istanbul.PoSAActivationSeconds == 0 {
+		// PoSA activation must be at least 1 second after Breakpoint hardfork
+		return c.IsBreakpoint(num, time) && *c.BreakpointTime+1 <= time
+	}
 	return c.IsBreakpoint(num, time) && *c.BreakpointTime+*c.Istanbul.PoSAActivationSeconds <= time
 }
 

@@ -539,7 +539,11 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		if err != nil {
 			return err
 		}
-		snap.ValSet = validator.NewSet(validators, sb.config.GetConfig(header.Number).ProposerPolicy)
+		// Only update validator set if validators are present in the header (at epoch boundaries)
+		// Otherwise, keep the existing validator set from the snapshot
+		if len(validators) > 0 {
+			snap.ValSet = validator.NewSet(validators, sb.config.GetConfig(header.Number).ProposerPolicy)
+		}
 		// ##
 	} else {
 		// Read vote from header

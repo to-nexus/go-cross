@@ -313,8 +313,11 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 	if istConfig.ProposerPolicy != nil {
 		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)
 	}
-	if extra, _ := types.ExtractIstanbulExtra(header); extra != nil {
+	if extra, _ := types.ExtractIstanbulExtra(header); extra != nil && len(extra.Validators) > 0 {
 		ret.Validators = extra.Validators
+	} else {
+		// Fallback to snapshot validators
+		ret.Validators = api.backend.ValidatorsAt(header)
 	}
 
 	chainConfig := api.chain.Config()

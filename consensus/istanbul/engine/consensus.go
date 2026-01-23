@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math/big"
 	"slices"
 
@@ -55,6 +56,7 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 		log.Info("Syncing istanbul param", "index", index, "number", result.Timepoint, "config", result)
 
 		config := params.IstanbulConfig{
+			EpochLength:             result.EpochLength,
 			BlockPeriodSeconds:      result.BlockPeriod,
 			EmptyBlockPeriodSeconds: result.EmptyBlockPeriod,
 			RequestTimeoutSeconds:   result.RequestTimeout,
@@ -293,11 +295,23 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 		return nil, err
 	}
 	if extra.Round == 0 {
+		// No extra round, so no proposers to slash
 		return nil, nil
 	}
 
 	// If extra.Round > 0, collect proposers of previous rounds
-	valSet := validator.NewSet(extra.Validators, policy)
+	validators := extra.Validators
+	if len(validators) == 0 {
+		// Fallback to IstanbulEngine to get validators
+		if ie := consensus.ToIstanbulEngine(e.consensus); ie != nil {
+			validators = ie.ValidatorsAt(header)
+		}
+	}
+	if len(validators) == 0 {
+		return nil, fmt.Errorf("no validators at block %d", header.Number.Uint64())
+	}
+
+	valSet := validator.NewSet(validators, policy)
 	lastProposer, _ := e.Author(parent)
 	proposers := make([]common.Address, 0, extra.Round)
 	for round := uint32(0); round < extra.Round; round++ {
@@ -336,7 +350,7 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 		return nil
 	}
 
-	data := e.validatorSlash.PackReduceCount()
+	data := e.validatorSlash.PackMitigate()
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
 
 	log.Info("Mitigating slashed validators", "number", header.Number.Uint64(), "slashed", slashed, "isMining", systemTxs == nil)

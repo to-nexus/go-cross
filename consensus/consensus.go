@@ -169,6 +169,9 @@ type IstanbulEngine interface {
 
 	// SyncIstanbulParam syncs and caches the Istanbul parameters from the system contract.
 	SyncIstanbulParam(*types.Header) error // ##CROSS: istanbul param
+
+	// ValidatorsAt returns the validator addresses at the given block number.
+	ValidatorsAt(*types.Header) []common.Address // ##CROSS: istanbul posa
 	// ##
 }
 

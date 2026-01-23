@@ -69,6 +69,7 @@ func init() {
 				Code:         breakpoint.IstanbulParamMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					epochLength := uint64(300) // override to 300
 					blockPeriod := config.GetBlockPeriodSeconds(header.Number)
 					emptyBlockPeriod := config.GetEmptyBlockPeriodSeconds(header.Number)
 					requestTimeout := config.GetRequestTimeoutSeconds(header.Number)
@@ -93,7 +94,7 @@ func init() {
 						councilPeriod = *config.Istanbul.CouncilPeriod
 					}
 					return breakpoint.NewIstanbulParam().PackInitialize(
-						councilPeriod,
+						epochLength,
 						blockPeriod,
 						emptyBlockPeriod,
 						requestTimeout,
@@ -104,6 +105,7 @@ func init() {
 						minBaseFee,
 						proposerPolicy,
 						gasLimit,
+						councilPeriod,
 					), nil
 				},
 			},

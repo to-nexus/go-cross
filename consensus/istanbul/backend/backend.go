@@ -390,3 +390,18 @@ func (sb *Backend) stop() error {
 
 	return nil
 }
+
+// ##CROSS: istanbul posa
+// ValidatorsAt returns validators from the snapshot at the given block number.
+func (sb *Backend) ValidatorsAt(header *types.Header) []common.Address {
+	if sb.chain == nil || header == nil {
+		return nil
+	}
+	snap, err := sb.snapshot(sb.chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil {
+		return nil
+	}
+	return snap.validators()
+}
+
+// ##
