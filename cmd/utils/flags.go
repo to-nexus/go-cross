@@ -1028,17 +1028,6 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "BLS key file",
 		Category: flags.IstanbulCategory,
 	}
-	BLSKeyStoreDirFlag = &flags.DirectoryFlag{
-		Name:     "bls.keystore",
-		Usage:    "Directory for the BLS keystore (default = inside the datadir)",
-		Category: flags.IstanbulCategory,
-	}
-	BLSPasswordFileFlag = &cli.PathFlag{
-		Name:      "bls.password",
-		Usage:     "BLS password file to use for non-interactive password input",
-		TakesFile: true,
-		Category:  flags.IstanbulCategory,
-	}
 	// ##
 )
 
@@ -1459,16 +1448,26 @@ func setBLSKey(ctx *cli.Context, cfg *node.Config) {
 	if file == "" {
 		return
 	}
-	keydata, err := os.ReadFile(file)
+	keyData, err := os.ReadFile(file)
 	if err != nil {
 		Fatalf("-%s: %v", BLSKeyFileFlag.Name, err)
 	}
+	keyString := strings.TrimSpace(string(keyData))
+	if keyString == "" {
+		Fatalf("-%s: empty BLS key file", BLSKeyFileFlag.Name)
+	}
+	keyBytes := common.FromHex(keyString)
+	if len(keyBytes) != 32 {
+		Fatalf("-%s: invalid BLS key length, expected 32 bytes, got %d", BLSKeyFileFlag.Name, len(keyBytes))
+	}
 
-	secretKey, err := bls.SecretKeyFromBytes(common.FromHex(strings.TrimRight(string(keydata), "\r\n")))
+	secretKey, err := bls.SecretKeyFromBytes(keyBytes)
 	if err != nil {
 		Fatalf("-%s: %v", BLSKeyFileFlag.Name, err)
 	}
 	cfg.BLSSecretKey = secretKey
+
+	log.Info("BLS key loaded", "pubkey", hex.EncodeToString(secretKey.PublicKey().Marshal()))
 }
 
 // ##

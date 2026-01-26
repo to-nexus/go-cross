@@ -440,7 +440,7 @@ func TestSaveAndLoad(t *testing.T) {
 		ValSet: validator.NewSet([]common.Address{
 			common.BytesToAddress([]byte("1234567894")),
 			common.BytesToAddress([]byte("1234567895")),
-		}, istanbul.NewRoundRobinProposerPolicy()),
+		}, nil, istanbul.NewRoundRobinProposerPolicy()),
 	}
 	db := rawdb.NewMemoryDatabase()
 	err := snap.store(db)

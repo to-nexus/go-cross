@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
@@ -75,7 +76,34 @@ func (sb *Backend) Author(header *types.Header) (common.Address, error) {
 // Signers extracts all the addresses who have signed the given header
 // It will extract for each seal who signed it, regardless of if the seal is
 // repeated
-func (sb *Backend) Signers(header *types.Header) ([]common.Address, error) {
+func (sb *Backend) Signers(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+	// ##CROSS: bls seal
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// Should combine signer bitset from the header and validator set from the snapshot
+		snap, err := sb.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+		if err != nil {
+			return nil, err
+		}
+		extra, err := types.ExtractIstanbulExtra(header)
+		if err != nil {
+			return nil, err
+		}
+
+		bs := bitset.From(extra.SignersBitset)
+		if bs.Count() == 0 {
+			return nil, istanbul.ErrEmptySigners
+		}
+
+		addrs := make([]common.Address, 0, bs.Count())
+		for index, validator := range snap.ValSet.List() {
+			if !bs.Test(uint(index)) {
+				continue
+			}
+			addrs = append(addrs, validator.Address())
+		}
+		return addrs, nil
+	}
+	// ##
 	return sb.Engine().Signers(header)
 }
 
@@ -401,15 +429,19 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 				return nil, err
 			}
 
-			var validators []common.Address
+			var (
+				validators []common.Address
+				signers    []types.BLSPublicKey // ##CROSS: bls seal
+			)
 			validatorsFromConfig := sb.config.Validators
 			if len(validatorsFromConfig) > 0 {
 				validators = validatorsFromConfig
+				signers = sb.config.Signers
 				log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
 			} else {
 				var err error
-				validators, err = sb.Engine().ExtractValidators(genesis)
-				log.Info("Istanbul: Initialising snap with extradata", "validators", validators)
+				validators, signers, err = sb.Engine().ExtractValidators(genesis)
+				log.Info("Istanbul: Initialising snap with extradata", "validators", validators, "signers", signers)
 				if err != nil {
 					log.Error("Istanbul: invalid genesis block", "err", err)
 					return nil, err
@@ -417,7 +449,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 			}
 
 			cfg := sb.config.GetConfig(new(big.Int).SetUint64(number)) // ##CROSS: istanbul param
-			snap = newSnapshot(cfg.Epoch, 0, genesis.Hash(), validator.NewSet(validators, cfg.ProposerPolicy))
+			snap = newSnapshot(cfg.Epoch, 0, genesis.Hash(), validator.NewSet(validators, signers, cfg.ProposerPolicy))
 			if err := sb.storeSnap(snap); err != nil {
 				return nil, err
 			}
@@ -454,6 +486,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 	if err != nil {
 		return nil, err
 	}
+	snap.Epoch = sb.config.GetConfig(new(big.Int).SetUint64(snap.Number)).Epoch // ##CROSS: istanbul param
 	sb.recents.Add(snap.Hash, snap)
 
 	// If we've generated a new checkpoint snapshot, save to disk
@@ -535,14 +568,14 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: istanbul posa
 		// Validators are managed by the system contract, we don't check the votes anymore
-		validators, err := sb.Engine().ExtractValidators(header)
+		validators, signers, err := sb.Engine().ExtractValidators(header)
 		if err != nil {
 			return err
 		}
 		// Only update validator set if validators are present in the header (at epoch boundaries)
 		// Otherwise, keep the existing validator set from the snapshot
 		if len(validators) > 0 {
-			snap.ValSet = validator.NewSet(validators, sb.config.GetConfig(header.Number).ProposerPolicy)
+			snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
 		}
 		// ##
 	} else {
@@ -581,7 +614,7 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		if tally := snap.Tally[candidate]; tally.Votes > snap.ValSet.Size()/2 {
 			if tally.Authorize {
 				logger.Info("Istanbul: reached majority to add validator")
-				snap.ValSet.AddValidator(candidate)
+				snap.ValSet.AddValidator(candidate, types.BLSPublicKey{})
 			} else {
 				logger.Info("Istanbul: reached majority to remove validator")
 				snap.ValSet.RemoveValidator(candidate)

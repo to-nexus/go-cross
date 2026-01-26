@@ -44,7 +44,7 @@ type Backend interface {
 
 	// Commit delivers an approved proposal to backend.
 	// The delivered proposal will be put into blockchain.
-	Commit(proposal Proposal, seals [][]byte, round *big.Int) error
+	Commit(proposal Proposal, seals []SignedSeal, round *big.Int) error
 
 	// Verify verifies the proposal. If a consensus.ErrFutureBlock error is returned,
 	// the time difference of the proposal and current time is also returned.
@@ -56,8 +56,16 @@ type Backend interface {
 	// SignWithoutHashing sign input data with the backend's private key without hashing the input data
 	SignWithoutHashing([]byte) ([]byte, error)
 
+	// ##CROSS: bls seal
 	// SignSeal signs the seal with the backend's private key
-	SignSeal(*types.Header, []byte) ([]byte, error) // ##CROSS: bls seal
+	SignSeal(*types.Header, []byte) ([]byte, error)
+
+	// SealSize returns the size of the seal for the given proposal
+	SealSize(Proposal) int
+
+	// VerifyCommittedSeal checks if the seal is valid signature by verifying it with the public key of the signer.
+	VerifyCommittedSeal(signature []byte, signer common.Address, proposal Proposal, round uint32, validatorSet ValidatorSet) error
+	// ##
 
 	// CheckSignature verifies the signature by checking if it's signed by
 	// the given validator

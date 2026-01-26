@@ -15,7 +15,7 @@ func SecretKeyFromBytes(privKey []byte) (SecretKey, error) {
 	return blst.SecretKeyFromBytes(privKey)
 }
 
-// PublicKeyFromBytes creates a BLS public key from a  BigEndian byte slice.
+// PublicKeyFromBytes creates a BLS public key from a BigEndian byte slice.
 func PublicKeyFromBytes(pubKey []byte) (PublicKey, error) {
 	return blst.PublicKeyFromBytes(pubKey)
 }

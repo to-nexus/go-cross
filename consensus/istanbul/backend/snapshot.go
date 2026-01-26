@@ -20,10 +20,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"maps"
+	"slices"
+	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
@@ -162,15 +165,41 @@ func (s *Snapshot) validators() []common.Address {
 	for _, validator := range s.ValSet.List() {
 		validators = append(validators, validator.Address())
 	}
-	for i := 0; i < len(validators); i++ {
-		for j := i + 1; j < len(validators); j++ {
-			if bytes.Compare(validators[i][:], validators[j][:]) > 0 {
-				validators[i], validators[j] = validators[j], validators[i]
-			}
-		}
-	}
+	slices.SortFunc(validators, func(a, b common.Address) int {
+		return bytes.Compare(a[:], b[:])
+	})
 	return validators
 }
+
+// ##CROSS: bls seal
+type validatorSet struct {
+	validators []common.Address
+	signers    []types.BLSPublicKey
+}
+
+func (v *validatorSet) Len() int { return len(v.validators) }
+func (v *validatorSet) Less(i, j int) bool {
+	return bytes.Compare(v.validators[i][:], v.validators[j][:]) < 0
+}
+func (v *validatorSet) Swap(i, j int) {
+	v.validators[i], v.validators[j] = v.validators[j], v.validators[i]
+	v.signers[i], v.signers[j] = v.signers[j], v.signers[i]
+}
+
+func (s *Snapshot) validatorsWithSigners() ([]common.Address, []types.BLSPublicKey) {
+	validators := &validatorSet{
+		validators: make([]common.Address, 0, s.ValSet.Size()),
+		signers:    make([]types.BLSPublicKey, 0, s.ValSet.Size()),
+	}
+	for _, validator := range s.ValSet.List() {
+		validators.validators = append(validators.validators, validator.Address())
+		validators.signers = append(validators.signers, validator.SignerAddress())
+	}
+	sort.Sort(validators)
+	return validators.validators, validators.signers
+}
+
+// ##
 
 type snapshotJSON struct {
 	Epoch  uint64                   `json:"epoch"`
@@ -182,16 +211,20 @@ type snapshotJSON struct {
 	// for validator set
 	Validators []common.Address          `json:"validators"`
 	Policy     istanbul.ProposerPolicyId `json:"policy"`
+
+	Signers []types.BLSPublicKey `json:"signers,omitempty"` // ##CROSS: bls seal
 }
 
 func (s *Snapshot) toJSONStruct() *snapshotJSON {
+	validators, signers := s.validatorsWithSigners()
 	return &snapshotJSON{
 		Epoch:      s.Epoch,
 		Number:     s.Number,
 		Hash:       s.Hash,
 		Votes:      s.Votes,
 		Tally:      s.Tally,
-		Validators: s.validators(),
+		Validators: validators,
+		Signers:    signers, // ##CROSS: bls seal
 		Policy:     s.ValSet.Policy().Id,
 	}
 }
@@ -211,7 +244,7 @@ func (s *Snapshot) UnmarshalJSON(b []byte) error {
 
 	// Setting the By function to ValidatorSortByStringFunc should be fine, as the validator do not change only the order changes
 	pp := istanbul.NewProposerPolicyByIdAndSortFunc(j.Policy, istanbul.ValidatorSortByString())
-	s.ValSet = validator.NewSet(j.Validators, pp)
+	s.ValSet = validator.NewSet(j.Validators, j.Signers, pp) // ##CROSS: bls seal
 	return nil
 }
 

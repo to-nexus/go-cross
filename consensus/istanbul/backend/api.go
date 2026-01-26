@@ -85,7 +85,7 @@ func (api *API) signers(header *types.Header) (*BlockSigners, error) {
 		return nil, err
 	}
 
-	committers, err := api.backend.Signers(header)
+	committers, err := api.backend.Signers(api.chain, header)
 	if err != nil {
 		return nil, err
 	}
@@ -313,12 +313,7 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 	if istConfig.ProposerPolicy != nil {
 		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)
 	}
-	if extra, _ := types.ExtractIstanbulExtra(header); extra != nil && len(extra.Validators) > 0 {
-		ret.Validators = extra.Validators
-	} else {
-		// Fallback to snapshot validators
-		ret.Validators = api.backend.ValidatorsAt(header)
-	}
+	ret.Validators = api.backend.ValidatorsAt(header)
 
 	chainConfig := api.chain.Config()
 

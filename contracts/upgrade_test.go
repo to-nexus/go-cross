@@ -64,6 +64,12 @@ func TestInitSystemContract(t *testing.T) {
 		Vote:          nil,
 		RandomReveal:  []byte{},
 	}
+	// ##CROSS: bls seal
+	signers := make([][]byte, 0, len(extra.Validators))
+	for range len(extra.Validators) {
+		signers = append(signers, types.BLSPublicKey{}.Bytes())
+	}
+	// ##
 	payload, err := rlp.EncodeToBytes(extra)
 	require.NoError(t, err)
 
@@ -80,6 +86,8 @@ func TestInitSystemContract(t *testing.T) {
 			MinBaseFee:              minBaseFee,
 		},
 	}
+
+	initialize := common.FromHex("8129fc1c")
 
 	tests := []struct {
 		name     string
@@ -100,7 +108,7 @@ func TestInitSystemContract(t *testing.T) {
 				{
 					To: IstanbulParamAddr,
 					Data: breakpoint.NewIstanbulParam().PackInitialize(
-						86400,                             // epochLength
+						300,                               // epochLength
 						1,                                 // blockPeriod
 						0,                                 // emptyBlockPeriod
 						10,                                // requestTimeout
@@ -111,31 +119,32 @@ func TestInitSystemContract(t *testing.T) {
 						(*big.Int)(minBaseFee),            // minBaseFee
 						0,                                 // proposerPolicy
 						2e10,                              // gasLimit
+						86400,                             // councilPeriod
 					),
 				},
 				{
 					To:   ValidatorSetAddr,
-					Data: breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators),
+					Data: breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators, signers),
 				},
 				{
 					To:   StakeHubAddr,
-					Data: common.FromHex("8129fc1c"), // initialize()
+					Data: initialize,
 				},
 				{
 					To:   ValidatorSlashAddr,
-					Data: common.FromHex("8129fc1c"), // initialize()
+					Data: initialize,
 				},
 				{
 					To:   GovernorAddr,
-					Data: common.FromHex("8129fc1c"), // initialize()
+					Data: initialize,
 				},
 				{
 					To:   GovernanceTokenAddr,
-					Data: common.FromHex("8129fc1c"), // initialize()
+					Data: initialize,
 				},
 				{
 					To:   GovernanceTimelockAddr,
-					Data: common.FromHex("8129fc1c"), // initialize()
+					Data: initialize,
 				},
 			},
 		},

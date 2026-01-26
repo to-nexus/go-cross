@@ -43,7 +43,7 @@ func TestProposerPolicy(t *testing.T) {
 	pp := istanbul.NewRoundRobinProposerPolicy()
 	pp.Use(istanbul.ValidatorSortByByte())
 
-	valSet := NewSet(addrSet, pp)
+	valSet := NewSet(addrSet, nil, pp)
 	valList := valSet.List()
 
 	for i := 0; i < 6; i++ {
@@ -67,8 +67,8 @@ func TestProposerPolicyRegistration(t *testing.T) {
 	// test that registration can't go beyond MaxValidatorSetInRegistry limit
 	pp := istanbul.NewRoundRobinProposerPolicy()
 	pp2 := istanbul.NewRoundRobinProposerPolicy()
-	valSet := NewSet(addrSet, pp)
-	valSet2 := NewSet(addrSet2, pp2)
+	valSet := NewSet(addrSet, nil, pp)
+	valSet2 := NewSet(addrSet2, nil, pp2)
 
 	for i := 0; i < istanbul.MaxValidatorSetInRegistry+100; i++ {
 		pp.RegisterValidatorSet(valSet)

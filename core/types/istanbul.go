@@ -20,10 +20,102 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+// ##CROSS: bls seal
+const (
+	BLSPublicKeyLength = 48
+	BLSSignatureLength = 96
+)
+
+type (
+	BLSPublicKey [BLSPublicKeyLength]byte
+	BLSSignature [BLSSignatureLength]byte
+)
+
+var (
+	blsPublicKeyT = reflect.TypeOf(BLSPublicKey{})
+	blsSignatureT = reflect.TypeOf(BLSSignature{})
+)
+
+// BytesToBLSPublicKey converts a byte slice to a BLS public key.
+// If b is larger than BLSPublicKeyLength, it will be cropped from the left.
+func BytesToBLSPublicKey(b []byte) BLSPublicKey {
+	var key BLSPublicKey
+	if len(b) > len(key) {
+		b = b[len(b)-BLSPublicKeyLength:]
+	}
+	copy(key[BLSPublicKeyLength-len(b):], b)
+	return key
+}
+
+// BytesToBLSSignature converts a byte slice to a BLS signature.
+// If b is larger than BLSSignatureLength, it will be cropped from the left.
+func BytesToBLSSignature(b []byte) BLSSignature {
+	var sig BLSSignature
+	if len(b) > len(sig) {
+		b = b[len(b)-BLSSignatureLength:]
+	}
+	copy(sig[BLSSignatureLength-len(b):], b)
+	return sig
+}
+
+// Bytes returns the byte slice representation of the BLS public key.
+func (b BLSPublicKey) Bytes() []byte {
+	return b[:]
+}
+
+// String implements the stringer interface.
+func (b BLSPublicKey) String() string {
+	return hexutil.Encode(b[:])
+}
+
+// MarshalText returns the hex representation of the BLS public key.
+func (b BLSPublicKey) MarshalText() ([]byte, error) {
+	return hexutil.Bytes(b[:]).MarshalText()
+}
+
+// UnmarshalJSON parses a BLS public key in hex syntax.
+func (b *BLSPublicKey) UnmarshalJSON(input []byte) error {
+	return hexutil.UnmarshalFixedJSON(blsPublicKeyT, input, b[:])
+}
+
+// UnmarshalText parses a BLS public key in hex syntax.
+func (b *BLSPublicKey) UnmarshalText(input []byte) error {
+	return hexutil.UnmarshalFixedText("BLSPublicKey", input, b[:])
+}
+
+// Bytes returns the byte slice representation of the BLS signature.
+func (b BLSSignature) Bytes() []byte {
+	return b[:]
+}
+
+// String implements the stringer interface.
+func (b BLSSignature) String() string {
+	return hexutil.Encode(b[:])
+}
+
+// MarshalText returns the hex representation of the BLS signature.
+func (b BLSSignature) MarshalText() ([]byte, error) {
+	return hexutil.Bytes(b[:]).MarshalText()
+}
+
+// UnmarshalJSON parses a BLS signature in hex syntax.
+func (b *BLSSignature) UnmarshalJSON(input []byte) error {
+	return hexutil.UnmarshalFixedJSON(blsSignatureT, input, b[:])
+}
+
+// UnmarshalText parses a BLS signature in hex syntax.
+func (b *BLSSignature) UnmarshalText(input []byte) error {
+	return hexutil.UnmarshalFixedText("BLSSignature", input, b[:])
+}
+
+// ##
 
 var (
 	// ##CROSS: istanbul digest
@@ -31,8 +123,9 @@ var (
 	// to identify whether the block is from Istanbul consensus engine
 	IstanbulDigest = common.HexToHash("0x43726f737320497374616e62756c2e2000000000000000000000000000000000")
 
-	IstanbulExtraVanity = 32 // Fixed number of extra-data bytes reserved for validator vanity
-	IstanbulExtraSeal   = 65 // Fixed number of extra-data bytes reserved for validator seal
+	IstanbulExtraVanity  = 32 // Fixed number of extra-data bytes reserved for validator vanity
+	IstanbulExtraSeal    = 65 // Fixed number of extra-data bytes reserved for validator seal
+	IstanbulExtraSealBLS = 96 // Fixed number of extra-data bytes reserved for validator BLS seal // ##CROSS: bls seal
 
 	IstanbulAuthVote = byte(0xFF) // Magic number to vote on adding a new validator
 	IstanbulDropVote = byte(0x00) // Magic number to vote on removing a validator.
@@ -62,18 +155,28 @@ type IstanbulExtra struct {
 	Round         uint32
 	CommittedSeal [][]byte
 	RandomReveal  []byte
+	// ##CROSS: bls seal
+	SignersBitset []uint64
+	Signers       []BLSPublicKey
+	// ##
 }
 
 // EncodeRLP serializes qist into the Ethereum RLP format.
 func (qst *IstanbulExtra) EncodeRLP(w io.Writer) error {
-	return rlp.Encode(w, []interface{}{
+	val := []interface{}{
 		qst.VanityData,
 		qst.Validators,
 		qst.Vote,
 		qst.Round,
 		qst.CommittedSeal,
 		qst.RandomReveal,
-	})
+	}
+	// ##CROSS: bls seal
+	if qst.SignersBitset != nil || qst.Signers != nil {
+		val = append(val, qst.SignersBitset, qst.Signers)
+	}
+	// ##
+	return rlp.Encode(w, val)
 }
 
 // DecodeRLP implements rlp.Decoder, and load the IstanbulExtra fields from a RLP stream.
@@ -85,12 +188,24 @@ func (qst *IstanbulExtra) DecodeRLP(s *rlp.Stream) error {
 		Round         uint32
 		CommittedSeal [][]byte
 		RandomReveal  []byte
+		// ##CROSS: bls seal
+		SignersBitset []uint64       `rlp:"optional"`
+		Signers       []BLSPublicKey `rlp:"optional"`
+		// ##
 	}
 	if err := s.Decode(&extra); err != nil {
 		return err
 	}
-	qst.VanityData, qst.Validators, qst.Vote, qst.Round, qst.CommittedSeal, qst.RandomReveal = extra.VanityData, extra.Validators, extra.Vote, extra.Round, extra.CommittedSeal, extra.RandomReveal
-
+	qst.VanityData = extra.VanityData
+	qst.Validators = extra.Validators
+	qst.Vote = extra.Vote
+	qst.Round = extra.Round
+	qst.CommittedSeal = extra.CommittedSeal
+	qst.RandomReveal = extra.RandomReveal
+	// ##CROSS: bls seal
+	qst.SignersBitset = extra.SignersBitset
+	qst.Signers = extra.Signers
+	// ##
 	return nil
 }
 
@@ -150,6 +265,11 @@ func IstanbulFilteredHeaderWithRound(h *Header, round uint32) *Header {
 
 	extra.CommittedSeal = [][]byte{}
 	extra.Round = round
+
+	// ##CROSS: bls seal
+	extra.SignersBitset = nil
+	extra.Signers = nil
+	// ##
 
 	payload, err := rlp.EncodeToBytes(&extra)
 	if err != nil {

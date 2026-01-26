@@ -185,7 +185,7 @@ func (sb *Backend) Gossip(valSet istanbul.ValidatorSet, code uint64, payload []b
 }
 
 // Commit implements istanbul.Backend.Commit
-func (sb *Backend) Commit(proposal istanbul.Proposal, seals [][]byte, round *big.Int) (err error) {
+func (sb *Backend) Commit(proposal istanbul.Proposal, seals []istanbul.SignedSeal, round *big.Int) (err error) {
 	// Check if the proposal is a valid block
 	block, ok := proposal.(*types.Block)
 	if !ok {
@@ -194,8 +194,8 @@ func (sb *Backend) Commit(proposal istanbul.Proposal, seals [][]byte, round *big
 	}
 
 	// Commit header
-	h := block.Header()
-	err = sb.Engine().CommitHeader(h, seals, round)
+	header := block.Header()
+	err = sb.Engine().CommitHeader(sb.chain, header, seals, round)
 	if err != nil {
 		return
 	}
@@ -204,9 +204,20 @@ func (sb *Backend) Commit(proposal istanbul.Proposal, seals [][]byte, round *big
 	sb.config.ProposerPolicy.ClearRegistry()
 
 	// update block's header
-	block = block.WithSeal(h)
+	block = block.WithSeal(header)
 
-	sb.logger.Info("Istanbul: block proposal committed", "author", sb.Address(), "hash", proposal.Hash(), "number", proposal.Number().Uint64())
+	logger := sb.logger.With("author", sb.Address(), "hash", proposal.Hash(), "number", proposal.Number().Uint64())
+	// ##CROSS: bls seal
+	if sb.chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		extra, _ := types.ExtractIstanbulExtra(header)
+		var committedSeal []byte
+		if len(extra.CommittedSeal) > 0 {
+			committedSeal = extra.CommittedSeal[0]
+		}
+		logger = logger.With("committedSeal", common.PrettyBytes(committedSeal), "validators", extra.Validators, "signersBitset", extra.SignersBitset, "signers", extra.Signers)
+	}
+	// ##
+	logger.Info("Istanbul: block proposal committed")
 
 	// - if the proposed and committed blocks are the same, send the proposed hash
 	//   to commit channel, which is being watched inside the engine.Seal() function.
@@ -273,10 +284,60 @@ func (sb *Backend) SignWithoutHashing(data []byte) ([]byte, error) {
 func (sb *Backend) SignSeal(header *types.Header, data []byte) ([]byte, error) {
 	// If Istanbul PoSA is active, return the BLS signature
 	if sb.chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		if sb.blsSecretKey == nil {
+			return nil, istanbul.ErrInvalidSecretKey
+		}
 		return sb.blsSecretKey.Sign(data).Marshal(), nil
 	}
 	// Fallback to the former method
 	return sb.SignWithoutHashing(data)
+}
+
+// SealSize returns the size of the seal for the given proposal
+func (sb *Backend) SealSize(proposal istanbul.Proposal) int {
+	if block, ok := proposal.(*types.Block); ok {
+		if sb.chain.Config().IsIstanbulPoSA(block.Number(), block.Time()) {
+			return types.IstanbulExtraSealBLS
+		}
+	}
+	return types.IstanbulExtraSeal
+}
+
+// VerifyCommittedSeal checks if the seal is valid signature by verifying it with the public key of the signer.
+func (sb *Backend) VerifyCommittedSeal(signature []byte, signer common.Address, proposal istanbul.Proposal, round uint32, validatorSet istanbul.ValidatorSet) error {
+	var header *types.Header
+	if block, ok := proposal.(*types.Block); ok {
+		header = block.Header()
+	} else {
+		return istanbul.ErrInvalidProposal
+	}
+
+	if !sb.chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		return nil
+	}
+
+	_, validator := validatorSet.GetByAddress(signer)
+	if validator == nil {
+		return istanbul.ErrUnauthorized
+	}
+
+	signerAddr := validator.SignerAddress()
+	if signerAddr == (types.BLSPublicKey{}) {
+		return istanbul.ErrInvalidPublicKey
+	}
+	pubkey, err := bls.PublicKeyFromBytes(signerAddr.Bytes())
+	if err != nil {
+		return err
+	}
+
+	sig, err := bls.SignatureFromBytes(signature)
+	if err != nil {
+		return err
+	}
+	if !sig.Verify(pubkey, core.PrepareCommittedSeal(header, round)) {
+		return istanbul.ErrInvalidSignature
+	}
+	return nil
 }
 
 // ##
@@ -323,13 +384,13 @@ func (sb *Backend) ParentValidators(proposal istanbul.Proposal) istanbul.Validat
 	if block, ok := proposal.(*types.Block); ok {
 		return sb.getValidators(block.Number().Uint64()-1, block.ParentHash())
 	}
-	return validator.NewSet(nil, sb.config.GetConfig(proposal.Number()).ProposerPolicy) // ##CROSS: istanbul param
+	return validator.NewSet(nil, nil, sb.config.GetConfig(proposal.Number()).ProposerPolicy) // ##CROSS: istanbul param
 }
 
 func (sb *Backend) getValidators(number uint64, hash common.Hash) istanbul.ValidatorSet {
 	snap, err := sb.snapshot(sb.chain, number, hash, nil)
 	if err != nil {
-		return validator.NewSet(nil, sb.config.GetConfig(new(big.Int).SetUint64(number)).ProposerPolicy) // ##CROSS: istanbul param
+		return validator.NewSet(nil, nil, sb.config.GetConfig(new(big.Int).SetUint64(number)).ProposerPolicy) // ##CROSS: istanbul param
 	}
 	return snap.ValSet
 }
@@ -364,6 +425,13 @@ func (sb *Backend) Close() error {
 
 func (sb *Backend) startIstanbul() error {
 	sb.logger.Info("Istanbul: activate")
+
+	// ##CROSS: bls seal
+	if sb.chain != nil && sb.chain.Config().Istanbul != nil && sb.chain.Config().Istanbul.PoSAActivationSeconds != nil && sb.blsSecretKey == nil {
+		sb.logger.Warn("Istanbul: BLS secret key is not configured - node cannot participate in PoSA")
+	}
+	// ##
+
 	sb.logger.Trace("Istanbul: set ProposerPolicy sorter to ValidatorSortByByteFunc")
 	sb.config.ProposerPolicy.Use(istanbul.ValidatorSortByByte())
 

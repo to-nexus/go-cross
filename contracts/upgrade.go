@@ -43,6 +43,8 @@ var (
 )
 
 func init() {
+	initialize := common.FromHex("8129fc1c")
+
 	upgrades[forks.Prague] = &Upgrade{
 		UpgradeName: forks.Prague.String(),
 		Configs: []*UpgradeConfig{
@@ -119,7 +121,25 @@ func init() {
 					if err != nil {
 						return nil, err
 					}
-					return breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators), nil
+					// ##CROSS: bls seal
+					// browse Istanbul config to build signers list
+					signers := make([][]byte, 0, len(extra.Validators))
+					for i, validator := range extra.Validators {
+						if config.Istanbul != nil {
+							for idx := range config.Istanbul.Validators {
+								if validator == config.Istanbul.Validators[idx] && idx < len(config.Istanbul.Signers) {
+									signers = append(signers, config.Istanbul.Signers[idx])
+									break
+								}
+							}
+						}
+						if len(signers) < i+1 {
+							// this validator has no signer, write empty signer
+							signers = append(signers, types.BLSPublicKey{}.Bytes())
+						}
+					}
+					// ##
+					return breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators, signers), nil
 				},
 			},
 			{
@@ -128,7 +148,7 @@ func init() {
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return breakpoint.NewStakeHub().PackInitialize(), nil
+					return initialize, nil
 				},
 			},
 			{
@@ -143,7 +163,7 @@ func init() {
 				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return breakpoint.NewValidatorSlash().PackInitialize(), nil
+					return initialize, nil
 				},
 			},
 			{
@@ -158,7 +178,7 @@ func init() {
 				Code:         breakpoint.CrossGovernorCode,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return common.FromHex("8129fc1c"), nil
+					return initialize, nil
 				},
 			},
 			{
@@ -167,7 +187,7 @@ func init() {
 				Code:         breakpoint.GovernanceTokenCode,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return common.FromHex("8129fc1c"), nil
+					return initialize, nil
 				},
 			},
 			{
@@ -176,7 +196,7 @@ func init() {
 				Code:         breakpoint.GovernanceTimelockCode,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return common.FromHex("8129fc1c"), nil
+					return initialize, nil
 				},
 			},
 			{

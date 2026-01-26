@@ -78,3 +78,23 @@ type Subject struct {
 func (b *Subject) String() string {
 	return fmt.Sprintf("{View: %v, Proposal: %v}", b.View, b.Digest.String())
 }
+
+// ##CROSS: bls seal
+type signedSeal struct {
+	idx       uint
+	signer    common.Address
+	signature []byte
+}
+
+func newSignedSeal(idx uint, signer common.Address, signature []byte) istanbul.SignedSeal {
+	return &signedSeal{
+		idx:       idx,
+		signer:    signer,
+		signature: signature,
+	}
+}
+func (s *signedSeal) Index() uint            { return s.idx }
+func (s *signedSeal) Signer() common.Address { return s.signer }
+func (s *signedSeal) Signature() []byte      { return s.signature }
+
+// ##

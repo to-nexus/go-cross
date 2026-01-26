@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/naoina/toml"
@@ -143,8 +144,9 @@ type Config struct {
 	ValidatorContract        common.Address   `toml:",omitempty"`
 	Validators               []common.Address `toml:",omitempty"`
 	MaxRequestTimeoutSeconds uint64           `toml:",omitempty"`
-	CouncilPeriod            uint64           `toml:",omitempty"` // The period in seconds for the council to operate
 	Transitions              []params.Transition
+	CouncilPeriod            uint64               `toml:",omitempty"` // The period in seconds for the council to operate // ##CROSS: istanbul posa
+	Signers                  []types.BLSPublicKey `toml:",omitempty"` // ##CROSS: bls seal
 }
 
 var DefaultConfig = &Config{
@@ -154,6 +156,7 @@ var DefaultConfig = &Config{
 	ProposerPolicy:         NewRoundRobinProposerPolicy(),
 	Epoch:                  30000,
 	AllowedFutureBlockTime: 0,
+	CouncilPeriod:          86400, // ##CROSS: istanbul posa
 }
 
 func NewConfig(config *params.ChainConfig) *Config {
@@ -183,10 +186,19 @@ func NewConfig(config *params.ChainConfig) *Config {
 	if config.Istanbul.MaxRequestTimeoutSeconds != nil && *config.Istanbul.MaxRequestTimeoutSeconds > 0 {
 		c.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
 	}
+	c.Transitions = config.Transitions
+
+	// ##CROSS: istanbul posa
 	if config.Istanbul.CouncilPeriod != nil {
 		c.CouncilPeriod = *config.Istanbul.CouncilPeriod
 	}
-	c.Transitions = config.Transitions
+	// ##
+	// ##CROSS: bls seal
+	c.Signers = make([]types.BLSPublicKey, 0, len(config.Istanbul.Signers))
+	for _, signer := range config.Istanbul.Signers {
+		c.Signers = append(c.Signers, types.BytesToBLSPublicKey(signer))
+	}
+	// ##
 
 	return &c
 }

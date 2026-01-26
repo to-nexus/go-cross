@@ -26,6 +26,18 @@ import (
 
 var _ core.ChainContext = (*mockChainContext)(nil)
 
+var (
+	addr1 = common.HexToAddress("0x1111111111111111111111111111111111111111")
+	addr2 = common.HexToAddress("0x2222222222222222222222222222222222222222")
+	addr3 = common.HexToAddress("0x3333333333333333333333333333333333333333")
+	// ##CROSS: bls seal
+	signer1 = common.Hex2Bytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	signer2 = common.Hex2Bytes("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	signer3 = common.Hex2Bytes("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+	signer4 = common.Hex2Bytes("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+	// ##
+)
+
 // mockContractBackend implements bind.ContractBackend for testing
 type mockContractBackend struct {
 	codeAtBytes   []byte
@@ -90,7 +102,7 @@ func (m *mockContractBackend) SubscribeFilterLogs(ctx context.Context, query eth
 
 func TestGetCurrentValidators(t *testing.T) {
 	code := []byte{1, 2, 3}
-	method := string(breakpoint.NewValidatorSet().PackGetValidators()[:4])
+	method := string(breakpoint.NewValidatorSet().PackGetActiveValidators()[:4])
 	callContractErr := errors.New("call contract error")
 
 	tests := []struct {
@@ -98,6 +110,7 @@ func TestGetCurrentValidators(t *testing.T) {
 		number             uint64
 		mockCaller         *mockContractBackend
 		expectedValidators []common.Address
+		expectedSigners    []types.BLSPublicKey // ##CROSS: bls seal
 		expectedErr        error
 	}{
 		{
@@ -106,19 +119,15 @@ func TestGetCurrentValidators(t *testing.T) {
 			mockCaller: &mockContractBackend{
 				codeAtBytes: code,
 				callResponses: map[string][][]byte{
-					method: {packValidatorsResponse(t, []common.Address{
-						common.HexToAddress("0x2222222222222222222222222222222222222222"),
-						common.HexToAddress("0x1111111111111111111111111111111111111111"),
-						common.HexToAddress("0x3333333333333333333333333333333333333333"),
-					})},
+					method: {packActiveValidatorsResponse(t,
+						[]common.Address{addr2, addr1, addr3},
+						[][]byte{signer2, signer1, signer3},
+					)},
 				},
 			},
-			expectedValidators: []common.Address{
-				common.HexToAddress("0x1111111111111111111111111111111111111111"),
-				common.HexToAddress("0x2222222222222222222222222222222222222222"),
-				common.HexToAddress("0x3333333333333333333333333333333333333333"),
-			},
-			expectedErr: nil,
+			expectedValidators: []common.Address{addr1, addr2, addr3},
+			expectedSigners:    []types.BLSPublicKey{types.BytesToBLSPublicKey(signer1), types.BytesToBLSPublicKey(signer2), types.BytesToBLSPublicKey(signer3)},
+			expectedErr:        nil,
 		},
 		{
 			name:   "success with empty validators",
@@ -126,10 +135,11 @@ func TestGetCurrentValidators(t *testing.T) {
 			mockCaller: &mockContractBackend{
 				codeAtBytes: code,
 				callResponses: map[string][][]byte{
-					method: {packValidatorsResponse(t, []common.Address{})},
+					method: {packActiveValidatorsResponse(t, []common.Address{}, [][]byte{})},
 				},
 			},
 			expectedValidators: []common.Address{},
+			expectedSigners:    []types.BLSPublicKey{},
 			expectedErr:        nil,
 		},
 		{
@@ -160,24 +170,25 @@ func TestGetCurrentValidators(t *testing.T) {
 				validatorSet:    breakpoint.NewValidatorSet(),
 			}
 
-			validators, err := engine.getCurrentValidators(tt.number)
+			validators, signers, err := engine.getCurrentValidators(tt.number)
 
 			require.ErrorIs(t, err, tt.expectedErr)
 			assert.Equal(t, tt.expectedValidators, validators)
+			assert.Equal(t, tt.expectedSigners, signers) // ##CROSS: bls seal
 		})
 	}
 }
 
-func packValidatorsResponse(t *testing.T, validators []common.Address) []byte {
+func packActiveValidatorsResponse(t *testing.T, validators []common.Address, signers [][]byte) []byte {
 	t.Helper()
 
 	parsedABI, err := breakpoint.ValidatorSetMetaData.ParseABI()
 	require.NoError(t, err)
 
-	method, ok := parsedABI.Methods["getValidators"]
+	method, ok := parsedABI.Methods["getActiveValidators"]
 	require.True(t, ok)
 
-	retPacked, err := method.Outputs.Pack(validators)
+	retPacked, err := method.Outputs.Pack(validators, signers)
 	require.NoError(t, err)
 
 	return retPacked
@@ -216,36 +227,21 @@ func TestUpdateValidatorSet(t *testing.T) {
 	methodValidatorThreshold := string(breakpoint.NewStakeHub().PackValidatorThreshold()[:4])
 
 	tests := []struct {
-		name           string
-		validatorInfos []struct {
-			addr   common.Address
-			amount int64
-		}
+		name        string
 		threshold   uint64
 		mockBackend *mockContractBackend
 		expectedErr error
 		expectTx    bool
 	}{
 		{
-			name: "success",
-			validatorInfos: []struct {
-				addr   common.Address
-				amount int64
-			}{
-				{addr: common.HexToAddress("0x1111111111111111111111111111111111111111"), amount: 1000},
-				{addr: common.HexToAddress("0x2222222222222222222222222222222222222222"), amount: 2000},
-				{addr: common.HexToAddress("0x3333333333333333333333333333333333333333"), amount: 3000},
-			},
+			name:      "success",
 			threshold: 2,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
 				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
-						[]common.Address{
-							common.HexToAddress("0x1111111111111111111111111111111111111111"),
-							common.HexToAddress("0x2222222222222222222222222222222222222222"),
-							common.HexToAddress("0x3333333333333333333333333333333333333333"),
-						},
+						[]common.Address{addr1, addr2, addr3},
+						[][]byte{signer1, signer2, signer3},
 						[]*big.Int{big.NewInt(1000), big.NewInt(2000), big.NewInt(3000)},
 					)},
 					methodValidatorThreshold: {packValidatorThresholdResponse(t, 2)},
@@ -255,17 +251,14 @@ func TestUpdateValidatorSet(t *testing.T) {
 			expectTx:    true,
 		},
 		{
-			name: "no validator info",
-			validatorInfos: []struct {
-				addr   common.Address
-				amount int64
-			}{},
+			name:      "no validator info",
 			threshold: 2,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: []byte{1, 2, 3},
 				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
 						[]common.Address{},
+						[][]byte{},
 						[]*big.Int{},
 					)},
 					methodValidatorThreshold: {packValidatorThresholdResponse(t, 2)},
@@ -274,21 +267,14 @@ func TestUpdateValidatorSet(t *testing.T) {
 			expectedErr: nil,
 		},
 		{
-			name: "zero threshold",
-			validatorInfos: []struct {
-				addr   common.Address
-				amount int64
-			}{
-				{addr: common.HexToAddress("0x1111111111111111111111111111111111111111"), amount: 1000},
-			},
+			name:      "zero threshold",
 			threshold: 0,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
 				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
-						[]common.Address{
-							common.HexToAddress("0x1111111111111111111111111111111111111111"),
-						},
+						[]common.Address{addr1},
+						[][]byte{signer1},
 						[]*big.Int{big.NewInt(1000)},
 					)},
 					methodValidatorThreshold: {packValidatorThresholdResponse(t, 0)},
@@ -297,11 +283,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 			expectedErr: errors.New("zero validator threshold"),
 		},
 		{
-			name: "error from getValidatorInfo",
-			validatorInfos: []struct {
-				addr   common.Address
-				amount int64
-			}{},
+			name:      "error from getValidatorInfo",
 			threshold: 2,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
@@ -310,21 +292,14 @@ func TestUpdateValidatorSet(t *testing.T) {
 			expectedErr: errors.New("getValidatorInfo error"),
 		},
 		{
-			name: "error from getValidatorThreshold",
-			validatorInfos: []struct {
-				addr   common.Address
-				amount int64
-			}{
-				{addr: common.HexToAddress("0x1111111111111111111111111111111111111111"), amount: 1000},
-			},
+			name:      "error from getValidatorThreshold",
 			threshold: 2,
 			mockBackend: &mockContractBackend{
 				codeAtBytes: code,
 				callResponses: map[string][][]byte{
 					methodGetValidators: {packGetValidatorsResponse(t,
-						[]common.Address{
-							common.HexToAddress("0x1111111111111111111111111111111111111111"),
-						},
+						[]common.Address{addr1},
+						[][]byte{signer1},
 						[]*big.Int{big.NewInt(1000)},
 					)},
 				},
@@ -385,7 +360,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 	}
 }
 
-func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, amounts []*big.Int) []byte {
+func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, signerAddrs [][]byte, amounts []*big.Int) []byte {
 	t.Helper()
 
 	parsedABI, err := breakpoint.StakeHubMetaData.ParseABI()
@@ -395,7 +370,7 @@ func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, am
 	require.True(t, ok)
 
 	totalLength := big.NewInt(int64(len(validatorAddrs)))
-	retPacked, err := method.Outputs.Pack(validatorAddrs, amounts, totalLength)
+	retPacked, err := method.Outputs.Pack(validatorAddrs, signerAddrs, amounts, totalLength)
 	require.NoError(t, err)
 
 	return retPacked
@@ -642,7 +617,7 @@ func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByInd
 
 	retPacked, err := method.Outputs.Pack(
 		result.Timepoint,
-		result.CouncilPeriod,
+		result.EpochLength,
 		result.BlockPeriod,
 		result.EmptyBlockPeriod,
 		result.RequestTimeout,
@@ -653,6 +628,7 @@ func packGetParamsByIndexResponse(t *testing.T, result breakpoint.GetParamsByInd
 		result.MinBaseFee,
 		result.ProposerPolicy,
 		result.GasLimit,
+		result.CouncilPeriod,
 	)
 	require.NoError(t, err)
 

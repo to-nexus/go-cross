@@ -67,6 +67,32 @@ func TestExtractToIstanbulExtra(t *testing.T) {
 			},
 			nil,
 		},
+		{
+			// ##CROSS: bls seal
+			hexutil.MustDecode("0xf9012380f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080c080c10ff8c4b0b2280286d402014611fe75e86eb09c9d3128292d2f8a023e784e455155cdcfeb51b69a34ad5f1393a5b4685bddb831d7b08a40be1e6030ac0b0e34af8358487f8ce404bcfbd005e47621ecb06cd14ece0d9c9350a4db52b79e588c9ad9c889f322b095ef4ce1b76306d7cd92d2875239ff0b8475933a6e97464a70bb74fd07782a9f1b4ab1fbfad533105a64226b90bed5f5b0a57c8d7cfd9a068630908d1802dcff016fe8fe81e149589934e2f63c1665b6a368cb3dee3a3025384510036eedb47349"),
+			&IstanbulExtra{
+				VanityData: []byte{},
+				Validators: []common.Address{
+					common.BytesToAddress(hexutil.MustDecode("0x44add0ec310f115a0e603b2d7db9f067778eaf8a")),
+					common.BytesToAddress(hexutil.MustDecode("0x294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212")),
+					common.BytesToAddress(hexutil.MustDecode("0x6beaaed781d2d2ab6350f5c4566a2c6eaac407a6")),
+					common.BytesToAddress(hexutil.MustDecode("0x8be76812f765c24641ec63dc2852b378aba2b440")),
+				},
+				CommittedSeal: [][]byte{},
+				Round:         0,
+				Vote:          nil,
+				RandomReveal:  []byte{},
+				SignersBitset: []uint64{0b1111},
+				Signers: []BLSPublicKey{
+					BLSPublicKey(hexutil.MustDecode("0xb2280286d402014611fe75e86eb09c9d3128292d2f8a023e784e455155cdcfeb51b69a34ad5f1393a5b4685bddb831d7")),
+					BLSPublicKey(hexutil.MustDecode("0x8a40be1e6030ac0b0e34af8358487f8ce404bcfbd005e47621ecb06cd14ece0d9c9350a4db52b79e588c9ad9c889f322")),
+					BLSPublicKey(hexutil.MustDecode("0x95ef4ce1b76306d7cd92d2875239ff0b8475933a6e97464a70bb74fd07782a9f1b4ab1fbfad533105a64226b90bed5f5")),
+					BLSPublicKey(hexutil.MustDecode("0xa57c8d7cfd9a068630908d1802dcff016fe8fe81e149589934e2f63c1665b6a368cb3dee3a3025384510036eedb47349")),
+				},
+			},
+			nil,
+			// ##
+		},
 	}
 	for _, test := range testCases {
 		h := &Header{Extra: test.istRawData}

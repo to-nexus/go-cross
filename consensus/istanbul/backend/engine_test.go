@@ -199,7 +199,7 @@ func TestSealCommittedOtherHash(t *testing.T) {
 		if _, ok := ev.Data.(istanbul.RequestEvent); !ok {
 			t.Errorf("unexpected event comes: %v", reflect.TypeOf(ev.Data))
 		}
-		if err := engine.Commit(otherBlock, [][]byte{expectedCommittedSeal}, big.NewInt(0)); err != nil {
+		if err := engine.Commit(otherBlock, []istanbul.SignedSeal{signedSeal(expectedCommittedSeal)}, big.NewInt(0)); err != nil {
 			t.Error(err.Error())
 		}
 		eventSub.Unsubscribe()

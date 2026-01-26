@@ -83,4 +83,15 @@ var (
 
 	// ErrFailedDecodeRoundChange is returned when the COMMIT message is malformed.
 	ErrFailedDecodeRoundChange = errors.New("failed to decode ROUND-CHANGE message")
+
+	// ##CROSS: bls seal
+	// ErrInvalidPublicKey is returned if the public key is not set or invalid.
+	ErrInvalidPublicKey = errors.New("invalid public key")
+
+	// ErrInvalidSecretKey is returned if the secret key is not set or invalid.
+	ErrInvalidSecretKey = errors.New("invalid secret key")
+
+	// ErrEmptySigners is returned if the signers list is empty.
+	ErrEmptySigners = errors.New("empty signers")
+	// ##
 )

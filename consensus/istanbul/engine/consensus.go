@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"sort"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -93,32 +95,46 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 
 // ##CROSS: consensus system contract
 
+type validatorSet breakpoint.GetActiveValidatorsOutput
+
+func (v validatorSet) Len() int { return len(v.ValidatorAddrs) }
+func (v validatorSet) Less(i, j int) bool {
+	return bytes.Compare(v.ValidatorAddrs[i][:], v.ValidatorAddrs[j][:]) < 0
+}
+func (v validatorSet) Swap(i, j int) {
+	v.ValidatorAddrs[i], v.ValidatorAddrs[j] = v.ValidatorAddrs[j], v.ValidatorAddrs[i]
+	v.SignerAddrs[i], v.SignerAddrs[j] = v.SignerAddrs[j], v.SignerAddrs[i]
+}
+
 // getCurrentValidators reads the active validators from the ValidatorSet contract.
-func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, error) {
+func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.BLSPublicKey, error) {
 	validatorSetInstance := e.validatorSet.Instance(e.contractBackend, contracts.ValidatorSetAddr)
 
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
-	calldata := e.validatorSet.PackGetValidators()
-	validators, err := bind.Call(validatorSetInstance, callopts, calldata, e.validatorSet.UnpackGetValidators)
+	calldata := e.validatorSet.PackGetActiveValidators()
+	result, err := bind.Call(validatorSetInstance, callopts, calldata, e.validatorSet.UnpackGetActiveValidators)
 	if err != nil {
 		if errors.Is(err, bind.ErrNoCode) {
 			// contract is not deployed
-			return nil, nil
+			return nil, nil, nil
 		}
-		log.Error("Failed to call getValidators", "error", err)
-		return nil, err
+		log.Error("Failed to call getActiveValidators", "error", err)
+		return nil, nil, err
 	}
 
 	// sort ascending
-	slices.SortFunc(validators, func(a, b common.Address) int {
-		return bytes.Compare(a[:], b[:])
-	})
+	sort.Sort(validatorSet(result))
 
-	return validators, nil
+	signers := make([]types.BLSPublicKey, 0, len(result.SignerAddrs))
+	for _, signer := range result.SignerAddrs {
+		signers = append(signers, types.BytesToBLSPublicKey(signer))
+	}
+	return result.ValidatorAddrs, signers, nil
 }
 
 type ValidatorInfo struct {
 	address common.Address
+	signer  types.BLSPublicKey
 	amount  *uint256.Int
 }
 
@@ -157,18 +173,26 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	})
 
 	validators := make([]common.Address, 0, threshold)
+	// ##CROSS: bls seal
+	signersBytes := make([][]byte, 0, threshold)
+	signers := make([]types.BLSPublicKey, 0, threshold)
+	// ##
 	for _, validator := range validatorInfos {
 		if validator.amount.IsZero() || len(validators) >= int(threshold) {
 			// no more active validators or enough validators are collected
 			break
 		}
 		validators = append(validators, validator.address)
+		// ##CROSS: bls seal
+		signersBytes = append(signersBytes, validator.signer.Bytes())
+		signers = append(signers, validator.signer)
+		// ##
 	}
 
-	data := e.validatorSet.PackUpdateValidators(validators)
+	data := e.validatorSet.PackUpdateValidators(validators, signersBytes)
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSetAddr, data, nil)
 
-	log.Info("Updating validator set", "number", header.Number.Uint64(), "validators", validators, "isMining", systemTxs == nil)
+	log.Info("Updating validator set", "number", header.Number.Uint64(), "validators", validators, "signers", signers, "isMining", systemTxs == nil)
 	if systemTxs != nil {
 		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 	} else {
@@ -193,15 +217,17 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 		return nil, err
 	}
 
-	if length := result.TotalLength.Uint64(); length != uint64(len(result.ValidatorAddrs)) || length != uint64(len(result.Amounts)) {
+	if length := result.TotalLength.Uint64(); length != uint64(len(result.ValidatorAddrs)) || length != uint64(len(result.SignerAddrs)) || length != uint64(len(result.Amounts)) {
 		return nil, errors.New("validator length mismatch")
 	}
 
 	validatorInfos := make([]ValidatorInfo, len(result.ValidatorAddrs))
 	for i, validator := range result.ValidatorAddrs {
 		amountU256, _ := uint256.FromBig(result.Amounts[i])
+		signer := result.SignerAddrs[i]
 		validatorInfos[i] = ValidatorInfo{
 			address: validator,
+			signer:  types.BytesToBLSPublicKey(signer),
 			amount:  amountU256,
 		}
 	}
@@ -311,7 +337,7 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 		return nil, fmt.Errorf("no validators at block %d", header.Number.Uint64())
 	}
 
-	valSet := validator.NewSet(validators, policy)
+	valSet := validator.NewSet(validators, nil, policy)
 	lastProposer, _ := e.Author(parent)
 	proposers := make([]common.Address, 0, extra.Round)
 	for round := uint32(0); round < extra.Round; round++ {

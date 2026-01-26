@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
 )
 
@@ -23,16 +24,23 @@ type IstanbulConfig struct {
 	// ##CROSS: fee collection
 	Beneficiary *common.Address `json:"beneficiary"`        // Cross Beneficiary address
 	GasLimit    *uint64         `json:"gaslimit,omitempty"` // Block gas limit
+	// ##
 
 	// ##CROSS: basefee
 	ElasticityMultiplier     *uint64               `json:"elasticitymultiplier"`     // Bounds the maximum gas limit an EIP-1559 block may have.
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator"` // Bounds the amount the base fee can change between blocks.
 	MaxBaseFee               *math.HexOrDecimal256 `json:"maxbasefee,omitempty"`     // MaxBaseFee
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`     // MinBaseFee
+	// ##
 
 	// ##CROSS: istanbul posa
 	PoSAActivationSeconds *uint64 `json:"posaActivationSeconds"` // PoSA activation time in seconds
 	CouncilPeriod         *uint64 `json:"councilPeriod"`         // The period in seconds for the council to be elected
+	// ##
+
+	// ##CROSS: bls seal
+	Signers []hexutil.Bytes `json:"signers"` // The BLS public keys of the signers
+	// ##
 }
 
 func (c IstanbulConfig) String() string {
@@ -74,6 +82,12 @@ func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition 
 }
 
 func (c *ChainConfig) GetEpochLength(num *big.Int) (epochLength uint64) {
+	// ##CROSS: istanbul param
+	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.EpochLength != 0 {
+		return cfg.EpochLength
+	}
+	// ##
+
 	if c.Istanbul != nil {
 		epochLength = c.Istanbul.EpochLength
 	}
