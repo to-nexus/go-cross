@@ -111,7 +111,7 @@ func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, blsSecretKey bls
 		blsSecretKey:     blsSecretKey, // ##CROSS: bls seal
 	}
 
-	sb.engine = engine.NewEngine(sb.config, sb.address, sb.Sign, sb.SignTx, sb, contractBackend)
+	sb.engine = engine.NewEngine(sb.config, sb.address, sb.Sign, sb.SignTx, sb.SignBLS, sb, contractBackend)
 	return sb
 }
 
@@ -279,15 +279,23 @@ func (sb *Backend) SignWithoutHashing(data []byte) ([]byte, error) {
 	return crypto.Sign(data, sb.privateKey)
 }
 
+// ##CROSS: bls random reveal
+// SignBLS signs the data using the BLS secret key
+func (sb *Backend) SignBLS(data []byte) ([]byte, error) {
+	if sb.blsSecretKey == nil {
+		return nil, istanbul.ErrInvalidSecretKey
+	}
+	return sb.blsSecretKey.Sign(data).Marshal(), nil
+}
+
+// ##
+
 // ##CROSS: bls seal
 // SignSeal implements istanbul.Backend.SignSeal and signs the seal with the backend's private key
 func (sb *Backend) SignSeal(header *types.Header, data []byte) ([]byte, error) {
 	// If Istanbul PoSA is active, return the BLS signature
 	if sb.chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		if sb.blsSecretKey == nil {
-			return nil, istanbul.ErrInvalidSecretKey
-		}
-		return sb.blsSecretKey.Sign(data).Marshal(), nil
+		return sb.SignBLS(data)
 	}
 	// Fallback to the former method
 	return sb.SignWithoutHashing(data)

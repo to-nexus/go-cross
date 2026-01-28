@@ -41,12 +41,15 @@ var (
 
 type SignerFn func(data []byte) ([]byte, error)
 type SignerTxFn func(accounts.Account, *types.Transaction, *big.Int) (*types.Transaction, error)
+type BLSSignerFn func(data []byte) ([]byte, error) // ##CROSS: bls random reveal
 
 type Engine struct {
 	cfg *istanbul.Config
 
 	signer common.Address // Ethereum address of the signing key
 	sign   SignerFn       // Signer function to authorize hashes with
+
+	blsSign BLSSignerFn // ##CROSS: bls random reveal
 
 	// ##CROSS: consensus system contract
 	contractBackend bind.ContractBackend
@@ -61,11 +64,12 @@ type Engine struct {
 	// ##
 }
 
-func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, ce consensus.Engine, contractBackend bind.ContractBackend) *Engine {
+func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, blsSign BLSSignerFn, ce consensus.Engine, contractBackend bind.ContractBackend) *Engine {
 	e := &Engine{
-		cfg:    cfg,
-		signer: signer,
-		sign:   sign,
+		cfg:     cfg,
+		signer:  signer,
+		sign:    sign,
+		blsSign: blsSign, // ##CROSS: bls random reveal
 		// ##CROSS: consensus system contract
 		contractBackend: contractBackend,
 		signTx:          signTx,
@@ -436,21 +440,60 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 	}
 
 	// Signer should be in the validator set of previous block's extraData.
-	if _, v := validators.GetByAddress(signer); v == nil {
+	_, validator := validators.GetByAddress(signer)
+	if validator == nil {
 		return istanbul.ErrUnauthorized
 	}
 
-	if extra, err := types.ExtractIstanbulExtra(header); err != nil {
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
 		return err
+	}
+
+	var (
+		signature        = extra.RandomReveal
+		randomRevealData = append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...)
+		mixHash          common.Hash
+	)
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: bls random reveal
+		// Verify the BLS signature
+		signerPubKey := validator.SignerAddress()
+		if signerPubKey == (types.BLSPublicKey{}) {
+			return istanbul.ErrInvalidPublicKey
+		}
+		pubkey, err := bls.PublicKeyFromBytes(signerPubKey.Bytes())
+		if err != nil {
+			return err
+		}
+		sig, err := bls.SignatureFromBytes(signature)
+		if err != nil {
+			return err
+		}
+		if !sig.Verify(pubkey, randomRevealData) {
+			return istanbul.ErrInvalidSignature
+		}
+
+		parent := chain.GetHeader(header.ParentHash, number-1)
+		if parent == nil {
+			return consensus.ErrUnknownAncestor
+		}
+		mixHash = makeMixHashBLS(signature, parent.MixDigest)
+		// ##
 	} else {
-		signature := extra.RandomReveal
-		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes(), chain.Config().ChainID.Bytes()), signature); err != nil {
+		// Verify the ECDSA signature
+		if pub, err := crypto.SigToPub(crypto.Keccak256(randomRevealData), signature); err != nil {
 			return err
 		} else if crypto.PubkeyToAddress(*pub) != signer {
 			return istanbul.ErrMismatchedRandomSignature
-		} else if header.MixDigest != types.MakeIstanbulDigest(crypto.Keccak256Hash(signature)) {
-			return istanbul.ErrInvalidMixDigest
 		}
+
+		mixHash = makeMixHash(signature)
+	}
+
+	// Verify the mix digest
+	if header.MixDigest != types.MakeIstanbulDigest(mixHash) {
+		return istanbul.ErrInvalidMixDigest
 	}
 
 	return nil
@@ -567,25 +610,60 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	return e.verifySigner(chain, header, nil, validators)
 }
 
+func makeMixHash(randomReveal []byte) common.Hash {
+	return crypto.Keccak256Hash(randomReveal)
+}
+
+// ##CROSS: bls random reveal
+func makeMixHashBLS(randomReveal []byte, lastMixHash common.Hash) (mixHash common.Hash) {
+	randomRevealHash := crypto.Keccak256Hash(randomReveal)
+	// IstanbulDigest has 16 bytes of fixed prefix, so we only take the last 16 bytes of the mix digest
+	lastMixHashPart := lastMixHash[16:]
+	for i := 0; i < 16; i++ {
+		// Only the first 16 bytes of mixHash will be merged into the IstanbulDigest
+		mixHash[i] = lastMixHashPart[i] ^ randomRevealHash[i]
+	}
+	return
+}
+
+// ##
+
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
 
-	// make mixdigest
-	signed, err := e.sign(append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...))
-	if err != nil {
-		return err
-	} else {
-		header.MixDigest = types.MakeIstanbulDigest(crypto.Keccak256Hash(signed)) // ##CROSS: istanbul digest
-	}
-
 	// copy the parent extra data as the header extra data
-	number := header.Number.Uint64()
-
-	parent := chain.GetHeader(header.ParentHash, number-1)
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
+
+	// make mixdigest
+	randomRevealData := append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...)
+
+	var (
+		err          error
+		randomReveal []byte
+		mixHash      common.Hash
+	)
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: bls random reveal
+		// Use BLS signature for random reveal
+		randomReveal, err = e.blsSign(randomRevealData)
+		if err != nil {
+			return err
+		}
+		mixHash = makeMixHashBLS(randomReveal, parent.MixDigest)
+		// ##
+	} else {
+		randomReveal, err = e.sign(randomRevealData)
+		if err != nil {
+			return err
+		}
+		mixHash = makeMixHash(randomReveal)
+	}
+
+	header.MixDigest = types.MakeIstanbulDigest(mixHash) // ##CROSS: istanbul digest
 
 	// use the same difficulty for all blocks
 	header.Difficulty = istanbul.DefaultDifficulty
@@ -595,7 +673,7 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	header.Time = max(header.Time, uint64(time.Now().Unix()))
 
 	applies := []ApplyExtra{
-		WriteRandomReveal(signed),
+		WriteRandomReveal(chain, header, randomReveal),
 	}
 
 	applyValidators, err := e.parepareValidators(chain, header, validators)
@@ -659,10 +737,18 @@ func WriteSigners(signers []types.BLSPublicKey) ApplyExtra {
 
 // ##
 
-func WriteRandomReveal(signature []byte) ApplyExtra {
+func WriteRandomReveal(chain consensus.ChainHeaderReader, header *types.Header, signature []byte) ApplyExtra {
 	return func(extra *types.IstanbulExtra) error {
-		if len(signature) != 65 {
-			return istanbul.ErrInvalidSignature
+		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+			// ##CROSS: bls random reveal
+			if len(signature) != types.IstanbulExtraSealBLS {
+				return istanbul.ErrInvalidSignature
+			}
+			// ##
+		} else {
+			if len(signature) != types.IstanbulExtraSeal {
+				return istanbul.ErrInvalidSignature
+			}
 		}
 		extra.RandomReveal = signature
 		return nil
