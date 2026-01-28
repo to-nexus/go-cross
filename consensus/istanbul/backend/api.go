@@ -313,7 +313,7 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 	if istConfig.ProposerPolicy != nil {
 		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)
 	}
-	ret.Validators = api.backend.ValidatorsAt(header)
+	ret.Validators = api.backend.ValidatorsAt(api.chain, header)
 
 	chainConfig := api.chain.Config()
 

@@ -171,7 +171,7 @@ type IstanbulEngine interface {
 	SyncIstanbulParam(*types.Header) error // ##CROSS: istanbul param
 
 	// ValidatorsAt returns the validator addresses at the given block number.
-	ValidatorsAt(*types.Header) []common.Address // ##CROSS: istanbul posa
+	ValidatorsAt(ChainHeaderReader, *types.Header) []common.Address // ##CROSS: istanbul posa
 	// ##
 }
 

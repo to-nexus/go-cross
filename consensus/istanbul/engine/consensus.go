@@ -330,7 +330,7 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 	if len(validators) == 0 {
 		// Fallback to IstanbulEngine to get validators
 		if ie := consensus.ToIstanbulEngine(e.consensus); ie != nil {
-			validators = ie.ValidatorsAt(header)
+			validators = ie.ValidatorsAt(chain, header)
 		}
 	}
 	if len(validators) == 0 {
