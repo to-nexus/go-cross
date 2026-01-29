@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params/forks"
 )
@@ -200,9 +201,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              newUint64(1765324800),
-		PragueTime:              newUint64(1765324800),
-		BreakpointTime:          newUint64(1765324800), // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1770076800),
+		PragueTime:              newUint64(1770076800),
+		BreakpointTime:          newUint64(1770163200), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -228,17 +229,16 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(9 * 3600), // 9 hours
+			PoSAActivationSeconds: newUint64(24 * 3600), // 1 day
 			CouncilPeriod:         newUint64(86400),
-		},
-		Transitions: []Transition{
-			// ##CROSS: gas limit upgrade
-			{
-				Block:    big.NewInt(9188602),
-				GasLimit: newUint64(210000000),
+			// ##CROSS: bls seal
+			Signers: []hexutil.Bytes{
+				hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
+				hexutil.MustDecode("0xae82f20b81364837a6f4f86791c792c712f289d01cb956599c50dbd0e047161c9de33bdcbf1fa68ca5b5b30f0b7f7f62"),
+				hexutil.MustDecode("0x89e6ad30b4ce516057f9c7718d2dcc81742a4a4ab8425b8f8cdb7f80a088f7829aff1622b2f1d1a5bd4d3948d65a6387"),
 			},
-			// ##
 		},
+		Transitions: []Transition{},
 	}
 
 	CrossDevChainConfig = &ChainConfig{
@@ -261,9 +261,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              newUint64(1765324800),
-		PragueTime:              newUint64(1765324800),
-		BreakpointTime:          newUint64(1765324800), // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1770076800),
+		PragueTime:              newUint64(1770076800),
+		BreakpointTime:          newUint64(1770163200), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -287,17 +287,14 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(9 * 3600), // 9 hours
+			PoSAActivationSeconds: newUint64(24 * 3600), // 1 day
 			CouncilPeriod:         newUint64(86400),
-		},
-		Transitions: []Transition{
-			// ##CROSS: gas limit upgrade
-			{
-				Block:    big.NewInt(9188602),
-				GasLimit: newUint64(210000000),
+			// ##CROSS: bls seal
+			Signers: []hexutil.Bytes{
+				hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
 			},
-			// ##
 		},
+		Transitions: []Transition{},
 	}
 	// ##
 
@@ -775,6 +772,10 @@ func (c *ChainConfig) Description() string {
 	// ##CROSS: fork breakpoint
 	if c.BreakpointTime != nil {
 		banner += printFork("Breakpoint", c.BreakpointTime)
+		if c.Istanbul != nil && c.Istanbul.PoSAActivationSeconds != nil {
+			posa := *c.BreakpointTime + *c.Istanbul.PoSAActivationSeconds
+			banner += printFork("  PoSA Activation", &posa)
+		}
 	}
 	// ##
 	if c.OsakaTime != nil {
