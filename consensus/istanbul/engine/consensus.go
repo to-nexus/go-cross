@@ -40,8 +40,7 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 			// contract is not deployed
 			return nil
 		}
-		log.Error("Failed to call getParamIndex", "error", err)
-		return err
+		return fmt.Errorf("failed to call getParamIndex: %w", err)
 	}
 
 	// get the number of cached configs
@@ -51,8 +50,7 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 	for index := uint64(length); index <= latestIndex; index++ {
 		result, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamsByIndex(index), e.istanbulParam.UnpackGetParamsByIndex)
 		if err != nil {
-			log.Error("Failed to call getParamsByIndex", "index", index, "error", err)
-			return err
+			return fmt.Errorf("failed to call getParamsByIndex(%d): %w", index, err)
 		}
 
 		log.Info("Syncing istanbul param", "index", index, "number", result.Timepoint, "config", result)
@@ -118,8 +116,7 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.
 			// contract is not deployed
 			return nil, nil, nil
 		}
-		log.Error("Failed to call getActiveValidators", "error", err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to call getActiveValidators: %w", err)
 	}
 
 	// sort ascending
@@ -213,8 +210,7 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 			// contract is not deployed
 			return nil, nil
 		}
-		log.Error("Failed to call getValidators", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to call getValidators: %w", err)
 	}
 
 	if length := result.TotalLength.Uint64(); length != uint64(len(result.ValidatorAddrs)) || length != uint64(len(result.SignerAddrs)) || length != uint64(len(result.Amounts)) {
@@ -247,8 +243,7 @@ func (e *Engine) getValidatorThreshold(number uint64) (uint64, error) {
 			// contract is not deployed
 			return 0, nil
 		}
-		log.Error("Failed to call validatorThreshold", "error", err)
-		return 0, err
+		return 0, fmt.Errorf("failed to call validatorThreshold: %w", err)
 	}
 
 	return threshold.Uint64(), nil
@@ -367,8 +362,7 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 			// contract is not deployed
 			return nil
 		}
-		log.Error("Failed to call getSlashedValidators", "error", err)
-		return err
+		return fmt.Errorf("failed to call getSlashedValidators: %w", err)
 	}
 
 	if len(slashed) == 0 {

@@ -300,6 +300,15 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		return istanbul.ErrInvalidDifficulty
 	}
 
+	// ##CROSS: istanbul param
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// Need to sync Istanbul param before verifying the header
+		if err := e.SyncIstanbulParam(header); err != nil {
+			return err
+		}
+	}
+	// ##
+
 	// Verify the existence / non-existence of cancun-specific header fields
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
 	if !cancun {
@@ -426,7 +435,7 @@ func (e *Engine) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	return e.verifyCommittedSeals(chain, header, parents, validators)
 }
 
-func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.Header, _ []*types.Header, validators istanbul.ValidatorSet) error {
+func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {
 	// Verifying the genesis block is not supported
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -450,12 +459,21 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 		return err
 	}
 
+	var parent *types.Header
+	if len(parents) > 0 {
+		parent = parents[len(parents)-1]
+	} else {
+		parent = chain.GetHeader(header.ParentHash, number-1)
+	}
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
 	var (
 		signature        = extra.RandomReveal
 		randomRevealData = append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...)
 		mixHash          common.Hash
 	)
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+	if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
 		// ##CROSS: bls random reveal
 		// Verify the BLS signature
 		signerPubKey := validator.SignerAddress()
@@ -646,7 +664,7 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		randomReveal []byte
 		mixHash      common.Hash
 	)
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+	if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
 		// ##CROSS: bls random reveal
 		// Use BLS signature for random reveal
 		randomReveal, err = e.blsSign(randomRevealData)
@@ -676,7 +694,7 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		WriteRandomReveal(chain, header, randomReveal),
 	}
 
-	applyValidators, err := e.parepareValidators(chain, header, validators)
+	applyValidators, err := e.prepareValidators(chain, header, validators)
 	if err != nil {
 		return err
 	}
@@ -688,7 +706,7 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	return nil
 }
 
-func (e *Engine) parepareValidators(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) ([]ApplyExtra, error) {
+func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) ([]ApplyExtra, error) {
 	if !chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		return []ApplyExtra{WriteValidators(validator.SortedAddresses(validators.List()))}, nil
 	}
@@ -739,7 +757,11 @@ func WriteSigners(signers []types.BLSPublicKey) ApplyExtra {
 
 func WriteRandomReveal(chain consensus.ChainHeaderReader, header *types.Header, signature []byte) ApplyExtra {
 	return func(extra *types.IstanbulExtra) error {
-		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+		if parent == nil {
+			return consensus.ErrUnknownAncestor
+		}
+		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
 			// ##CROSS: bls random reveal
 			if len(signature) != types.IstanbulExtraSealBLS {
 				return istanbul.ErrInvalidSignature
