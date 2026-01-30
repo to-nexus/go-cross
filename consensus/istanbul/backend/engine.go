@@ -22,7 +22,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
@@ -84,22 +83,9 @@ func (sb *Backend) Signers(chain consensus.ChainHeaderReader, header *types.Head
 		if err != nil {
 			return nil, err
 		}
-		extra, err := types.ExtractIstanbulExtra(header)
+		addrs, _, err := sb.Engine().BLSSigners(header, snap.ValSet)
 		if err != nil {
 			return nil, err
-		}
-
-		bs := bitset.From(extra.SignersBitset)
-		if bs.Count() == 0 {
-			return nil, istanbul.ErrEmptySigners
-		}
-
-		addrs := make([]common.Address, 0, bs.Count())
-		for index, validator := range snap.ValSet.List() {
-			if !bs.Test(uint(index)) {
-				continue
-			}
-			addrs = append(addrs, validator.Address())
 		}
 		return addrs, nil
 	}
@@ -369,20 +355,12 @@ func (sb *Backend) CurrentStat() (istanbul.ValidatorSet, *istanbul.View) {
 
 // ##
 
-func addrsToString(addrs []common.Address) []string {
-	strs := make([]string, len(addrs))
-	for i, addr := range addrs {
-		strs[i] = addr.String()
-	}
-	return strs
-}
-
 func (sb *Backend) snapLogger(snap *Snapshot) log.Logger {
 	return sb.logger.New(
 		"snap.number", snap.Number,
 		"snap.hash", snap.Hash.String(),
 		"snap.epoch", snap.Epoch,
-		"snap.validators", addrsToString(snap.validators()),
+		"snap.validators", snap.validators(),
 		//"snap.votes", snap.Votes,
 	)
 }
@@ -565,7 +543,30 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		return istanbul.ErrUnauthorized
 	}
 
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent != nil && chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
+		// ##CROSS: bls seal
+		// Inject signers defined in the config to the snapshot on the beginning of Breakpoint hardfork
+		cfg := chain.Config().Istanbul
+		validators := make([]common.Address, 0, snap.ValSet.Size())
+		signers := make([]types.BLSPublicKey, 0, snap.ValSet.Size())
+		for i, validator := range snap.ValSet.List() {
+			validators = append(validators, validator.Address())
+			if cfg != nil {
+				for idx := range cfg.Validators {
+					if validator.Address() == cfg.Validators[idx] && idx < len(cfg.Signers) {
+						signers = append(signers, types.BytesToBLSPublicKey(cfg.Signers[idx]))
+					}
+				}
+			}
+			if len(signers) < i+1 {
+				signers = append(signers, types.BLSPublicKey{})
+			}
+		}
+		// ##
+		log.Info("Overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
+		snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+	} else if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: istanbul posa
 		// Validators are managed by the system contract, we don't check the votes anymore
 		validators, signers, err := sb.Engine().ExtractValidators(header)

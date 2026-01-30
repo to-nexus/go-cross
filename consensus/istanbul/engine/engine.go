@@ -540,25 +540,21 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: bls seal
 		// Verify the BLS aggregated signature
-		bs := bitset.From(extra.SignersBitset)
-		if bs.Count() == 0 {
-			return istanbul.ErrEmptySigners
+		_, pubs, err := e.BLSSigners(header, validators)
+		if err != nil {
+			return err
 		}
-
-		pubkeys := make([]bls.PublicKey, 0, bs.Count())
-		for index, validator := range validators.List() {
-			if !bs.Test(uint(index)) {
-				continue
-			}
-
-			pubkey, err := bls.PublicKeyFromBytes(validator.SignerAddress().Bytes())
+		pubkeys := make([]bls.PublicKey, 0, len(pubs))
+		for _, pub := range pubs {
+			pubkey, err := bls.PublicKeyFromBytes(pub.Bytes())
 			if err != nil {
 				return err
 			}
 			pubkeys = append(pubkeys, pubkey)
 		}
-		if len(pubkeys) == 0 {
-			return istanbul.ErrEmptySigners
+
+		if len(pubkeys) < validators.QuorumSize() {
+			return istanbul.ErrInvalidCommittedSeals
 		}
 
 		proposalSeal := prepareCommittedSealHash(header, extra.Round)
@@ -979,6 +975,35 @@ func (e *Engine) ExtractValidators(header *types.Header) ([]common.Address, []ty
 
 	return extra.Validators, extra.Signers, nil
 }
+
+// ##CROSS: bls seal
+func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSet) ([]common.Address, []types.BLSPublicKey, error) {
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	bs := bitset.From(extra.SignersBitset)
+	if bs.Count() == 0 {
+		return nil, nil, istanbul.ErrEmptySigners
+	}
+
+	addrs := make([]common.Address, 0, bs.Count())
+	pubkeys := make([]types.BLSPublicKey, 0, bs.Count())
+	for index, validator := range validators.List() {
+		if !bs.Test(uint(index)) {
+			continue
+		}
+		addrs = append(addrs, validator.Address())
+		pubkeys = append(pubkeys, validator.SignerAddress())
+	}
+	if len(pubkeys) == 0 {
+		return nil, nil, istanbul.ErrEmptySigners
+	}
+	return addrs, pubkeys, nil
+}
+
+// ##
 
 func (e *Engine) Signers(header *types.Header) ([]common.Address, error) {
 	extra, err := types.ExtractIstanbulExtra(header)
