@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
-	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
@@ -172,31 +171,15 @@ func (s *Snapshot) validators() []common.Address {
 }
 
 // ##CROSS: bls seal
-type validatorSet struct {
-	validators []common.Address
-	signers    []types.BLSPublicKey
-}
-
-func (v *validatorSet) Len() int { return len(v.validators) }
-func (v *validatorSet) Less(i, j int) bool {
-	return bytes.Compare(v.validators[i][:], v.validators[j][:]) < 0
-}
-func (v *validatorSet) Swap(i, j int) {
-	v.validators[i], v.validators[j] = v.validators[j], v.validators[i]
-	v.signers[i], v.signers[j] = v.signers[j], v.signers[i]
-}
-
 func (s *Snapshot) validatorsWithSigners() ([]common.Address, []types.BLSPublicKey) {
-	validators := &validatorSet{
-		validators: make([]common.Address, 0, s.ValSet.Size()),
-		signers:    make([]types.BLSPublicKey, 0, s.ValSet.Size()),
+	sorted := validator.SortedValidators(s.ValSet.List())
+	validators := make([]common.Address, 0, len(sorted))
+	signers := make([]types.BLSPublicKey, 0, len(sorted))
+	for _, validator := range sorted {
+		validators = append(validators, validator.Address())
+		signers = append(signers, validator.SignerAddress())
 	}
-	for _, validator := range s.ValSet.List() {
-		validators.validators = append(validators.validators, validator.Address())
-		validators.signers = append(validators.signers, validator.SignerAddress())
-	}
-	sort.Sort(validators)
-	return validators.validators, validators.signers
+	return validators, signers
 }
 
 // ##

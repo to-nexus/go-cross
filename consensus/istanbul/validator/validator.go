@@ -65,3 +65,15 @@ func SortedAddresses(validators []istanbul.Validator) []common.Address {
 
 	return addrs
 }
+
+// ##CROSS: bls seal
+func SortedValidators(validators []istanbul.Validator) []istanbul.Validator {
+	sorted := make([]istanbul.Validator, len(validators))
+	copy(sorted, validators)
+	slices.SortFunc(sorted, func(a, b istanbul.Validator) int {
+		return bytes.Compare(a.Address().Bytes(), b.Address().Bytes())
+	})
+	return sorted
+}
+
+// ##

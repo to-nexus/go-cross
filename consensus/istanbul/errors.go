@@ -93,5 +93,8 @@ var (
 
 	// ErrEmptySigners is returned if the signers list is empty.
 	ErrEmptySigners = errors.New("empty signers")
+
+	// ErrDuplicatedSigner is returned if the seal signer is duplicated.
+	ErrDuplicatedSigner = errors.New("duplicated signer")
 	// ##
 )

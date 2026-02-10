@@ -169,6 +169,9 @@ func writeCommittedSeals(chain consensus.ChainHeaderReader, header *types.Header
 			bs := bitset.New(uint(len(committedSeals)))
 			sigs := make([][]byte, 0, len(committedSeals))
 			for _, seal := range committedSeals {
+				if bs.Test(seal.Index()) {
+					return istanbul.ErrDuplicatedSigner
+				}
 				if len(seal.Signature()) != types.IstanbulExtraSealBLS {
 					return istanbul.ErrInvalidCommittedSeals
 				}
@@ -470,10 +473,10 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 	}
 	var (
 		signature        = extra.RandomReveal
-		randomRevealData = append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...)
+		randomRevealData = makeRandomRevealData(header.Number, chain.Config().ChainID)
 		mixHash          common.Hash
 	)
-	if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: bls random reveal
 		// Verify the BLS signature
 		signerPubKey := validator.SignerAddress()
@@ -492,10 +495,6 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 			return istanbul.ErrInvalidSignature
 		}
 
-		parent := chain.GetHeader(header.ParentHash, number-1)
-		if parent == nil {
-			return consensus.ErrUnknownAncestor
-		}
 		mixHash = makeMixHashBLS(signature, parent.MixDigest)
 		// ##
 	} else {
@@ -539,6 +538,11 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: bls seal
+		// For BLS seal, only one committed seal must be present
+		if len(committedSeal) != 1 {
+			return istanbul.ErrInvalidCommittedSeals
+		}
+
 		// Verify the BLS aggregated signature
 		_, pubs, err := e.BLSSigners(header, validators)
 		if err != nil {
@@ -629,6 +633,10 @@ func makeMixHash(randomReveal []byte) common.Hash {
 }
 
 // ##CROSS: bls random reveal
+func makeRandomRevealData(number *big.Int, chainID *big.Int) []byte {
+	return append(number.Bytes(), chainID.Bytes()...)
+}
+
 func makeMixHashBLS(randomReveal []byte, lastMixHash common.Hash) (mixHash common.Hash) {
 	randomRevealHash := crypto.Keccak256Hash(randomReveal)
 	// IstanbulDigest has 16 bytes of fixed prefix, so we only take the last 16 bytes of the mix digest
@@ -653,14 +661,14 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 
 	// make mixdigest
-	randomRevealData := append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...)
+	randomRevealData := makeRandomRevealData(header.Number, chain.Config().ChainID)
 
 	var (
 		err          error
 		randomReveal []byte
 		mixHash      common.Hash
 	)
-	if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: bls random reveal
 		// Use BLS signature for random reveal
 		randomReveal, err = e.blsSign(randomRevealData)
@@ -722,10 +730,12 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 	if len(validatorList) == 0 {
 		// if validator list is not updated, use the validators from snapshot
 		log.Warn("Prepare: empty validator list, using snapshot", "number", header.Number.Uint64(), "validators", validators.List())
-		validatorList = validator.SortedAddresses(validators.List())
 		// ##CROSS: bls seal
-		signerList = make([]types.BLSPublicKey, 0, len(validatorList))
-		for _, validator := range validators.List() {
+		sorted := validator.SortedValidators(validators.List())
+		validatorList = make([]common.Address, 0, len(sorted))
+		signerList = make([]types.BLSPublicKey, 0, len(sorted))
+		for _, validator := range sorted {
+			validatorList = append(validatorList, validator.Address())
 			signerList = append(signerList, validator.SignerAddress())
 		}
 		// ##
@@ -757,7 +767,7 @@ func WriteRandomReveal(chain consensus.ChainHeaderReader, header *types.Header, 
 		if parent == nil {
 			return consensus.ErrUnknownAncestor
 		}
-		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
+		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 			// ##CROSS: bls random reveal
 			if len(signature) != types.IstanbulExtraSealBLS {
 				return istanbul.ErrInvalidSignature
