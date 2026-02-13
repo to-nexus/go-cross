@@ -209,13 +209,14 @@ func (sb *Backend) Commit(proposal istanbul.Proposal, seals []istanbul.SignedSea
 	logger := sb.logger.With("author", sb.Address(), "hash", proposal.Hash(), "number", proposal.Number().Uint64())
 	// ##CROSS: bls seal
 	if sb.chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		extra, _ := types.ExtractIstanbulExtra(header)
+		if extra, _ := types.ExtractIstanbulExtra(header); extra != nil {
 		var committedSeal []byte
 		if len(extra.CommittedSeal) > 0 {
 			committedSeal = extra.CommittedSeal[0]
 		}
 		logger = logger.With("committedSeal", common.PrettyBytes(committedSeal), "validators", extra.Validators, "signersBitset", extra.SignersBitset, "signers", extra.Signers)
 	}
+}
 	// ##
 	logger.Info("Istanbul: block proposal committed")
 

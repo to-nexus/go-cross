@@ -763,10 +763,6 @@ func WriteSigners(signers []types.BLSPublicKey) ApplyExtra {
 
 func WriteRandomReveal(chain consensus.ChainHeaderReader, header *types.Header, signature []byte) ApplyExtra {
 	return func(extra *types.IstanbulExtra) error {
-		parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-		if parent == nil {
-			return consensus.ErrUnknownAncestor
-		}
 		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 			// ##CROSS: bls random reveal
 			if len(signature) != types.IstanbulExtraSealBLS {
@@ -795,7 +791,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	cx := &chainContext{Chain: chain, engine: e.consensus}
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
-		return errors.New("parent not found")
+		return consensus.ErrUnknownAncestor
 	}
 
 	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
@@ -883,7 +879,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	cx := &chainContext{Chain: chain, engine: e.consensus}
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
-		return nil, nil, errors.New("parent not found")
+		return nil, nil, consensus.ErrUnknownAncestor
 	}
 	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
 	if upgraded {

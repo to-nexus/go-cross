@@ -556,6 +556,7 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 				for idx := range cfg.Validators {
 					if validator.Address() == cfg.Validators[idx] && idx < len(cfg.Signers) {
 						signers = append(signers, types.BytesToBLSPublicKey(cfg.Signers[idx]))
+						break
 					}
 				}
 			}
