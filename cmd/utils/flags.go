@@ -1025,8 +1025,13 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	// ##CROSS: bls seal
 	BLSKeyFileFlag = &cli.StringFlag{
 		Name:     "bls.key",
-		Usage:    "BLS key file",
+		Usage:    "BLS key file (plain text hex)",
 		Category: flags.IstanbulCategory,
+	}
+	BLSKeyStoreDirFlag = &cli.StringFlag{
+		Name:     "bls.keystore",
+		Usage:    "Directory for the BLS keystore (default = <datadir>/bls-keystore)",
+		Category: flags.AccountCategory,
 	}
 	// ##
 )
@@ -1406,8 +1411,8 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	if ctx.IsSet(MaxPeersFlag.Name) {
 		cfg.MaxPeers = ctx.Int(MaxPeersFlag.Name)
 	}
-	ethPeers := cfg.MaxPeers
-	log.Info("Maximum peer count", "ETH", ethPeers, "total", cfg.MaxPeers)
+	// ethPeers := cfg.MaxPeers
+	// log.Info("Maximum peer count", "ETH", ethPeers, "total", cfg.MaxPeers)
 
 	if ctx.IsSet(MaxPendingPeersFlag.Name) {
 		cfg.MaxPendingPeers = ctx.Int(MaxPendingPeersFlag.Name)

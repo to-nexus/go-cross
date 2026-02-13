@@ -1,6 +1,7 @@
 package params
 
 import (
+	"cmp"
 	"slices"
 	"sync"
 )
@@ -50,7 +51,7 @@ func (p *istanbulParams) addConfig(config *IstanbulConfig, timepoint uint64) {
 	})
 
 	slices.SortFunc(p.params, func(a, b *istanbulParamEntry) int {
-		return int(a.timepoint - b.timepoint)
+		return cmp.Compare(a.timepoint, b.timepoint)
 	})
 }
 

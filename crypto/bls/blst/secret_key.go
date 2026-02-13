@@ -36,8 +36,7 @@ func SecretKeyFromBytes(privKey []byte) (common.SecretKey, error) {
 	if len(privKey) != common.SecretKeyLength {
 		return nil, fmt.Errorf("secret key must be %d bytes", common.SecretKeyLength)
 	}
-	secKey := new(blst.SecretKey)
-	secKey.Deserialize(privKey)
+	secKey := new(blst.SecretKey).Deserialize(privKey)
 	if secKey == nil {
 		return nil, common.ErrSecretUnmarshal
 	}
