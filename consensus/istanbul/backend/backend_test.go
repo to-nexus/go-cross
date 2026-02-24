@@ -30,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 )
 
 func TestSign(t *testing.T) {

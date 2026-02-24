@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/blskeystore"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/bls"
-	"github.com/ethereum/go-ethereum/crypto/bls/blskeystore"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/urfave/cli/v2"
 )
 
