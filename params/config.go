@@ -201,9 +201,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              newUint64(1770076800),
-		PragueTime:              newUint64(1770076800),
-		BreakpointTime:          newUint64(1770163200), // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1771556400),
+		PragueTime:              newUint64(1771556400),
+		BreakpointTime:          newUint64(1771804800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -261,9 +261,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              newUint64(1770076800),
-		PragueTime:              newUint64(1770076800),
-		BreakpointTime:          newUint64(1770163200), // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1771556400),
+		PragueTime:              newUint64(1771556400),
+		BreakpointTime:          newUint64(1771804800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{

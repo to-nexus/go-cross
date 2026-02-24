@@ -10,8 +10,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.45
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.43
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.30.2
+	github.com/bits-and-blooms/bitset v1.20.0
 	github.com/cespare/cp v0.1.0
 	github.com/cloudflare/cloudflare-go v0.114.0
+	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/pebble v1.1.2
 	github.com/consensys/gnark-crypto v0.18.1
 	github.com/crate-crypto/go-eth-kzg v1.3.0
@@ -54,6 +56,7 @@ require (
 	github.com/panjf2000/ants/v2 v2.11.3
 	github.com/peterh/liner v1.1.1-0.20190123174540-a2c9a5303de7
 	github.com/pion/stun/v2 v2.0.0
+	github.com/pkg/errors v0.9.1
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
@@ -93,9 +96,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.23.2 // indirect
 	github.com/aws/smithy-go v1.15.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
@@ -130,7 +131,6 @@ require (
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/transport/v2 v2.2.1 // indirect
 	github.com/pion/transport/v3 v3.0.1 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.12.0 // indirect
 	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a // indirect
