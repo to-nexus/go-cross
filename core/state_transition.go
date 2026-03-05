@@ -23,7 +23,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -565,8 +564,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	beneficiary := st.evm.Context.Coinbase
 	effectiveTip := msg.GasPrice
 
-	// Update beneficiary
-	if rules.IsShanghai && (st.evm.Context.Difficulty != nil && st.evm.Context.Difficulty.Cmp(istanbul.DefaultDifficulty) == 0) { // difficulty is always 1 in the Istanbul consensus
+	if st.evm.ChainConfig().IsIstanbulConsensus() {
 		// ##CROSS: istanbul
 		// When Istanbul consensus is used, the beneficiary is configured in the chain config
 		if collector := st.evm.ChainConfig().GetBeneficiaryAddress(st.evm.Context.BlockNumber); collector != nil {
