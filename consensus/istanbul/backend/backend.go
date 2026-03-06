@@ -34,10 +34,10 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 )
 
 const (
@@ -210,13 +210,13 @@ func (sb *Backend) Commit(proposal istanbul.Proposal, seals []istanbul.SignedSea
 	// ##CROSS: bls seal
 	if sb.chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		if extra, _ := types.ExtractIstanbulExtra(header); extra != nil {
-		var committedSeal []byte
-		if len(extra.CommittedSeal) > 0 {
-			committedSeal = extra.CommittedSeal[0]
+			var committedSeal []byte
+			if len(extra.CommittedSeal) > 0 {
+				committedSeal = extra.CommittedSeal[0]
+			}
+			logger = logger.With("committedSeal", common.PrettyBytes(committedSeal), "validators", extra.Validators, "signersBitset", extra.SignersBitset, "signers", extra.Signers)
 		}
-		logger = logger.With("committedSeal", common.PrettyBytes(committedSeal), "validators", extra.Validators, "signersBitset", extra.SignersBitset, "signers", extra.Signers)
 	}
-}
 	// ##
 	logger.Info("Istanbul: block proposal committed")
 

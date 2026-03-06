@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/crypto/bls"
-	"github.com/ethereum/go-ethereum/crypto/bls/common"
 	"github.com/google/uuid"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls/common"
 )
 
 const version = 1
