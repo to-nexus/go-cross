@@ -2,11 +2,13 @@ package contracts
 
 import (
 	"fmt"
+	"maps"
 	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/erc8004"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -38,14 +40,19 @@ type (
 	}
 )
 
+const (
+	upgradeERC8004 = 8004
+)
+
 var (
-	upgrades = make(map[forks.Fork]*Upgrade)
+	upgrades = make(map[forks.Fork]map[uint64]*Upgrade)
 )
 
 func init() {
 	initialize := common.FromHex("8129fc1c")
 
-	upgrades[forks.Prague] = &Upgrade{
+	upgrades[forks.Prague] = make(map[uint64]*Upgrade)
+	upgrades[forks.Prague][0] = &Upgrade{
 		UpgradeName: forks.Prague.String(),
 		Configs: []*UpgradeConfig{
 			{
@@ -56,7 +63,8 @@ func init() {
 			},
 		},
 	}
-	upgrades[forks.Breakpoint] = &Upgrade{
+	upgrades[forks.Breakpoint] = make(map[uint64]*Upgrade)
+	upgrades[forks.Breakpoint][0] = &Upgrade{
 		UpgradeName: forks.Breakpoint.String(),
 		Configs: []*UpgradeConfig{
 			{
@@ -208,6 +216,55 @@ func init() {
 			// ##
 		},
 	}
+	// ##CROSS: erc8004
+	// ERC-8004 contracts are deployed to different addresses on testnet and mainnet
+	upgrades[upgradeERC8004] = make(map[uint64]*Upgrade)
+	upgrades[upgradeERC8004][0] = &Upgrade{
+		UpgradeName: "ERC-8004",
+		Configs: []*UpgradeConfig{
+			{
+				Name:         "ERC8004IdentityRegistry",
+				ContractAddr: ERC8004IdentityRegistryAddrTestnet, // default to testnet address
+				Code:         erc8004.IdentityRegistryCode,
+				Deploy:       true,
+			},
+			{
+				Name:         "ERC8004ReputationRegistry",
+				ContractAddr: ERC8004ReputationRegistryAddrTestnet,
+				Code:         erc8004.ReputationRegistryCode,
+				Deploy:       true,
+			},
+		},
+	}
+	// configure mainnet upgrades
+	erc8004Mainnet := copyUpgrade(upgrades[upgradeERC8004][0])
+	erc8004Mainnet.Configs[0].ContractAddr = ERC8004IdentityRegistryAddr
+	erc8004Mainnet.Configs[1].ContractAddr = ERC8004ReputationRegistryAddr
+	upgrades[upgradeERC8004][1] = erc8004Mainnet
+	upgrades[upgradeERC8004][612055] = erc8004Mainnet
+	// ##
+}
+
+func copyUpgrade(upgrade *Upgrade) *Upgrade {
+	cu := &Upgrade{
+		UpgradeName: upgrade.UpgradeName,
+		Configs:     make([]*UpgradeConfig, len(upgrade.Configs)),
+	}
+	for i, conf := range upgrade.Configs {
+		cc := *conf
+		cc.Storage = make(map[common.Hash]common.Hash)
+		maps.Copy(cc.Storage, conf.Storage)
+		cu.Configs[i] = &cc
+	}
+	return cu
+}
+
+func getUpgrade(fork forks.Fork, chainID uint64) *Upgrade {
+	upgrade, ok := upgrades[fork][chainID]
+	if !ok {
+		upgrade = upgrades[fork][0]
+	}
+	return upgrade
 }
 
 // TryUpdateSystemContract checks if the block is exactly on the fork and upgrades the system contracts if it is.
@@ -216,12 +273,14 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 		return
 	}
 
+	chainID := config.ChainID.Uint64()
 	if config.IsOnPrague(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(upgrades[forks.Prague], header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Prague, chainID), header, statedb)
 		upgraded = true
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(upgrades[forks.Breakpoint], header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb)
+		applySystemContractUpgrade(getUpgrade(upgradeERC8004, chainID), header, statedb)
 		upgraded = true
 	}
 	return
@@ -233,8 +292,9 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 		return
 	}
 
+	chainID := config.ChainID.Uint64()
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		initData = append(initData, getSystemContractInitialization(upgrades[forks.Breakpoint], config, header)...)
+		initData = append(initData, getSystemContractInitialization(getUpgrade(forks.Breakpoint, chainID), config, header)...)
 	}
 	return
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/erc8004"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -21,32 +22,68 @@ import (
 
 func TestTryUpdateSystemContract(t *testing.T) {
 	forkTime := uint64(time.Now().Unix())
-	config := params.AllDevChainProtocolChanges
-	config.PragueTime = &forkTime
-	config.BreakpointTime = &forkTime
-
-	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-
 	header := &types.Header{
 		Number: big.NewInt(100),
 		Time:   forkTime + 1,
 	}
 
-	upgraded := TryUpdateSystemContract(config, header, forkTime-1, statedb)
-	require.True(t, upgraded)
+	t.Run("Testnet", func(t *testing.T) {
+		statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		config := params.AllDevChainProtocolChanges
+		config.PragueTime = &forkTime
+		config.BreakpointTime = &forkTime
 
-	t.Run("Prague upgrade", func(t *testing.T) {
-		code := statedb.GetCode(params.HistoryStorageAddress)
-		assert.Equal(t, params.HistoryStorageCode, code)
-		nonce := statedb.GetNonce(params.HistoryStorageAddress)
-		assert.Equal(t, uint64(1), nonce)
+		upgraded := TryUpdateSystemContract(config, header, forkTime-1, statedb)
+		require.True(t, upgraded)
+
+		t.Run("Prague upgrade", func(t *testing.T) {
+			code := statedb.GetCode(params.HistoryStorageAddress)
+			assert.Equal(t, params.HistoryStorageCode, code)
+			nonce := statedb.GetNonce(params.HistoryStorageAddress)
+			assert.Equal(t, uint64(1), nonce)
+		})
+
+		t.Run("Breakpoint upgrade", func(t *testing.T) {
+			code := statedb.GetCode(ValidatorSetAddr)
+			assert.Equal(t, common.FromHex(breakpoint.ValidatorSetMetaData.BinRuntime), code)
+			nonce := statedb.GetNonce(ValidatorSetAddr)
+			assert.Equal(t, uint64(1), nonce)
+		})
+
+		// ##CROSS: erc8004
+		t.Run("ERC-8004 upgrade", func(t *testing.T) {
+			code := statedb.GetCode(ERC8004IdentityRegistryAddrTestnet)
+			assert.Equal(t, common.FromHex(erc8004.IdentityRegistryCode), code)
+			nonce := statedb.GetNonce(ERC8004IdentityRegistryAddrTestnet)
+			assert.Equal(t, uint64(1), nonce)
+
+			// because chain ID is 1337, contracts are deployed to testnet addresses; mainnet addresses are empty
+			code = statedb.GetCode(ERC8004ReputationRegistryAddr)
+			assert.Empty(t, code)
+		})
+		// ##
 	})
 
-	t.Run("Breakpoint upgrade", func(t *testing.T) {
-		code := statedb.GetCode(ValidatorSetAddr)
-		assert.Equal(t, common.FromHex(breakpoint.ValidatorSetMetaData.BinRuntime), code)
-		nonce := statedb.GetNonce(ValidatorSetAddr)
-		assert.Equal(t, uint64(1), nonce)
+	t.Run("Mainnet", func(t *testing.T) {
+		statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		config := params.CrossChainConfig
+		config.PragueTime = &forkTime
+		config.BreakpointTime = &forkTime
+
+		upgraded := TryUpdateSystemContract(config, header, forkTime-1, statedb)
+		require.True(t, upgraded)
+
+		// ##CROSS: erc8004
+		t.Run("ERC-8004 upgrade", func(t *testing.T) {
+			code := statedb.GetCode(ERC8004IdentityRegistryAddr)
+			assert.Equal(t, common.FromHex(erc8004.IdentityRegistryCode), code)
+			nonce := statedb.GetNonce(ERC8004IdentityRegistryAddr)
+			assert.Equal(t, uint64(1), nonce)
+
+			code = statedb.GetCode(ERC8004ReputationRegistryAddrTestnet)
+			assert.Empty(t, code)
+		})
+		// ##
 	})
 }
 
@@ -152,7 +189,7 @@ func TestInitSystemContract(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			initData := getSystemContractInitialization(upgrades[tt.fork], config, tt.header)
+			initData := getSystemContractInitialization(upgrades[tt.fork][0], config, tt.header)
 			assert.Equal(t, tt.expected, initData)
 		})
 	}
