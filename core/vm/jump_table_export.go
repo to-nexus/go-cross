@@ -36,7 +36,7 @@ func LookupInstructionSet(rules params.Rules) (JumpTable, error) {
 		return newPragueInstructionSet(), nil
 	case rules.IsCancun:
 		return newCancunInstructionSet(), nil
-	case rules.IsAdventure: // ##CROSS: fork
+	case rules.IsAdventure: // ##CROSS: fork adventure
 		return newAdventureInstructionSet(), nil
 	case rules.IsShanghai:
 		return newShanghaiInstructionSet(), nil

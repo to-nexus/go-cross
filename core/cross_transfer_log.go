@@ -1,23 +1,18 @@
 package core
 
-// ##CROSS: transfer log
-
 import (
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params/predeploy"
 	"github.com/holiman/uint256"
 )
 
-var (
-	transferLogSig common.Hash
-)
+// ##CROSS: transfer log
 
-func init() {
-	ab, _ := predeploy.CrossExMetaData.GetAbi()
-	transferLogSig = ab.Events["CrossTransfer"].ID
-}
+var (
+	transferLogSig common.Hash = common.HexToHash("0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b")
+)
 
 // AddTransferLog adds transfer log into state
 func AddTransferLog(
@@ -38,12 +33,13 @@ func AddTransferLog(
 
 	var data []byte
 	for _, v := range dataInputs {
-		data = append(data, common.LeftPadBytes(v.Bytes(), 32)...)
+		b := v.Bytes32()
+		data = append(data, b[:]...)
 	}
 
 	// add transfer log
 	state.AddLog(&types.Log{
-		Address: predeploy.CrossExAddr,
+		Address: contracts.CrossExAddr,
 		Topics: []common.Hash{
 			transferLogSig,
 			common.BytesToHash(sender.Bytes()),

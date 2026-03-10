@@ -164,6 +164,10 @@ var (
 		utils.BeaconGenesisTimeFlag,
 		utils.BeaconCheckpointFlag,
 		utils.BeaconCheckpointFileFlag,
+		// ##CROSS: bls seal
+		utils.BLSKeyFileFlag,
+		utils.BLSKeyStoreDirFlag,
+		// ##
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -236,6 +240,8 @@ func init() {
 		// See accountcmd.go:
 		accountCommand,
 		walletCommand,
+		// See blscmd.go:
+		blsCommand, // ##CROSS: bls seal
 		// See consolecmd.go:
 		consoleCommand,
 		attachCommand,

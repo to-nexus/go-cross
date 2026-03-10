@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/naoina/toml"
@@ -125,8 +126,6 @@ func (p *ProposerPolicy) GetRegistrySize() int {
 	return len(p.registry)
 }
 
-// ##
-
 // ClearRegistry removes any ValidatorSet from the ProposerPolicy registry
 func (p *ProposerPolicy) ClearRegistry() {
 	p.registryMU.Lock()
@@ -146,19 +145,96 @@ type Config struct {
 	Validators               []common.Address `toml:",omitempty"`
 	MaxRequestTimeoutSeconds uint64           `toml:",omitempty"`
 	Transitions              []params.Transition
+	CouncilPeriod            uint64               `toml:",omitempty"` // The period in seconds for the council to operate // ##CROSS: istanbul posa
+	Signers                  []types.BLSPublicKey `toml:",omitempty"` // ##CROSS: bls seal
 }
 
 var DefaultConfig = &Config{
 	RequestTimeout:         10000,
-	BlockPeriod:            5,
+	BlockPeriod:            1,
 	EmptyBlockPeriod:       0,
 	ProposerPolicy:         NewRoundRobinProposerPolicy(),
 	Epoch:                  30000,
 	AllowedFutureBlockTime: 0,
+	CouncilPeriod:          86400, // ##CROSS: istanbul posa
+}
+
+func NewConfig(config *params.ChainConfig) *Config {
+	if config == nil || config.Istanbul == nil {
+		return nil
+	}
+
+	c := *DefaultConfig
+
+	if config.Istanbul.EpochLength != 0 {
+		c.Epoch = config.Istanbul.EpochLength
+	}
+	if config.Istanbul.BlockPeriodSeconds != 0 {
+		c.BlockPeriod = config.Istanbul.BlockPeriodSeconds
+	}
+	if config.Istanbul.EmptyBlockPeriodSeconds != 0 {
+		c.EmptyBlockPeriod = config.Istanbul.EmptyBlockPeriodSeconds
+	}
+	if config.Istanbul.RequestTimeoutSeconds != 0 {
+		c.RequestTimeout = config.Istanbul.RequestTimeoutSeconds * 1000
+	}
+	if config.Istanbul.ProposerPolicy != 0 {
+		c.ProposerPolicy = NewProposerPolicy(ProposerPolicyId(config.Istanbul.ProposerPolicy))
+	}
+	c.Validators = config.Istanbul.Validators
+
+	if config.Istanbul.MaxRequestTimeoutSeconds != nil && *config.Istanbul.MaxRequestTimeoutSeconds > 0 {
+		c.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
+	}
+	c.Transitions = config.Transitions
+
+	// ##CROSS: istanbul posa
+	if config.Istanbul.CouncilPeriod != nil {
+		c.CouncilPeriod = *config.Istanbul.CouncilPeriod
+	}
+	// ##
+	// ##CROSS: bls seal
+	c.Signers = make([]types.BLSPublicKey, 0, len(config.Istanbul.Signers))
+	for _, signer := range config.Istanbul.Signers {
+		c.Signers = append(c.Signers, types.BytesToBLSPublicKey(signer))
+	}
+	// ##
+
+	return &c
 }
 
 func (c Config) GetConfig(blockNumber *big.Int) Config {
 	newConfig := c
+
+	// ##CROSS: istanbul param
+	if blockNumber != nil && blockNumber.Cmp(big.NewInt(1)) > 0 {
+		if cfg := params.IstanbulConfigAt(blockNumber.Uint64()); cfg != nil {
+			if cfg.RequestTimeoutSeconds != 0 {
+				newConfig.RequestTimeout = cfg.RequestTimeoutSeconds * 1000
+			}
+			if cfg.BlockPeriodSeconds != 0 {
+				newConfig.BlockPeriod = cfg.BlockPeriodSeconds
+			}
+			if cfg.EmptyBlockPeriodSeconds != 0 {
+				newConfig.EmptyBlockPeriod = cfg.EmptyBlockPeriodSeconds
+			}
+			if newConfig.ProposerPolicy != nil && newConfig.ProposerPolicy.Id != ProposerPolicyId(cfg.ProposerPolicy) {
+				// swap policy id only
+				newConfig.ProposerPolicy.Id = ProposerPolicyId(cfg.ProposerPolicy)
+			}
+			if cfg.EpochLength != 0 {
+				newConfig.Epoch = cfg.EpochLength
+			}
+			if cfg.MaxRequestTimeoutSeconds != nil {
+				newConfig.MaxRequestTimeoutSeconds = *cfg.MaxRequestTimeoutSeconds
+			}
+			if cfg.CouncilPeriod != nil {
+				newConfig.CouncilPeriod = *cfg.CouncilPeriod
+			}
+			return newConfig
+		}
+	}
+	// ##
 
 	c.getTransitionValue(blockNumber, func(transition params.Transition) {
 		if transition.RequestTimeoutSeconds != 0 {
@@ -196,4 +272,13 @@ func (c *Config) getTransitionValue(num *big.Int, callback func(transition param
 // String implements the stringer interface, returning the consensus engine details.
 func (c *Config) String() string {
 	return "istanbul"
+}
+
+// OnNewCouncilPeriod checks if the given block time is the beginning of a new council period.
+func (c Config) OnNewCouncilPeriod(lastBlockTime, currentBlockTime uint64) bool {
+	period := c.CouncilPeriod
+	if period == 0 {
+		period = 86400
+	}
+	return lastBlockTime != 0 && lastBlockTime/period != currentBlockTime/period
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 )
 
 const (
@@ -214,6 +215,9 @@ type Config struct {
 
 	// ##CROSS: gas abstraction url.
 	GasAbsURL string `toml:",omitempty"`
+
+	// ##CROSS: bls seal
+	BLSSecretKey bls.SecretKey `toml:"-"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

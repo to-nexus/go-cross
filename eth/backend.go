@@ -88,6 +88,7 @@ type Ethereum struct {
 
 	eventMux       *event.TypeMux
 	engine         consensus.Engine
+	istanbul       consensus.IstanbulEngine // ##CROSS: istanbul
 	accountManager *accounts.Manager
 
 	filterMaps      *filtermaps.FilterMaps
@@ -159,10 +160,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine, err := ethconfig.CreateConsensusEngine(chainConfig, &config.Istanbul, stack, chainDb)
-	if err != nil {
-		return nil, err
-	}
 	// Set networkID to chainID by default.
 	networkID := config.NetworkId
 	if networkID == 0 {
@@ -187,7 +184,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainDb:         chainDb,
 		eventMux:        stack.EventMux(),
 		accountManager:  stack.AccountManager(),
-		engine:          engine,
 		networkID:       networkID,
 		gasPrice:        config.Miner.GasPrice,
 		etherbase:       config.Miner.Etherbase, // ##CROSS: legacy sync
@@ -195,6 +191,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		discmix:         enode.NewFairMix(0),
 		shutdownTracker: shutdowncheck.NewShutdownTracker(chainDb),
 	}
+
+	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
+	if eth.APIBackend.allowUnprotectedTxs {
+		log.Info("Unprotected transactions allowed")
+	}
+	eth.engine, err = ethconfig.CreateConsensusEngine(chainConfig, &config.Istanbul, stack, chainDb)
+	if err != nil {
+		return nil, err
+	}
+	eth.istanbul = consensus.ToIstanbulEngine(eth.engine) // ##CROSS: istanbul
+
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"
 	if bcVersion != nil {
@@ -330,10 +337,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	// ##
 
-	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
-	if eth.APIBackend.allowUnprotectedTxs {
-		log.Info("Unprotected transactions allowed")
-	}
 	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, config.GPO, config.Miner.GasPrice)
 
 	// Start the RPC service

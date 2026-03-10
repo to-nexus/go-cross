@@ -17,6 +17,7 @@
 package backend
 
 import (
+	"bytes"
 	"math/big"
 	"math/rand"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -40,6 +42,29 @@ const (
 	inmemoryMessages   = 1024
 )
 
+var _ consensus.Engine = (*Backend)(nil)
+
+// ##CROSS: consensus system contract
+var _ consensus.IstanbulEngine = (*Backend)(nil)
+
+func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	return sb.Engine().IsSystemTransaction(tx, header)
+}
+
+func (sb *Backend) IsSystemContract(to *common.Address) bool {
+	return sb.Engine().IsSystemContract(to)
+}
+
+func (sb *Backend) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+	return sb.Engine().EstimateGasForSystemTxs(chain, header)
+}
+
+func (sb *Backend) SyncIstanbulParam(header *types.Header) error { // ##CROSS: istanbul param
+	return sb.Engine().SyncIstanbulParam(header)
+}
+
+// ##
+
 // Author retrieves the Ethereum address of the account that minted the given
 // block, which may be different from the header's coinbase if a consensus
 // engine is based on signatures.
@@ -50,7 +75,21 @@ func (sb *Backend) Author(header *types.Header) (common.Address, error) {
 // Signers extracts all the addresses who have signed the given header
 // It will extract for each seal who signed it, regardless of if the seal is
 // repeated
-func (sb *Backend) Signers(header *types.Header) ([]common.Address, error) {
+func (sb *Backend) Signers(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+	// ##CROSS: bls seal
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// Should combine signer bitset from the header and validator set from the snapshot
+		snap, err := sb.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+		if err != nil {
+			return nil, err
+		}
+		addrs, _, err := sb.Engine().BLSSigners(header, snap.ValSet)
+		if err != nil {
+			return nil, err
+		}
+		return addrs, nil
+	}
+	// ##
 	return sb.Engine().Signers(header)
 }
 
@@ -170,14 +209,14 @@ func (sb *Backend) Prepare(chain consensus.ChainHeaderReader, header *types.Head
 //
 // Note, the block header and state database might be updated to reflect any
 // consensus rules that happen at finalization (e.g. block rewards).
-func (sb *Backend) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
-	sb.Engine().Finalize(chain, header, state, body)
+func (sb *Backend) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction, receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	return sb.Engine().Finalize(chain, header, state, body, txs, receipts, systemTxs, usedGas, tracer)
 }
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (sb *Backend) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
-	return sb.Engine().FinalizeAndAssemble(chain, header, state, body, receipts)
+func (sb *Backend) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	return sb.Engine().FinalizeAndAssemble(chain, header, state, body, receipts, tracer)
 }
 
 // Seal generates a new block for the given input block with the local miner's
@@ -316,21 +355,13 @@ func (sb *Backend) CurrentStat() (istanbul.ValidatorSet, *istanbul.View) {
 
 // ##
 
-func addrsToString(addrs []common.Address) []string {
-	strs := make([]string, len(addrs))
-	for i, addr := range addrs {
-		strs[i] = addr.String()
-	}
-	return strs
-}
-
 func (sb *Backend) snapLogger(snap *Snapshot) log.Logger {
 	return sb.logger.New(
 		"snap.number", snap.Number,
 		"snap.hash", snap.Hash.String(),
 		"snap.epoch", snap.Epoch,
-		"snap.validators", addrsToString(snap.validators()),
-		"snap.votes", snap.Votes,
+		"snap.validators", snap.validators(),
+		//"snap.votes", snap.Votes,
 	)
 }
 
@@ -376,22 +407,27 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 				return nil, err
 			}
 
-			var validators []common.Address
+			var (
+				validators []common.Address
+				signers    []types.BLSPublicKey // ##CROSS: bls seal
+			)
 			validatorsFromConfig := sb.config.Validators
 			if len(validatorsFromConfig) > 0 {
 				validators = validatorsFromConfig
+				signers = sb.config.Signers
 				log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
 			} else {
 				var err error
-				validators, err = sb.Engine().ExtractGenesisValidators(genesis)
-				log.Info("Istanbul: Initialising snap with extradata", "validators", validators)
+				validators, signers, err = sb.Engine().ExtractValidators(genesis)
+				log.Info("Istanbul: Initialising snap with extradata", "validators", validators, "signers", signers)
 				if err != nil {
 					log.Error("Istanbul: invalid genesis block", "err", err)
 					return nil, err
 				}
 			}
 
-			snap = newSnapshot(sb.config.GetConfig(new(big.Int).SetUint64(number)).Epoch, 0, genesis.Hash(), validator.NewSet(validators, sb.config.ProposerPolicy))
+			cfg := sb.config.GetConfig(new(big.Int).SetUint64(number)) // ##CROSS: istanbul param
+			snap = newSnapshot(cfg.Epoch, 0, genesis.Hash(), validator.NewSet(validators, signers, cfg.ProposerPolicy))
 			if err := sb.storeSnap(snap); err != nil {
 				return nil, err
 			}
@@ -424,10 +460,11 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
 	}
 
-	snap, err := sb.snapApply(snap, headers)
+	snap, err := sb.snapApply(snap, headers, chain)
 	if err != nil {
 		return nil, err
 	}
+	snap.Epoch = sb.config.GetConfig(new(big.Int).SetUint64(snap.Number)).Epoch // ##CROSS: istanbul param
 	sb.recents.Add(snap.Hash, snap)
 
 	// If we've generated a new checkpoint snapshot, save to disk
@@ -445,7 +482,7 @@ func (sb *Backend) SealHash(header *types.Header) common.Hash {
 	return sb.Engine().SealHash(header)
 }
 
-func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header) (*Snapshot, error) {
+func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, chain consensus.ChainHeaderReader) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
 		return snap, nil
@@ -455,15 +492,21 @@ func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header) (*Snapshot
 		if headers[i+1].Number.Uint64() != headers[i].Number.Uint64()+1 {
 			return nil, istanbul.ErrInvalidVotingChain
 		}
+		if !bytes.Equal(headers[i+1].ParentHash.Bytes(), headers[i].Hash().Bytes()) {
+			return nil, istanbul.ErrInconsistentBlockHash
+		}
 	}
 	if headers[0].Number.Uint64() != snap.Number+1 {
 		return nil, istanbul.ErrInvalidVotingChain
+	}
+	if !bytes.Equal(headers[0].ParentHash.Bytes(), snap.Hash.Bytes()) {
+		return nil, istanbul.ErrInconsistentBlockHash
 	}
 	// Iterate through the headers and create a new snapshot
 	snapCpy := snap.copy()
 
 	for _, header := range headers {
-		err := sb.snapApplyHeader(snapCpy, header)
+		err := sb.snapApplyHeader(snapCpy, header, chain)
 		if err != nil {
 			return nil, err
 		}
@@ -474,7 +517,7 @@ func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header) (*Snapshot
 	return snapCpy, nil
 }
 
-func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header) error {
+func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain consensus.ChainHeaderReader) error {
 	logger := sb.snapLogger(snap).New("header.number", header.Number.Uint64(), "header.hash", header.Hash().String())
 
 	logger.Trace("Istanbul: apply header to voting snapshot")
@@ -487,80 +530,119 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header) error {
 	}
 
 	// Resolve the authorization key and check against validators
-	validator, err := sb.Engine().Author(header)
+	author, err := sb.Engine().Author(header)
 	if err != nil {
 		logger.Error("Istanbul: invalid header author", "err", err)
 		return err
 	}
 
-	logger = logger.New("header.author", validator)
+	logger = logger.New("header.author", author)
 
-	if _, v := snap.ValSet.GetByAddress(validator); v == nil {
-		logger.Error("Istanbul: header author is not a validator", "Validators", snap.ValSet, "Author", validator)
+	if _, v := snap.ValSet.GetByAddress(author); v == nil {
+		logger.Error("Istanbul: header author is not a validator", "Validators", snap.ValSet, "Author", author)
 		return istanbul.ErrUnauthorized
 	}
 
-	// Read vote from header
-	candidate, authorize, err := sb.Engine().ReadVote(header)
-	if err != nil {
-		logger.Error("Istanbul: invalid header vote", "err", err)
-		return err
-	}
-
-	logger = logger.New("candidate", candidate.String(), "authorize", authorize)
-	// Header authorized, discard any previous votes from the validator
-	for i, vote := range snap.Votes {
-		if vote.Validator == validator && vote.Address == candidate {
-			logger.Trace("Istanbul: discard previous vote from tally", "old.authorize", vote.Authorize)
-			// Uncast the vote from the cached tally
-			snap.uncast(vote.Address, vote.Authorize)
-
-			// Uncast the vote from the chronological list
-			snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
-			break // only one vote allowed
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent != nil && chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
+		// ##CROSS: bls seal
+		// Inject signers defined in the config to the snapshot on the beginning of Breakpoint hardfork
+		cfg := chain.Config().Istanbul
+		validators := make([]common.Address, 0, snap.ValSet.Size())
+		signers := make([]types.BLSPublicKey, 0, snap.ValSet.Size())
+		for i, validator := range snap.ValSet.List() {
+			validators = append(validators, validator.Address())
+			if cfg != nil {
+				for idx := range cfg.Validators {
+					if validator.Address() == cfg.Validators[idx] && idx < len(cfg.Signers) {
+						signers = append(signers, types.BytesToBLSPublicKey(cfg.Signers[idx]))
+						break
+					}
+				}
+			}
+			if len(signers) < i+1 {
+				signers = append(signers, types.BLSPublicKey{})
+			}
 		}
-	}
+		// ##
+		log.Info("Overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
+		snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+	} else if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: istanbul posa
+		// Validators are managed by the system contract, we don't check the votes anymore
+		validators, signers, err := sb.Engine().ExtractValidators(header)
+		if err != nil {
+			return err
+		}
+		// Only update validator set if validators are present in the header (at epoch boundaries)
+		// Otherwise, keep the existing validator set from the snapshot
+		if len(validators) > 0 {
+			snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+		}
+		// ##
+	} else {
+		// Read vote from header
+		candidate, authorize, err := sb.Engine().ReadVote(header)
+		if err != nil {
+			logger.Error("Istanbul: invalid header vote", "err", err)
+			return err
+		}
 
-	logger.Debug("Istanbul: add vote to tally")
-	if snap.cast(candidate, authorize) {
-		snap.Votes = append(snap.Votes, &Vote{
-			Validator: validator,
-			Block:     number,
-			Address:   candidate,
-			Authorize: authorize,
-		})
-	}
+		logger = logger.New("candidate", candidate.String(), "authorize", authorize)
+		// Header authorized, discard any previous votes from the validator
+		for i, vote := range snap.Votes {
+			if vote.Validator == author && vote.Address == candidate {
+				logger.Trace("Istanbul: discard previous vote from tally", "old.authorize", vote.Authorize)
+				// Uncast the vote from the cached tally
+				snap.uncast(vote.Address, vote.Authorize)
 
-	// If the vote passed, update the list of validators
-	if tally := snap.Tally[candidate]; tally.Votes > snap.ValSet.Size()/2 {
-		if tally.Authorize {
-			logger.Info("Istanbul: reached majority to add validator")
-			snap.ValSet.AddValidator(candidate)
-		} else {
-			logger.Info("Istanbul: reached majority to remove validator")
-			snap.ValSet.RemoveValidator(candidate)
+				// Uncast the vote from the chronological list
+				snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
+				break // only one vote allowed
+			}
+		}
 
-			// Discard any previous votes the deauthorized validator cast
+		logger.Debug("Istanbul: add vote to tally")
+		if snap.cast(candidate, authorize) {
+			snap.Votes = append(snap.Votes, &Vote{
+				Validator: author,
+				Block:     number,
+				Address:   candidate,
+				Authorize: authorize,
+			})
+		}
+
+		// If the vote passed, update the list of validators
+		if tally := snap.Tally[candidate]; tally.Votes > snap.ValSet.Size()/2 {
+			if tally.Authorize {
+				logger.Info("Istanbul: reached majority to add validator")
+				snap.ValSet.AddValidator(candidate, types.BLSPublicKey{})
+			} else {
+				logger.Info("Istanbul: reached majority to remove validator")
+				snap.ValSet.RemoveValidator(candidate)
+
+				// Discard any previous votes the deauthorized validator cast
+				for i := 0; i < len(snap.Votes); i++ {
+					if snap.Votes[i].Validator == candidate {
+						// Uncast the vote from the cached tally
+						snap.uncast(snap.Votes[i].Address, snap.Votes[i].Authorize)
+
+						// Uncast the vote from the chronological list
+						snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
+
+						i--
+					}
+				}
+			}
+			// Discard any previous votes around the just changed account
 			for i := 0; i < len(snap.Votes); i++ {
-				if snap.Votes[i].Validator == candidate {
-					// Uncast the vote from the cached tally
-					snap.uncast(snap.Votes[i].Address, snap.Votes[i].Authorize)
-
-					// Uncast the vote from the chronological list
+				if snap.Votes[i].Address == candidate {
 					snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
-
 					i--
 				}
 			}
+			delete(snap.Tally, candidate)
 		}
-		// Discard any previous votes around the just changed account
-		for i := 0; i < len(snap.Votes); i++ {
-			if snap.Votes[i].Address == candidate {
-				snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
-				i--
-			}
-		}
-		delete(snap.Tally, candidate)
 	}
 	return nil
 }

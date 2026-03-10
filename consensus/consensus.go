@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -90,14 +91,15 @@ type Engine interface {
 	//
 	// Note: The state database might be updated to reflect any consensus rules
 	// that happen at finalization (e.g. block rewards).
-	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body)
+	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction,
+		receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error
 
 	// FinalizeAndAssemble runs any post-transaction state modifications (e.g. block
 	// rewards or process withdrawals) and assembles the final block.
 	//
 	// Note: The block header and state database might be updated to reflect any
 	// consensus rules that happen at finalization (e.g. block rewards).
-	FinalizeAndAssemble(chain ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error)
+	FinalizeAndAssemble(chain ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
 
 	// Seal generates a new sealing request for the given input block and pushes
 	// the result into the given channel.
@@ -151,4 +153,36 @@ type IstanbulPeer interface {
 
 	// SendIstanbulConsensus is used to send consensus subprotocol messages from an "eth" peer without encoding the payload
 	SendIstanbulConsensus(msgcode uint64, payload []byte) error
+}
+
+type IstanbulEngine interface {
+	// ##CROSS: consensus system contract
+	// IsSystemTransaction checks if the transaction is a system transaction,
+	// which is a transaction to a system contract with gas price 0 and sender is the block proposer.
+	IsSystemTransaction(*types.Transaction, *types.Header) (bool, error)
+
+	// IsSystemContract checks if the address is a system contract.
+	IsSystemContract(*common.Address) bool
+
+	// EstimateGasForSystemTxs estimates the gas cost for system transactions in the given block.
+	EstimateGasForSystemTxs(ChainHeaderReader, *types.Header) uint64
+
+	// SyncIstanbulParam syncs and caches the Istanbul parameters from the system contract.
+	SyncIstanbulParam(*types.Header) error // ##CROSS: istanbul param
+
+	// ValidatorsAt returns the validator addresses at the given block number.
+	ValidatorsAt(ChainHeaderReader, *types.Header) []common.Address // ##CROSS: istanbul posa
+	// ##
+}
+
+// ToIstanbulEngine converts an Engine to an IstanbulEngine if possible
+func ToIstanbulEngine(engine Engine) IstanbulEngine {
+	if e, ok := engine.(IstanbulEngine); ok {
+		return e
+	}
+	if e, ok := engine.(interface{ InnerEngine() Engine }); ok {
+		ie, _ := e.InnerEngine().(IstanbulEngine)
+		return ie
+	}
+	return nil
 }

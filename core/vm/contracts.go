@@ -31,11 +31,13 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -141,13 +143,39 @@ var PrecompiledContractsBLS = PrecompiledContractsPrague
 
 var PrecompiledContractsVerkle = PrecompiledContractsPrague
 
+// ##CROSS: hardfork breakpoint
+var PrecompiledContractsBreakpoint = PrecompiledContracts{
+	common.BytesToAddress([]byte{0x01}): &ecrecover{},
+	common.BytesToAddress([]byte{0x02}): &sha256hash{},
+	common.BytesToAddress([]byte{0x03}): &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}): &dataCopy{},
+	common.BytesToAddress([]byte{0x05}): &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{0x06}): &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}): &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}): &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}): &blake2F{},
+	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}): &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}): &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}): &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}): &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
+	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
+
+	common.BytesToAddress([]byte{0xc0}): &blsSignatureVerification{}, // ##CROSS: bls seal
+}
+
+// ##
+
 var (
-	PrecompiledAddressesPrague    []common.Address
-	PrecompiledAddressesCancun    []common.Address
-	PrecompiledAddressesBerlin    []common.Address
-	PrecompiledAddressesIstanbul  []common.Address
-	PrecompiledAddressesByzantium []common.Address
-	PrecompiledAddressesHomestead []common.Address
+	PrecompiledAddressesPrague     []common.Address
+	PrecompiledAddressesCancun     []common.Address
+	PrecompiledAddressesBerlin     []common.Address
+	PrecompiledAddressesIstanbul   []common.Address
+	PrecompiledAddressesByzantium  []common.Address
+	PrecompiledAddressesHomestead  []common.Address
+	PrecompiledAddressesBreakpoint []common.Address // ##CROSS: hardfork breakpoint
 )
 
 func init() {
@@ -169,10 +197,19 @@ func init() {
 	for k := range PrecompiledContractsPrague {
 		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
 	}
+	// ##CROSS: hardfork breakpoint
+	for k := range PrecompiledContractsBreakpoint {
+		PrecompiledAddressesBreakpoint = append(PrecompiledAddressesBreakpoint, k)
+	}
+	// ##
 }
 
 func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	switch {
+	// ##CROSS: hardfork breakpoint
+	case rules.IsBreakpoint:
+		return PrecompiledContractsBreakpoint
+	// ##
 	case rules.IsVerkle:
 		return PrecompiledContractsVerkle
 	case rules.IsPrague:
@@ -198,6 +235,10 @@ func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	// ##CROSS: hardfork breakpoint
+	case rules.IsBreakpoint:
+		return PrecompiledAddressesBreakpoint
+	// ##
 	case rules.IsPrague:
 		return PrecompiledAddressesPrague
 	case rules.IsCancun:
@@ -1182,3 +1223,76 @@ func kZGToVersionedHash(kzg kzg4844.Commitment) common.Hash {
 
 	return h
 }
+
+// ##CROSS: bls seal
+
+// blsSignatureVerification implements bls signature verification precompile.
+type blsSignatureVerification struct{}
+
+const (
+	msgHashLength         = uint64(32)
+	signatureLength       = uint64(types.BLSSignatureLength)
+	msgAndSigLength       = msgHashLength + signatureLength
+	singleBlsPubkeyLength = uint64(types.BLSPublicKeyLength)
+)
+
+var (
+	errBLSInvalidSignature = errors.New("invalid signature")
+	errBLSInvalidPublicKey = errors.New("invalid public key")
+)
+
+// RequiredGas estimates the gas required for running the bls signature verification precompile.
+func (c *blsSignatureVerification) RequiredGas(input []byte) uint64 {
+	inputLen := uint64(len(input))
+	if inputLen <= msgAndSigLength ||
+		(inputLen-msgAndSigLength)%singleBlsPubkeyLength != 0 {
+		return params.BlsSignatureVerifyBaseGas
+	}
+	pubKeyNumber := (inputLen - msgAndSigLength) / singleBlsPubkeyLength
+	return params.BlsSignatureVerifyBaseGas + pubKeyNumber*params.BlsSignatureVerifyPerKeyGas
+}
+
+// Run executes the bls signature verification precompile.
+func (c *blsSignatureVerification) Run(input []byte) ([]byte, error) {
+	// input = msg (32 bytes) + signature (96 bytes) + [bls pubkey (48 bytes)]
+	inputLen := uint64(len(input))
+	if inputLen <= msgAndSigLength ||
+		(inputLen-msgAndSigLength)%singleBlsPubkeyLength != 0 {
+		return nil, errBLS12381InvalidInputLength
+	}
+
+	var msg [32]byte
+	msgBytes := getData(input, 0, msgHashLength)
+	copy(msg[:], msgBytes)
+
+	signatureBytes := getData(input, msgHashLength, signatureLength)
+	sig, err := bls.SignatureFromBytes(signatureBytes)
+	if err != nil {
+		return nil, errBLSInvalidSignature
+	}
+
+	pubKeyNumber := (inputLen - msgAndSigLength) / singleBlsPubkeyLength
+	pubKeys := make([]bls.PublicKey, pubKeyNumber)
+	for i := uint64(0); i < pubKeyNumber; i++ {
+		pubKeyBytes := getData(input, msgAndSigLength+i*singleBlsPubkeyLength, singleBlsPubkeyLength)
+		pubKey, err := bls.PublicKeyFromBytes(pubKeyBytes)
+		if err != nil {
+			return nil, errBLSInvalidPublicKey
+		}
+		pubKeys[i] = pubKey
+	}
+
+	if pubKeyNumber > 1 {
+		if !sig.FastAggregateVerify(pubKeys, msg) {
+			return common.Big0.Bytes(), nil
+		}
+	} else {
+		if !sig.Verify(pubKeys[0], msgBytes) {
+			return common.Big0.Bytes(), nil
+		}
+	}
+
+	return big1.Bytes(), nil
+}
+
+// ##

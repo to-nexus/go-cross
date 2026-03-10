@@ -55,6 +55,10 @@ var (
 	// be modified via out-of-range or non-contiguous headers.
 	ErrInvalidVotingChain = errors.New("invalid voting chain")
 
+	// ErrInconsistentBlockHash is returned if an authorization list is attempted to
+	// insert an inconsistent block.
+	ErrInconsistentBlockHash = errors.New("inconsistent block hash")
+
 	// ErrInvalidVote is returned if a nonce value is something else that the two
 	// allowed constants of 0x00..0 or 0xff..f.
 	ErrInvalidVote = errors.New("vote nonce not 0x00..0 or 0xff..f")
@@ -79,4 +83,18 @@ var (
 
 	// ErrFailedDecodeRoundChange is returned when the COMMIT message is malformed.
 	ErrFailedDecodeRoundChange = errors.New("failed to decode ROUND-CHANGE message")
+
+	// ##CROSS: bls seal
+	// ErrInvalidPublicKey is returned if the public key is not set or invalid.
+	ErrInvalidPublicKey = errors.New("invalid public key")
+
+	// ErrInvalidSecretKey is returned if the secret key is not set or invalid.
+	ErrInvalidSecretKey = errors.New("invalid secret key")
+
+	// ErrEmptySigners is returned if the signers list is empty.
+	ErrEmptySigners = errors.New("empty signers")
+
+	// ErrDuplicatedSigner is returned if the seal signer is duplicated.
+	ErrDuplicatedSigner = errors.New("duplicated signer")
+	// ##
 )

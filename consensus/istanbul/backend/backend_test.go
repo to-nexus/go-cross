@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 )
 
 func TestSign(t *testing.T) {
@@ -114,6 +115,15 @@ func TestCheckValidatorSignature(t *testing.T) {
 	}
 }
 
+// ##CROSS: bls seal
+type signedSeal []byte
+
+func (c signedSeal) Index() uint            { return 0 }
+func (c signedSeal) Signer() common.Address { return common.Address{} }
+func (c signedSeal) Signature() []byte      { return c }
+
+// ##
+
 func TestCommit(t *testing.T) {
 	backend := newBackend()
 	defer backend.Stop()
@@ -122,13 +132,13 @@ func TestCommit(t *testing.T) {
 	// Case: it's a proposer, so the backend.commit will receive channel result from backend.Commit function
 	testCases := []struct {
 		expectedErr       error
-		expectedSignature [][]byte
+		expectedSignature []istanbul.SignedSeal // ##CROSS: bls seal
 		expectedBlock     func() *types.Block
 	}{
 		{
 			// normal case
 			nil,
-			[][]byte{append([]byte{1}, bytes.Repeat([]byte{0x00}, types.IstanbulExtraSeal-1)...)},
+			[]istanbul.SignedSeal{signedSeal(append([]byte{1}, bytes.Repeat([]byte{0x00}, types.IstanbulExtraSeal-1)...))},
 			func() *types.Block {
 				chain, engine := newBlockChain(1)
 				block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
@@ -245,21 +255,17 @@ func newTestValidatorSet(n int) (istanbul.ValidatorSet, []*ecdsa.PrivateKey) {
 		keys[i] = privateKey
 		addrs[i] = crypto.PubkeyToAddress(privateKey.PublicKey)
 	}
-	vset := validator.NewSet(addrs, istanbul.NewRoundRobinProposerPolicy())
+	vset := validator.NewSet(addrs, nil, istanbul.NewRoundRobinProposerPolicy())
 	sort.Sort(keys) //Keys need to be sorted by its public key address
 	return vset, keys
 }
 
 type Keys []*ecdsa.PrivateKey
 
-func (slice Keys) Len() int {
-	return len(slice)
-}
-
+func (slice Keys) Len() int { return len(slice) }
 func (slice Keys) Less(i, j int) bool {
 	return strings.Compare(crypto.PubkeyToAddress(slice[i].PublicKey).String(), crypto.PubkeyToAddress(slice[j].PublicKey).String()) < 0
 }
-
 func (slice Keys) Swap(i, j int) {
 	slice[i], slice[j] = slice[j], slice[i]
 }
@@ -268,5 +274,9 @@ func newBackend() (b *Backend) {
 	_, b = newBlockChain(1)
 	key, _ := generatePrivateKey()
 	b.privateKey = key
+	// ##CROSS: bls seal
+	blsKey, _ := bls.RandKey()
+	b.blsSecretKey = blsKey
+	// ##
 	return
 }

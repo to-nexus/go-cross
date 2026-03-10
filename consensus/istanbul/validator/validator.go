@@ -18,21 +18,25 @@ package validator
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
-func New(addr common.Address) istanbul.Validator {
-	return &defaultValidator{
-		address: addr,
+func New(addr common.Address, signerAddr types.BLSPublicKey) istanbul.Validator {
+	return &blsValidator{
+		address:    addr,
+		signerAddr: signerAddr, // ##CROSS: bls seal
 	}
 }
 
-func NewSet(addrs []common.Address, policy *istanbul.ProposerPolicy) istanbul.ValidatorSet {
-	return newDefaultSet(addrs, policy)
+func NewSet(addrs []common.Address, signerAddrs []types.BLSPublicKey, policy *istanbul.ProposerPolicy) istanbul.ValidatorSet { // ##CROSS: bls seal
+	return newDefaultSet(addrs, signerAddrs, policy)
 }
 
+// Deprecated: use types.ExtractIstanbulExtra instead
 func ExtractValidators(extraData []byte) []common.Address {
 	// get the validator addresses
 	addrs := make([]common.Address, (len(extraData) / common.AddressLength))
@@ -44,6 +48,7 @@ func ExtractValidators(extraData []byte) []common.Address {
 }
 
 // Check whether the extraData is presented in prescribed form
+// Deprecated: use types.ExtractIstanbulExtra instead
 func ValidExtraData(extraData []byte) bool {
 	return len(extraData)%common.AddressLength == 0
 }
@@ -54,13 +59,21 @@ func SortedAddresses(validators []istanbul.Validator) []common.Address {
 		addrs[i] = validator.Address()
 	}
 
-	for i := 0; i < len(addrs); i++ {
-		for j := i + 1; j < len(addrs); j++ {
-			if bytes.Compare(addrs[i][:], addrs[j][:]) > 0 {
-				addrs[i], addrs[j] = addrs[j], addrs[i]
-			}
-		}
-	}
+	slices.SortFunc(addrs, func(a, b common.Address) int {
+		return bytes.Compare(a[:], b[:])
+	})
 
 	return addrs
 }
+
+// ##CROSS: bls seal
+func SortedValidators(validators []istanbul.Validator) []istanbul.Validator {
+	sorted := make([]istanbul.Validator, len(validators))
+	copy(sorted, validators)
+	slices.SortFunc(sorted, func(a, b istanbul.Validator) int {
+		return bytes.Compare(a.Address().Bytes(), b.Address().Bytes())
+	})
+	return sorted
+}
+
+// ##

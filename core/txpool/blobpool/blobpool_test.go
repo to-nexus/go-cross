@@ -1391,7 +1391,7 @@ func TestAdd(t *testing.T) {
 				},
 			},
 		},
-		// Previously existing transactions should be allowed to be replaced iff
+		// Previously existing transactions should be allowed to be replaced if
 		// the new cumulative expenditure can be covered by the account and the
 		// prices are bumped all around (no percentage check here).
 		{
@@ -1441,7 +1441,7 @@ func TestAdd(t *testing.T) {
 				},
 			},
 		},
-		// Previously existing transactions should be allowed to be replaced iff
+		// Previously existing transactions should be allowed to be replaced if
 		// the new prices are bumped by a sufficient amount.
 		{
 			seeds: map[string]seed{
@@ -1608,6 +1608,41 @@ func TestAdd(t *testing.T) {
 		pool.Close()
 	}
 }
+
+// ##CROSS: istanbul blob tx
+func TestAddIstanbul(t *testing.T) {
+	// Chain with istanbul consensus engine
+	testChainConfig := *params.MainnetChainConfig
+	testChainConfig.Istanbul = &params.IstanbulConfig{}
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	chain := &testBlockChain{
+		config:  &testChainConfig,
+		basefee: uint256.NewInt(1050),
+		blobfee: uint256.NewInt(105),
+		statedb: statedb,
+	}
+
+	pool := New(Config{}, chain, nil)
+	if err := pool.Init(1, chain.CurrentBlock(), newReserver()); err != nil {
+		t.Fatalf("failed to create blob pool: %v", err)
+	}
+
+	// Setup an account
+	key, _ := crypto.GenerateKey()
+	addr := crypto.PubkeyToAddress(key.PublicKey)
+	tx := makeUnsignedTx(0, 1, 1, 1)
+	statedb.AddBalance(addr, new(uint256.Int).SetUint64(10000000), tracing.BalanceChangeUnspecified)
+	statedb.SetNonce(addr, 0, tracing.NonceChangeUnspecified)
+	statedb.Commit(0, true, false)
+
+	// Should fail to add blob tx because Istanbul consensus engine is active
+	signed, _ := types.SignNewTx(key, types.LatestSigner(&testChainConfig), tx)
+	if err := pool.add(signed); !errors.Is(err, core.ErrTxTypeNotSupported) {
+		t.Errorf("adding transaction error mismatch: have %v, want %v", err, core.ErrTxTypeNotSupported)
+	}
+}
+
+// ##
 
 // fakeBilly is a billy.Database implementation which just drops data on the floor.
 type fakeBilly struct {

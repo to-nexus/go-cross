@@ -85,7 +85,7 @@ func (api *API) signers(header *types.Header) (*BlockSigners, error) {
 		return nil, err
 	}
 
-	committers, err := api.backend.Signers(header)
+	committers, err := api.backend.Signers(api.chain, header)
 	if err != nil {
 		return nil, err
 	}
@@ -279,12 +279,12 @@ type IstanbulConfig struct {
 	AllowedFutureBlockTime   uint64           `json:"allowedFutureBlockTime"`
 	Validators               []common.Address `json:"validators"`
 	MaxRequestTimeout        uint64           `json:"maxRequestTimeout"`
-	Beneficiary              *common.Address  `json:"beneficiary"`
 	GasLimit                 uint64           `json:"gasLimit"`
 	ElasticityMultiplier     uint64           `json:"elasticityMultiplier"`
 	BaseFeeChangeDenominator uint64           `json:"baseFeeChangeDenominator"`
 	MaxBaseFee               *big.Int         `json:"maxBaseFee"`
 	MinBaseFee               *big.Int         `json:"minBaseFee"`
+	CouncilPeriod            uint64           `json:"councilPeriod"`
 }
 
 func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
@@ -307,16 +307,16 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 		EmptyBlockPeriod:       istConfig.EmptyBlockPeriod,
 		Epoch:                  istConfig.Epoch,
 		AllowedFutureBlockTime: istConfig.AllowedFutureBlockTime,
-		Validators:             istConfig.Validators,
 		MaxRequestTimeout:      istConfig.MaxRequestTimeoutSeconds,
+		CouncilPeriod:          istConfig.CouncilPeriod,
 	}
 	if istConfig.ProposerPolicy != nil {
 		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)
 	}
+	ret.Validators = api.backend.ValidatorsAt(api.chain, header)
 
 	chainConfig := api.chain.Config()
 
-	ret.Beneficiary = chainConfig.GetBeneficiaryAddress(header.Number)
 	if gasLimit := chainConfig.GetGasLimit(header.Number); gasLimit != nil {
 		ret.GasLimit = *gasLimit
 	} else {

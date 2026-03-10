@@ -23,8 +23,8 @@ type Client struct {
 	c      *rpc.Client
 	log    log.Logger
 
-	accesslistLock    sync.RWMutex
-	accesslistVersion common.Hash
+	accessListLock    sync.RWMutex
+	accessListVersion common.Hash
 	whitelistFrom     map[common.Address]struct{}
 	whitelistTo       map[common.Address]struct{}
 	blacklistFrom     map[common.Address]struct{}
@@ -58,8 +58,8 @@ func NewClient(ctx context.Context, c *rpc.Client, rawurl string) *Client {
 			c:      c,
 			log:    log.New("module", "gasabs"),
 
-			accesslistLock:    sync.RWMutex{},
-			accesslistVersion: common.Hash{},
+			accessListLock:    sync.RWMutex{},
+			accessListVersion: common.Hash{},
 			whitelistFrom:     make(map[common.Address]struct{}),
 			whitelistTo:       make(map[common.Address]struct{}),
 			blacklistFrom:     make(map[common.Address]struct{}),
@@ -76,7 +76,7 @@ func (ec *Client) sync() {
 		ctx, cancel := context.WithTimeout(ec.ctx, syncInterval)
 		err := ec.syncAccessList(ctx)
 		if err != nil {
-			ec.log.Error("Failed to request accesslist", "error", err)
+			ec.log.Error("Failed to request accessList", "error", err)
 		}
 		cancel()
 
@@ -117,34 +117,34 @@ func (ec *Client) SignFeeDelegateTransaction(ctx context.Context, tx *types.Tran
 
 // IsApproved
 func (ec *Client) IsApprovedFrom(ctx context.Context, address common.Address) (approved bool) {
-	ec.accesslistLock.RLock()
+	ec.accessListLock.RLock()
 	_, approved = ec.whitelistFrom[address]
-	ec.accesslistLock.RUnlock()
+	ec.accessListLock.RUnlock()
 	return
 }
 
 func (ec *Client) IsApprovedTo(ctx context.Context, address common.Address) (approved bool) {
-	ec.accesslistLock.RLock()
+	ec.accessListLock.RLock()
 	_, approved = ec.whitelistTo[address]
-	ec.accesslistLock.RUnlock()
+	ec.accessListLock.RUnlock()
 	return
 }
 
 func (ec *Client) IsBlacklistedFrom(ctx context.Context, address common.Address) (blacklisted bool) {
-	ec.accesslistLock.RLock()
+	ec.accessListLock.RLock()
 	_, blacklisted = ec.blacklistFrom[address]
-	ec.accesslistLock.RUnlock()
+	ec.accessListLock.RUnlock()
 	return
 }
 
 func (ec *Client) IsBlacklistedTo(ctx context.Context, address common.Address) (blacklisted bool) {
-	ec.accesslistLock.RLock()
+	ec.accessListLock.RLock()
 	_, blacklisted = ec.blacklistTo[address]
-	ec.accesslistLock.RUnlock()
+	ec.accessListLock.RUnlock()
 	return
 }
 
-type accesslistResp struct {
+type accessListResp struct {
 	Version       common.Hash      `json:"version"`
 	WhitelistFrom []common.Address `json:"whitelist_from"`
 	WhitelistTo   []common.Address `json:"whitelist_to"`
@@ -153,13 +153,13 @@ type accesslistResp struct {
 }
 
 func (ec *Client) syncAccessList(ctx context.Context) error {
-	var accesslist accesslistResp
-	err := ec.c.CallContext(ctx, &accesslist, "gasabs_accesslist", ec.accesslistVersion)
+	var accessList accessListResp
+	err := ec.c.CallContext(ctx, &accessList, "gasabs_accesslist", ec.accessListVersion)
 	if err != nil {
 		return err
 	}
 
-	if accesslist.Version == ec.accesslistVersion {
+	if accessList.Version == ec.accessListVersion {
 		return nil
 	}
 
@@ -167,28 +167,28 @@ func (ec *Client) syncAccessList(ctx context.Context) error {
 	whitelistTo := make(map[common.Address]struct{})
 	blacklistFrom := make(map[common.Address]struct{})
 	blacklistTo := make(map[common.Address]struct{})
-	for _, from := range accesslist.WhitelistFrom {
+	for _, from := range accessList.WhitelistFrom {
 		whitelistFrom[from] = struct{}{}
 	}
-	for _, to := range accesslist.WhitelistTo {
+	for _, to := range accessList.WhitelistTo {
 		whitelistTo[to] = struct{}{}
 	}
-	for _, from := range accesslist.BlacklistFrom {
+	for _, from := range accessList.BlacklistFrom {
 		blacklistFrom[from] = struct{}{}
 	}
-	for _, to := range accesslist.BlacklistTo {
+	for _, to := range accessList.BlacklistTo {
 		blacklistTo[to] = struct{}{}
 	}
 
-	ec.accesslistLock.Lock()
-	ec.accesslistVersion = accesslist.Version
+	ec.accessListLock.Lock()
+	ec.accessListVersion = accessList.Version
 	ec.whitelistFrom = whitelistFrom
 	ec.whitelistTo = whitelistTo
 	ec.blacklistFrom = blacklistFrom
 	ec.blacklistTo = blacklistTo
-	ec.accesslistLock.Unlock()
+	ec.accessListLock.Unlock()
 
-	ec.log.Info("Gasabs accesslist updated", "version", ec.accesslistVersion, "whitelist_from_length", len(ec.whitelistFrom), "whitelist_to_length", len(ec.whitelistTo), "blacklist_from_length", len(ec.blacklistFrom), "blacklist_to_length", len(ec.blacklistTo))
+	ec.log.Info("Gasabs accessList updated", "version", ec.accessListVersion, "whitelist_from_length", len(ec.whitelistFrom), "whitelist_to_length", len(ec.whitelistTo), "blacklist_from_length", len(ec.blacklistFrom), "blacklist_to_length", len(ec.blacklistTo))
 	return nil
 }
 

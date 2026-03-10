@@ -271,6 +271,13 @@ const (
 	// BalanceChangeRevert is emitted when the balance is reverted back to a previous value due to call failure.
 	// It is only emitted when the tracer has opted in to use the journaling wrapper (WrapWithJournal).
 	BalanceChangeRevert BalanceChangeReason = 15
+
+	// ##CROSS: validator reward
+	// BalanceDecreaseDistributeReward is emitted when system address' balance is decreased due to distributing rewards.
+	// BalanceDecreaseDistributeReward BalanceChangeReason = 100
+	// BalanceIncreaseDistributeReward is emitted when the validator's balance is increased due to distributing rewards.
+	// BalanceIncreaseDistributeReward BalanceChangeReason = 101
+	// ##
 )
 
 // GasChangeReason is used to indicate the reason for a gas change, useful

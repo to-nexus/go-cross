@@ -141,6 +141,17 @@ func (s *hookedStateDB) Prepare(rules params.Rules, sender, coinbase common.Addr
 	s.inner.Prepare(rules, sender, coinbase, dest, precompiles, txAccesses)
 }
 
+// ##CROSS: consensus system contract
+func (s *hookedStateDB) SetTxContext(thash common.Hash, ti int) {
+	s.inner.SetTxContext(thash, ti)
+}
+
+func (s *hookedStateDB) TxIndex() int {
+	return s.inner.TxIndex()
+}
+
+// ##
+
 func (s *hookedStateDB) RevertToSnapshot(i int) {
 	s.inner.RevertToSnapshot(i)
 }
@@ -260,6 +271,13 @@ func (s *hookedStateDB) AddLog(log *types.Log) {
 		s.hooks.OnLog(log)
 	}
 }
+
+// ##CROSS: consensus system contract
+func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash) []*types.Log {
+	return s.inner.GetLogs(hash, blockNumber, blockHash)
+}
+
+// ##
 
 func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) {
 	defer s.inner.Finalise(deleteEmptyObjects)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type defaultValidator struct {
@@ -37,7 +38,27 @@ func (val *defaultValidator) String() string {
 	return val.Address().String()
 }
 
-// ----------------------------------------------------------------------------
+func (val *defaultValidator) SignerAddress() types.BLSPublicKey {
+	return types.BLSPublicKey{}
+}
+
+// ##CROSS: bls seal
+type blsValidator struct {
+	address    common.Address
+	signerAddr types.BLSPublicKey
+}
+
+func (val *blsValidator) Address() common.Address {
+	return val.address
+}
+
+func (val *blsValidator) String() string {
+	return val.Address().String()
+}
+
+func (val *blsValidator) SignerAddress() types.BLSPublicKey {
+	return val.signerAddr
+}
 
 type defaultSet struct {
 	validators istanbul.Validators
@@ -48,14 +69,18 @@ type defaultSet struct {
 	selector    istanbul.ProposalSelector
 }
 
-func newDefaultSet(addrs []common.Address, policy *istanbul.ProposerPolicy) *defaultSet {
+func newDefaultSet(addrs []common.Address, signerAddrs []types.BLSPublicKey, policy *istanbul.ProposerPolicy) *defaultSet {
 	valSet := &defaultSet{}
 
 	valSet.policy = policy
 	// init validators
 	valSet.validators = make([]istanbul.Validator, len(addrs))
 	for i, addr := range addrs {
-		valSet.validators[i] = New(addr)
+		var signerAddr types.BLSPublicKey
+		if i < len(signerAddrs) {
+			signerAddr = signerAddrs[i]
+		}
+		valSet.validators[i] = New(addr, signerAddr) // ##CROSS: bls seal
 	}
 
 	valSet.SortValidators()
@@ -163,7 +188,7 @@ func stickyProposer(valSet istanbul.ValidatorSet, proposer common.Address, round
 	return valSet.GetByIndex(pick)
 }
 
-func (valSet *defaultSet) AddValidator(address common.Address) bool {
+func (valSet *defaultSet) AddValidator(address common.Address, signerAddr types.BLSPublicKey) bool {
 	valSet.validatorMu.Lock()
 	defer valSet.validatorMu.Unlock()
 	for _, v := range valSet.validators {
@@ -171,7 +196,7 @@ func (valSet *defaultSet) AddValidator(address common.Address) bool {
 			return false
 		}
 	}
-	valSet.validators = append(valSet.validators, New(address))
+	valSet.validators = append(valSet.validators, New(address, signerAddr)) // ##CROSS: bls seal
 	// TODO: we may not need to re-sort it again
 	// sort validator
 	valSet.SortValidators()
@@ -196,10 +221,12 @@ func (valSet *defaultSet) Copy() istanbul.ValidatorSet {
 	defer valSet.validatorMu.RUnlock()
 
 	addresses := make([]common.Address, 0, len(valSet.validators))
+	signerAddrs := make([]types.BLSPublicKey, 0, len(valSet.validators))
 	for _, v := range valSet.validators {
 		addresses = append(addresses, v.Address())
+		signerAddrs = append(signerAddrs, v.SignerAddress())
 	}
-	return NewSet(addresses, valSet.policy)
+	return NewSet(addresses, signerAddrs, valSet.policy)
 }
 
 func (valSet *defaultSet) QuorumSize() int {

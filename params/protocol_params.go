@@ -174,6 +174,11 @@ const (
 	BlobTxMinBlobGasprice              = 1       // Minimum gas price for data blobs
 	BlobTxPointEvaluationPrecompileGas = 50000   // Gas price for the point evaluation precompile.
 
+	// ##CROSS: bls seal
+	BlsSignatureVerifyBaseGas   uint64 = 1000 // base price for a BLS signature verification operation
+	BlsSignatureVerifyPerKeyGas uint64 = 3500 // Per-key price for a BLS signature verification operation
+	// ##
+
 	HistoryServeWindow = 8192 // Number of blocks to serve historical block hashes for, EIP-2935.
 )
 

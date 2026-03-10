@@ -92,3 +92,16 @@ func (v *View) Cmp(y *View) int {
 	}
 	return 0
 }
+
+// ##CROSS: bls seal
+// SignedSeal represents a signature for a block seal.
+type SignedSeal interface {
+	// Index is the index of the signer in the validator set.
+	Index() uint
+	// Signer is the ECDSA address of the signer.
+	Signer() common.Address
+	// Signature is the signature signed by the signer's BLS secret key.
+	Signature() []byte
+}
+
+// ##

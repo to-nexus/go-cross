@@ -4,24 +4,34 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
+	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -30,52 +40,186 @@ var (
 )
 
 type SignerFn func(data []byte) ([]byte, error)
+type SignerTxFn func(accounts.Account, *types.Transaction, *big.Int) (*types.Transaction, error)
+type BLSSignerFn func(data []byte) ([]byte, error) // ##CROSS: bls random reveal
 
 type Engine struct {
 	cfg *istanbul.Config
 
 	signer common.Address // Ethereum address of the signing key
 	sign   SignerFn       // Signer function to authorize hashes with
+
+	blsSign BLSSignerFn // ##CROSS: bls random reveal
+
+	// ##CROSS: consensus system contract
+	contractBackend bind.ContractBackend
+	signTx          SignerTxFn
+	consensus       consensus.Engine
+
+	// system contracts
+	istanbulParam  *breakpoint.IstanbulParam
+	validatorSet   *breakpoint.ValidatorSet
+	stakeHub       *breakpoint.StakeHub
+	validatorSlash *breakpoint.ValidatorSlash
+	// ##
 }
 
-func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn) *Engine {
-	return &Engine{
-		cfg:    cfg,
-		signer: signer,
-		sign:   sign,
+func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, blsSign BLSSignerFn, ce consensus.Engine, contractBackend bind.ContractBackend) *Engine {
+	e := &Engine{
+		cfg:     cfg,
+		signer:  signer,
+		sign:    sign,
+		blsSign: blsSign, // ##CROSS: bls random reveal
+		// ##CROSS: consensus system contract
+		contractBackend: contractBackend,
+		signTx:          signTx,
+		consensus:       ce,
+		istanbulParam:   breakpoint.NewIstanbulParam(),
+		validatorSet:    breakpoint.NewValidatorSet(),
+		stakeHub:        breakpoint.NewStakeHub(),
+		validatorSlash:  breakpoint.NewValidatorSlash(),
+		// ##
 	}
+	return e
 }
 
+// ##CROSS: consensus system contract
+
+// IsSystemTransaction checks if the transaction is a system transaction.
+// A system transaction is a transaction to a system contract with gas price 0 and sender is the block proposer.
+func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	if to := tx.To(); to == nil || !contracts.IsSystemContract(*to) {
+		return false, nil
+	}
+	if tx.GasPrice().Sign() != 0 {
+		return false, nil
+	}
+	sender, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	if err != nil {
+		return false, err
+	}
+	return sender == header.Coinbase, nil
+}
+
+// IsSystemContract checks if the address is a system contract.
+func (e *Engine) IsSystemContract(to *common.Address) bool {
+	if to == nil {
+		return false
+	}
+	return contracts.IsSystemContract(*to)
+}
+
+const (
+	systemTxsGasBreakpoint = 2_000_000
+	systemTxsGasNewPeriod  = 1_500_000
+	systemTxsGasUsual      = 1_000_000
+)
+
+func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+	if !chain.Config().IsBreakpoint(header.Number, header.Time) {
+		// No system transactions yet
+		return 0
+	}
+
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent != nil {
+		// Possible system transactions and approx. gas costs:
+		//   Initialize system contracts (on hardfork): 1,100,000 on Breakpoint
+		//   Slash and jail a validator: 300,000
+		//   Distribute rewards: 200,000
+		//   Reduce slash counters (on new day block): 30,000
+		//   Update validator set (on new day block): 70,000
+		if chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
+			return systemTxsGasBreakpoint
+		}
+		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+			if e.cfg.OnNewCouncilPeriod(parent.Time, header.Time) {
+				return systemTxsGasNewPeriod
+			}
+		}
+	}
+	return systemTxsGasUsual
+}
+
+// ##
+
+// Author returns the author of the block, which is the block proposer.
 func (e *Engine) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
 }
 
-func (e *Engine) CommitHeader(header *types.Header, seals [][]byte, round *big.Int) error {
+// CommitHeader commits the header with given seals and round number.
+func (e *Engine) CommitHeader(chain consensus.ChainHeaderReader, header *types.Header, seals []istanbul.SignedSeal, round *big.Int) error {
 	return ApplyHeaderIstanbulExtra(
 		header,
-		writeCommittedSeals(seals),
+		writeCommittedSeals(chain, header, seals),
 		writeRoundNumber(round),
 	)
 }
 
 // writeCommittedSeals writes the extra-data field of a block header with given committed seals.
-func writeCommittedSeals(committedSeals [][]byte) ApplyExtra {
+func writeCommittedSeals(chain consensus.ChainHeaderReader, header *types.Header, committedSeals []istanbul.SignedSeal) ApplyExtra {
+	// ##CROSS: bls seal
+	if chain != nil && header != nil && chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		return func(extra *types.IstanbulExtra) error {
+			if len(committedSeals) == 0 {
+				return istanbul.ErrInvalidCommittedSeals
+			}
+			// aggregate seal signatures
+			bs := bitset.New(uint(len(committedSeals)))
+			sigs := make([][]byte, 0, len(committedSeals))
+			for _, seal := range committedSeals {
+				if bs.Test(seal.Index()) {
+					return istanbul.ErrDuplicatedSigner
+				}
+				if len(seal.Signature()) != types.IstanbulExtraSealBLS {
+					return istanbul.ErrInvalidCommittedSeals
+				}
+				sigs = append(sigs, seal.Signature())
+				bs.Set(seal.Index())
+			}
+
+			aggSig, err := bls.AggregateCompressedSignatures(sigs)
+			if err != nil {
+				return err
+			}
+
+			extra.SignersBitset = bs.Words()
+			extra.CommittedSeal = [][]byte{aggSig.Marshal()}
+			return nil
+		}
+	}
+	// ##
 	return func(extra *types.IstanbulExtra) error {
 		if len(committedSeals) == 0 {
 			return istanbul.ErrInvalidCommittedSeals
 		}
-
+		extra.CommittedSeal = make([][]byte, 0, len(committedSeals))
 		for _, seal := range committedSeals {
-			if len(seal) != types.IstanbulExtraSeal {
+			if len(seal.Signature()) != types.IstanbulExtraSeal {
 				return istanbul.ErrInvalidCommittedSeals
 			}
+			extra.CommittedSeal = append(extra.CommittedSeal, seal.Signature())
 		}
-
-		extra.CommittedSeal = make([][]byte, len(committedSeals))
-		copy(extra.CommittedSeal, committedSeals)
 
 		return nil
 	}
+}
+
+func aggregateCommittedSeals(committedSeals []istanbul.SignedSeal) ([]byte, error) {
+	sigs := make([][]byte, 0, len(committedSeals))
+	for _, seal := range committedSeals {
+		if len(seal.Signature()) != types.IstanbulExtraSealBLS {
+			return nil, istanbul.ErrInvalidCommittedSeals
+		}
+		sigs = append(sigs, seal.Signature())
+	}
+
+	aggSig, err := bls.AggregateCompressedSignatures(sigs)
+	if err != nil {
+		return nil, err
+	}
+	return aggSig.Marshal(), nil
 }
 
 // writeRoundNumber writes the extra-data field of a block header with given round.
@@ -86,6 +230,7 @@ func writeRoundNumber(round *big.Int) ApplyExtra {
 	}
 }
 
+// VerifyBlockProposal verifies the block proposal.
 func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *types.Block, validators istanbul.ValidatorSet) (time.Duration, error) {
 	// check block body
 	txnHash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil))
@@ -119,11 +264,12 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 	return 0, err
 }
 
+// VerifyHeader verifies the header of the block.
 func (e *Engine) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {
 	return e.verifyHeader(chain, header, parents, validators)
 }
 
-// verifyHeader checks whether a header conforms to the consensus rules.The
+// verifyHeader checks whether a header conforms to the consensus rules. The
 // caller may optionally pass in a batch of parents (ascending order) to avoid
 // looking those up from the database. This is useful for concurrently verifying
 // a batch of new headers.
@@ -156,6 +302,15 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	if header.Difficulty == nil || header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
 		return istanbul.ErrInvalidDifficulty
 	}
+
+	// ##CROSS: istanbul param
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// Need to sync Istanbul param before verifying the header
+		if err := e.SyncIstanbulParam(header); err != nil {
+			return err
+		}
+	}
+	// ##
 
 	// Verify the existence / non-existence of cancun-specific header fields
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
@@ -196,6 +351,7 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	return e.verifyCascadingFields(chain, header, validators, parents)
 }
 
+// VerifyHeaders verifies the headers of the block.
 func (e *Engine) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool, validators istanbul.ValidatorSet) (chan<- struct{}, <-chan error) {
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
@@ -282,7 +438,7 @@ func (e *Engine) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	return e.verifyCommittedSeals(chain, header, parents, validators)
 }
 
-func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.Header, _ []*types.Header, validators istanbul.ValidatorSet) error {
+func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {
 	// Verifying the genesis block is not supported
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -296,28 +452,72 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 	}
 
 	// Signer should be in the validator set of previous block's extraData.
-	if _, v := validators.GetByAddress(signer); v == nil {
+	_, validator := validators.GetByAddress(signer)
+	if validator == nil {
 		return istanbul.ErrUnauthorized
 	}
 
-	if extra, err := types.ExtractIstanbulExtra(header); err != nil {
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
 		return err
+	}
+
+	var parent *types.Header
+	if len(parents) > 0 {
+		parent = parents[len(parents)-1]
 	} else {
-		signature := extra.RandomReveal
-		if pub, err := crypto.SigToPub(crypto.Keccak256(header.Number.Bytes(), chain.Config().ChainID.Bytes()), signature); err != nil {
+		parent = chain.GetHeader(header.ParentHash, number-1)
+	}
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	var (
+		signature        = extra.RandomReveal
+		randomRevealData = makeRandomRevealData(header.Number, chain.Config().ChainID)
+		mixHash          common.Hash
+	)
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: bls random reveal
+		// Verify the BLS signature
+		signerPubKey := validator.SignerAddress()
+		if signerPubKey == (types.BLSPublicKey{}) {
+			return istanbul.ErrInvalidPublicKey
+		}
+		pubkey, err := bls.PublicKeyFromBytes(signerPubKey.Bytes())
+		if err != nil {
+			return err
+		}
+		sig, err := bls.SignatureFromBytes(signature)
+		if err != nil {
+			return err
+		}
+		if !sig.Verify(pubkey, randomRevealData) {
+			return istanbul.ErrInvalidSignature
+		}
+
+		mixHash = makeMixHashBLS(signature, parent.MixDigest)
+		// ##
+	} else {
+		// Verify the ECDSA signature
+		if pub, err := crypto.SigToPub(crypto.Keccak256(randomRevealData), signature); err != nil {
 			return err
 		} else if crypto.PubkeyToAddress(*pub) != signer {
 			return istanbul.ErrMismatchedRandomSignature
-		} else if header.MixDigest != types.MakeIstanbulDigest(crypto.Keccak256Hash(signature)) {
-			return istanbul.ErrInvalidMixDigest
 		}
+
+		mixHash = makeMixHash(signature)
+	}
+
+	// Verify the mix digest
+	if header.MixDigest != types.MakeIstanbulDigest(mixHash) {
+		return istanbul.ErrInvalidMixDigest
 	}
 
 	return nil
 }
 
 // verifyCommittedSeals checks whether every committed seal is signed by one of the parent's validators
-func (e *Engine) verifyCommittedSeals(_ consensus.ChainHeaderReader, header *types.Header, _ []*types.Header, validators istanbul.ValidatorSet) error {
+func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header *types.Header, _ []*types.Header, validators istanbul.ValidatorSet) error {
 	number := header.Number.Uint64()
 
 	if number == 0 {
@@ -336,25 +536,67 @@ func (e *Engine) verifyCommittedSeals(_ consensus.ChainHeaderReader, header *typ
 		return istanbul.ErrEmptyCommittedSeals
 	}
 
-	validatorsCpy := validators.Copy()
-
-	// Check whether the committed seals are generated by validators
-	validSeal := 0
-	committers, err := e.Signers(header)
-	if err != nil {
-		return err
-	}
-
-	for _, addr := range committers {
-		if validatorsCpy.RemoveValidator(addr) {
-			validSeal++
-			continue
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: bls seal
+		// For BLS seal, only one committed seal must be present
+		if len(committedSeal) != 1 {
+			return istanbul.ErrInvalidCommittedSeals
 		}
-		return istanbul.ErrInvalidCommittedSeals
-	}
 
-	if validSeal < validators.QuorumSize() {
-		return istanbul.ErrInvalidCommittedSeals
+		// Verify the BLS aggregated signature
+		_, pubs, err := e.BLSSigners(header, validators)
+		if err != nil {
+			return err
+		}
+		pubkeys := make([]bls.PublicKey, 0, len(pubs))
+		for _, pub := range pubs {
+			pubkey, err := bls.PublicKeyFromBytes(pub.Bytes())
+			if err != nil {
+				return err
+			}
+			pubkeys = append(pubkeys, pubkey)
+		}
+
+		if len(pubkeys) < validators.QuorumSize() {
+			return istanbul.ErrInvalidCommittedSeals
+		}
+
+		proposalSeal := prepareCommittedSealHash(header, extra.Round)
+		sig, err := bls.SignatureFromBytes(committedSeal[0])
+		if err != nil {
+			return err
+		}
+
+		if !sig.FastAggregateVerify(pubkeys, proposalSeal) {
+			pubkeystr := make([]string, 0, len(pubkeys))
+			for _, pubkey := range pubkeys {
+				pubkeystr = append(pubkeystr, hexutil.Encode(pubkey.Marshal()))
+			}
+			log.Error("Istanbul: failed to verify aggregated seal", "sig", hexutil.Encode(sig.Marshal()), "pubkeys", pubkeystr, "proposalSeal", proposalSeal.String())
+			return istanbul.ErrInvalidCommittedSeals
+		}
+		// ##
+	} else {
+		validatorsCpy := validators.Copy()
+
+		// Check whether the committed seals are generated by validators
+		validSeal := 0
+		committers, err := e.Signers(header)
+		if err != nil {
+			return err
+		}
+
+		for _, addr := range committers {
+			if validatorsCpy.RemoveValidator(addr) {
+				validSeal++
+				continue
+			}
+			return istanbul.ErrInvalidCommittedSeals
+		}
+
+		if validSeal < validators.QuorumSize() {
+			return istanbul.ErrInvalidCommittedSeals
+		}
 	}
 
 	return nil
@@ -386,57 +628,120 @@ func (e *Engine) VerifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	return e.verifySigner(chain, header, nil, validators)
 }
 
+func makeMixHash(randomReveal []byte) common.Hash {
+	return crypto.Keccak256Hash(randomReveal)
+}
+
+// ##CROSS: bls random reveal
+func makeRandomRevealData(number *big.Int, chainID *big.Int) []byte {
+	return append(number.Bytes(), chainID.Bytes()...)
+}
+
+func makeMixHashBLS(randomReveal []byte, lastMixHash common.Hash) (mixHash common.Hash) {
+	randomRevealHash := crypto.Keccak256Hash(randomReveal)
+	// IstanbulDigest has 16 bytes of fixed prefix, so we only take the last 16 bytes of the mix digest
+	lastMixHashPart := lastMixHash[16:]
+	for i := 0; i < 16; i++ {
+		// Only the first 16 bytes of mixHash will be merged into the IstanbulDigest
+		mixHash[i] = lastMixHashPart[i] ^ randomRevealHash[i]
+	}
+	return
+}
+
+// ##
+
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
 
-	// make mixdigest
-	signed, err := e.sign(append(header.Number.Bytes(), chain.Config().ChainID.Bytes()...))
-	if err != nil {
-		return err
-	} else {
-		header.MixDigest = types.MakeIstanbulDigest(crypto.Keccak256Hash(signed)) // ##CROSS: istanbul digest
-	}
-
 	// copy the parent extra data as the header extra data
-	number := header.Number.Uint64()
-
-	parent := chain.GetHeader(header.ParentHash, number-1)
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
+
+	// make mixdigest
+	randomRevealData := makeRandomRevealData(header.Number, chain.Config().ChainID)
+
+	var (
+		err          error
+		randomReveal []byte
+		mixHash      common.Hash
+	)
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: bls random reveal
+		// Use BLS signature for random reveal
+		randomReveal, err = e.blsSign(randomRevealData)
+		if err != nil {
+			return err
+		}
+		mixHash = makeMixHashBLS(randomReveal, parent.MixDigest)
+		// ##
+	} else {
+		randomReveal, err = e.sign(randomRevealData)
+		if err != nil {
+			return err
+		}
+		mixHash = makeMixHash(randomReveal)
+	}
+
+	header.MixDigest = types.MakeIstanbulDigest(mixHash) // ##CROSS: istanbul digest
 
 	// use the same difficulty for all blocks
 	header.Difficulty = istanbul.DefaultDifficulty
 
 	// set header's timestamp
 	header.Time = parent.Time + e.cfg.GetConfig(header.Number).BlockPeriod
-	if header.Time < uint64(time.Now().Unix()) {
-		header.Time = uint64(time.Now().Unix())
+	header.Time = max(header.Time, uint64(time.Now().Unix()))
+
+	applies := []ApplyExtra{
+		WriteRandomReveal(chain, header, randomReveal),
 	}
 
-	// currentBlockNumber := big.NewInt(0).SetUint64(number - 1)
-	// for _, transition := range e.cfg.Transitions {
-	// 	if transition.Block.Cmp(currentBlockNumber) == 0 && len(transition.Validators) > 0 {
-	// 		toRemove := make([]istanbul.Validator, 0, validators.Size())
-	// 		l := validators.List()
-	// 		toRemove = append(toRemove, l...)
-	// 		for i := range toRemove {
-	// 			validators.RemoveValidator(toRemove[i].Address())
-	// 		}
-	// 		for i := range transition.Validators {
-	// 			validators.AddValidator(transition.Validators[i])
-	// 		}
-	// 		break
-	// 	}
-	// }
-	validatorsList := validator.SortedAddresses(validators.List())
+	applyValidators, err := e.prepareValidators(chain, header, validators)
+	if err != nil {
+		return err
+	}
+
 	// add validators in snapshot to extraData's validators section
-	return ApplyHeaderIstanbulExtra(
-		header,
-		WriteValidators(validatorsList),
-		WriteRandomReveal(signed),
-	)
+	if err := ApplyHeaderIstanbulExtra(header, append(applies, applyValidators...)...); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) ([]ApplyExtra, error) {
+	if !chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		return []ApplyExtra{WriteValidators(validator.SortedAddresses(validators.List()))}, nil
+	}
+
+	// ##CROSS: istanbul posa
+	// only update validator set on the beginning of a new epoch
+	epochLength := chain.Config().GetEpochLength(header.Number)
+	if header.Number.Uint64()%epochLength != 0 {
+		return nil, nil
+	}
+
+	// validator list is managed by the system contract
+	validatorList, signerList, err := e.getCurrentValidators(header.Number.Uint64() - 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(validatorList) == 0 {
+		// if validator list is not updated, use the validators from snapshot
+		log.Warn("Prepare: empty validator list, using snapshot", "number", header.Number.Uint64(), "validators", validators.List())
+		// ##CROSS: bls seal
+		sorted := validator.SortedValidators(validators.List())
+		validatorList = make([]common.Address, 0, len(sorted))
+		signerList = make([]types.BLSPublicKey, 0, len(sorted))
+		for _, validator := range sorted {
+			validatorList = append(validatorList, validator.Address())
+			signerList = append(signerList, validator.SignerAddress())
+		}
+		// ##
+	}
+	return []ApplyExtra{WriteValidators(validatorList), WriteSigners(signerList)}, nil
+	// ##
 }
 
 func WriteValidators(validators []common.Address) ApplyExtra {
@@ -446,10 +751,28 @@ func WriteValidators(validators []common.Address) ApplyExtra {
 	}
 }
 
-func WriteRandomReveal(signature []byte) ApplyExtra {
+// ##CROSS: bls seal
+func WriteSigners(signers []types.BLSPublicKey) ApplyExtra {
 	return func(extra *types.IstanbulExtra) error {
-		if len(signature) != 65 {
-			return istanbul.ErrInvalidSignature
+		extra.Signers = signers
+		return nil
+	}
+}
+
+// ##
+
+func WriteRandomReveal(chain consensus.ChainHeaderReader, header *types.Header, signature []byte) ApplyExtra {
+	return func(extra *types.IstanbulExtra) error {
+		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+			// ##CROSS: bls random reveal
+			if len(signature) != types.IstanbulExtraSealBLS {
+				return istanbul.ErrInvalidSignature
+			}
+			// ##
+		} else {
+			if len(signature) != types.IstanbulExtraSeal {
+				return istanbul.ErrInvalidSignature
+			}
 		}
 		extra.RandomReveal = signature
 		return nil
@@ -461,50 +784,162 @@ func WriteRandomReveal(signature []byte) ApplyExtra {
 //
 // Note, the block header and state database might be updated to reflect any
 // consensus rules that happen at finalization (e.g. block rewards).
-func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
-	// Withdrawals processing.
-	if body != nil {
-		for _, w := range body.Withdrawals {
-			// Convert amount from gwei to wei.
-			amount := new(uint256.Int).SetUint64(w.Amount)
-			amount = amount.Mul(amount, uint256.NewInt(params.GWei))
-			state.AddBalance(w.Address, amount, tracing.BalanceIncreaseWithdrawal)
-		}
+//
+// All system transactions will be consumed in this function.
+func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction, receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	// ##CROSS: contract upgrade
+	cx := &chainContext{Chain: chain, engine: e.consensus}
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
 	}
 
-	// Accumulate any block and uncle rewards and commit the final state root
-	e.accumulateRewards(chain, state, header)
+	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+	if upgraded {
+		// consume system transactions
+		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
+		if len(initData) > 0 {
+			// all initData should be included in systemTxs, in same order
+			if systemTxs == nil || len(*systemTxs) < len(initData) {
+				return errors.New("systemTxs is not enough")
+			}
 
-	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	header.UncleHash = nilUncleHash
+			for _, data := range initData {
+				log.Info("Finalize: initializing system contract", "number", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
+				msg := newSystemMessage(header.Coinbase, data.To, data.Data, nil)
+				err := e.applyReceivedSystemTransaction(msg, state, header, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	// ##
+
+	// ##CROSS: istanbul posa
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: validator slash
+		if err := e.slashValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
+			return err
+		}
+		// ##
+
+		// ##CROSS: validator reward
+		if err := e.distributeRewards(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+			log.Error("Failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", header.Coinbase, "usedGas", *usedGas)
+			return err
+		}
+		// ##
+
+		// At the beginning of a new council period
+		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+			// ##CROSS: validator slash
+			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
+				return err
+			}
+			// ##
+
+			// ##CROSS: validator set
+			// Update validator set so it can be used in the new day
+			log.Info("Finalize: updating validator set for the new day", "number", header.Number.Uint64(), "blockTime", header.Time)
+			if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+				log.Error("Failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
+				return err
+			}
+		}
+	} else {
+		// Accumulate any block and uncle rewards and commit the final state root
+		e.accumulateRewards(chain, state, header)
+	}
+	// ##
+
+	return nil
 }
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
+//
+// All system transactions will be created and executed in this function.
+func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
 	// ##CROSS: fork
-	// Withdrawals root should be set after Shanghai but it was missing.
-	// So we set it after Cancun here to activate Cancun correctly.
-	if body != nil {
-		if body.Transactions == nil {
-			body.Transactions = make([]*types.Transaction, 0)
-		}
-		if chain.Config().IsCancun(header.Number, header.Time) {
-			if body.Withdrawals == nil {
-				body.Withdrawals = make([]*types.Withdrawal, 0)
-			}
-		} else {
-			if len(body.Withdrawals) > 0 {
-				return nil, nil, errors.New("withdrawals set before Cancun activation")
-			}
-		}
+	if body == nil {
+		body = &types.Body{}
+	}
+	if body.Transactions == nil {
+		body.Transactions = make([]*types.Transaction, 0)
 	}
 	if receipts == nil {
 		receipts = make([]*types.Receipt, 0)
 	}
 	// ##
 
-	e.Finalize(chain, header, state, body)
+	// ##CROSS: contract upgrade
+	cx := &chainContext{Chain: chain, engine: e.consensus}
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return nil, nil, consensus.ErrUnknownAncestor
+	}
+	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+	if upgraded {
+		// init upgraded contracts
+		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
+
+		for _, data := range initData {
+			log.Info("FinalizeAndAssemble: initializing system contract", "number", header.Number.Uint64(), "contract", data.To, "data", common.Bytes2Hex(data.Data))
+			msg := newSystemMessage(e.signer, data.To, data.Data, nil)
+			err := e.applyGeneratedSystemTransaction(msg, state, header, cx, &body.Transactions, &receipts, &header.GasUsed, tracer)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+	// ##
+
+	// ##CROSS: istanbul posa
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// ##CROSS: validator slash
+		if err := e.slashValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
+			return nil, nil, err
+		}
+		// ##
+
+		// ##CROSS: validator reward
+		if err := e.distributeRewards(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+			log.Error("Failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", e.signer, "usedGas", header.GasUsed)
+			return nil, nil, err
+		}
+		// ##
+
+		// At the beginning of a new council period
+		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+			// ##CROSS: validator slash
+			if err := e.mitigateSlashedValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
+				return nil, nil, err
+			}
+			// ##
+
+			// Update validator set so it can be used in the new day
+			log.Info("FinalizeAndAssemble: updating validator set for the new day", "number", header.Number.Uint64(), "blockTime", header.Time)
+			if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+				log.Error("Failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
+				return nil, nil, err
+			}
+		}
+	}
+	// ##
+
+	// Should not happen. Once happen, stopping the node is better than broadcasting the block
+	if header.GasLimit < header.GasUsed {
+		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
+	}
+
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+	header.UncleHash = nilUncleHash
+
 	// Assemble and return the final block for sealing
 	blk := types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
 	return blk, receipts, nil
@@ -538,14 +973,43 @@ func (e *Engine) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, 
 	return new(big.Int)
 }
 
-func (e *Engine) ExtractGenesisValidators(header *types.Header) ([]common.Address, error) {
+func (e *Engine) ExtractValidators(header *types.Header) ([]common.Address, []types.BLSPublicKey, error) {
 	extra, err := types.ExtractIstanbulExtra(header)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return extra.Validators, nil
+	return extra.Validators, extra.Signers, nil
 }
+
+// ##CROSS: bls seal
+func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSet) ([]common.Address, []types.BLSPublicKey, error) {
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	bs := bitset.From(extra.SignersBitset)
+	if bs.Count() == 0 {
+		return nil, nil, istanbul.ErrEmptySigners
+	}
+
+	addrs := make([]common.Address, 0, bs.Count())
+	pubkeys := make([]types.BLSPublicKey, 0, bs.Count())
+	for index, validator := range validators.List() {
+		if !bs.Test(uint(index)) {
+			continue
+		}
+		addrs = append(addrs, validator.Address())
+		pubkeys = append(pubkeys, validator.SignerAddress())
+	}
+	if len(pubkeys) == 0 {
+		return nil, nil, istanbul.ErrEmptySigners
+	}
+	return addrs, pubkeys, nil
+}
+
+// ##
 
 func (e *Engine) Signers(header *types.Header) ([]common.Address, error) {
 	extra, err := types.ExtractIstanbulExtra(header)
@@ -590,8 +1054,12 @@ func sigHash(header *types.Header) (hash common.Hash) {
 
 // PrepareCommittedSeal returns a committed seal for the given hash
 func PrepareCommittedSeal(header *types.Header, round uint32) []byte {
+	return prepareCommittedSealHash(header, round).Bytes()
+}
+
+func prepareCommittedSealHash(header *types.Header, round uint32) common.Hash {
 	h := types.CopyHeader(header)
-	return h.IstanbulHashWithRoundNumber(round).Bytes()
+	return h.IstanbulHashWithRoundNumber(round)
 }
 
 func (e *Engine) WriteVote(header *types.Header, candidate common.Address, authorize bool) error {
@@ -670,3 +1138,209 @@ func setExtra(h *types.Header, extra *types.IstanbulExtra) error {
 // AccumulateRewards credits the beneficiary of the given block with a reward.
 func (e *Engine) accumulateRewards(chain consensus.ChainHeaderReader, state vm.StateDB, header *types.Header) {
 }
+
+// ##CROSS: consensus system contract
+
+// applyGeneratedSystemTransaction applies a system transaction to the state.
+// It creates a system transaction from the given message, signs it using the engine's signer function
+// and applies it to the state. The created transaction and receipt is appended to the given slices.
+//
+// This function is called to generate system transactions and append them to the transaction list of the new block.
+func (e *Engine) applyGeneratedSystemTransaction(
+	msg *core.Message,
+	state vm.StateDB,
+	header *types.Header,
+	chainContext core.ChainContext,
+	txs *[]*types.Transaction,
+	receipts *[]*types.Receipt,
+	usedGas *uint64,
+	tracer *tracing.Hooks,
+) (err error) {
+	msg.From = e.signer // generated system transaction should be signed by the engine's signer
+	nonce := state.GetNonce(msg.From)
+	tx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	tx, err = e.signTx(accounts.Account{Address: msg.From}, tx, chainContext.Config().ChainID)
+	if err != nil {
+		return err
+	}
+
+	return e.applySystemTransaction(msg, tx, state, header, chainContext, e.signer, txs, receipts, usedGas, tracer)
+}
+
+// applyReceivedSystemTransaction applies a received system transaction to the state.
+// It assumes that the given message is equal to the first element of systemTxs and applies it to the state.
+// The applied transaction and receipt is appended to the given slices and removes the transaction from systemTxs.
+//
+// This function is called to apply system transactions of the received block to the state.
+func (e *Engine) applyReceivedSystemTransaction(
+	msg *core.Message,
+	state vm.StateDB,
+	header *types.Header,
+	chainContext core.ChainContext,
+	txs *[]*types.Transaction,
+	receipts *[]*types.Receipt,
+	systemTxs *[]*types.Transaction,
+	usedGas *uint64,
+	tracer *tracing.Hooks,
+) error {
+	signer := types.LatestSignerForChainID(chainContext.Config().ChainID)
+	nonce := state.GetNonce(msg.From)
+	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	expectedHash := signer.Hash(expectedTx)
+
+	if systemTxs == nil || len(*systemTxs) == 0 || (*systemTxs)[0] == nil {
+		return errors.New("supposed to get an actual transaction, but got none")
+	}
+	actualTx := (*systemTxs)[0]
+	if !bytes.Equal(signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
+		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
+			expectedHash.String(),
+			actualTx.Hash().String(),
+			expectedTx.Nonce(),
+			expectedTx.To().String(),
+			expectedTx.Value().String(),
+			expectedTx.Gas(),
+			expectedTx.GasPrice().String(),
+			hexutil.Bytes(expectedTx.Data()).String(),
+		)
+	}
+	// move to next
+	*systemTxs = (*systemTxs)[1:]
+
+	return e.applySystemTransaction(msg, actualTx, state, header, chainContext, header.Coinbase, txs, receipts, usedGas, tracer)
+}
+
+func (e *Engine) applySystemTransaction(
+	msg *core.Message,
+	tx *types.Transaction,
+	state vm.StateDB,
+	header *types.Header,
+	chainContext core.ChainContext,
+	author common.Address,
+	txs *[]*types.Transaction,
+	receipts *[]*types.Receipt,
+	usedGas *uint64,
+	tracer *tracing.Hooks,
+) (err error) {
+	state.SetTxContext(tx.Hash(), len(*txs))
+
+	context := core.NewEVMBlockContext(header, chainContext, &author)
+	evm := vm.NewEVM(context, state, chainContext.Config(), vm.Config{Tracer: tracer})
+	evm.SetTxContext(core.NewEVMTxContext(msg))
+	evm.StateDB.AddAddressToAccessList(*msg.To)
+
+	var receipt *types.Receipt
+	if tracer != nil {
+		onSystemCallStart(tracer, evm.GetVMContext())
+		if tracer.OnTxStart != nil {
+			tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+		}
+		if tracer.OnSystemCallEnd != nil {
+			defer tracer.OnSystemCallEnd()
+		}
+		if tracer.OnTxEnd != nil {
+			defer func() { tracer.OnTxEnd(receipt, err) }()
+		}
+	}
+
+	gasUsed, err := applySystemMessage(msg, evm, state, header)
+	if err != nil {
+		return err
+	}
+	*txs = append(*txs, tx)
+
+	// Update the state with pending changes.
+	var root []byte
+	if evm.ChainConfig().IsByzantium(header.Number) {
+		state.Finalise(true)
+	} else {
+		root = state.IntermediateRoot(evm.ChainConfig().IsEIP158(header.Number)).Bytes()
+	}
+	*usedGas += gasUsed
+
+	if state.AccessEvents() != nil {
+		state.AccessEvents().Merge(evm.AccessEvents)
+	}
+
+	receipt = types.NewReceipt(root, false, *usedGas)
+	receipt.TxHash = tx.Hash()
+	receipt.GasUsed = gasUsed
+	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
+	receipt.Bloom = types.CreateBloom(receipt)
+	receipt.BlockHash = header.Hash()
+	receipt.BlockNumber = header.Number
+	receipt.TransactionIndex = uint(state.TxIndex())
+	*receipts = append(*receipts, receipt)
+	return
+}
+
+func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header *types.Header) (uint64, error) {
+	// Apply the transaction to the current state (included in the env)
+	if evm.ChainConfig().IsCancun(header.Number, header.Time) {
+		rules := evm.ChainConfig().Rules(evm.Context.BlockNumber, evm.Context.Random != nil, evm.Context.Time)
+		state.Prepare(rules, msg.From, evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
+	}
+	// Increment the nonce for the next transaction
+	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
+
+	ret, returnGas, err := evm.Call(
+		msg.From,
+		*msg.To,
+		msg.Data,
+		msg.GasLimit,
+		uint256.MustFromBig(msg.Value),
+	)
+	if err != nil {
+		log.Error("Apply message failed",
+			"err", err,
+			"return", common.Bytes2Hex(ret),
+			"from", msg.From,
+			"to", *msg.To,
+			"data", common.Bytes2Hex(msg.Data),
+			"value", msg.Value.String(),
+		)
+	}
+	return msg.GasLimit - returnGas, err
+}
+
+func newSystemMessage(from, toAddress common.Address, data []byte, value *big.Int) *core.Message {
+	if value == nil {
+		value = big.NewInt(0)
+	}
+	return &core.Message{
+		From:     from,
+		GasLimit: math.MaxUint64 / 2,
+		GasPrice: big.NewInt(0),
+		Value:    value,
+		To:       &toAddress,
+		Data:     data,
+	}
+}
+
+func onSystemCallStart(tracer *tracing.Hooks, ctx *tracing.VMContext) {
+	if tracer.OnSystemCallStartV2 != nil {
+		tracer.OnSystemCallStartV2(ctx)
+	} else if tracer.OnSystemCallStart != nil {
+		tracer.OnSystemCallStart()
+	}
+}
+
+// chain context
+type chainContext struct {
+	Chain  consensus.ChainHeaderReader
+	engine consensus.Engine
+}
+
+func (c chainContext) Engine() consensus.Engine {
+	return c.engine
+}
+
+func (c chainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
+	return c.Chain.GetHeader(hash, number)
+}
+
+func (c chainContext) Config() *params.ChainConfig {
+	return c.Chain.Config()
+}
+
+// ##

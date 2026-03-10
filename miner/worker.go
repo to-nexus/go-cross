@@ -876,6 +876,19 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
+		// ##CROSS: consensus system contract
+		if w.istanbulBackend != nil {
+			if gasReserved := w.istanbulBackend.EstimateGasForSystemTxs(w.chain, env.header); gasReserved > 0 {
+				env.gasPool.SubGas(gasReserved)
+				log.Debug("Reserved gas for system transactions",
+					"number", env.header.Number.Uint64(),
+					"time", env.header.Time,
+					"reserved", gasReserved,
+					"available", env.gasPool.Gas(),
+				)
+			}
+		}
+		// ##
 	}
 	var coalescedLogs []*types.Log
 
@@ -1056,6 +1069,18 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		Coinbase: genParams.coinbase,
 	}
 
+	// ##CROSS: istanbul param
+	if w.istanbulBackend != nil && w.chainConfig.IsIstanbulPoSA(header.Number, header.Time) {
+		// sync istanbul parameter after PoSA activation
+		if err := w.istanbulBackend.SyncIstanbulParam(header); err != nil {
+			return nil, err
+		}
+		if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
+			header.GasLimit = *gasLimit
+		}
+	}
+	// ##
+
 	// Set the extra field.
 	if len(w.extra) != 0 {
 		header.Extra = w.extra
@@ -1082,7 +1107,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
-		if w.chainConfig.Istanbul == nil { // ##CROSS: istanbul
+		if !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
 			header.ParentBeaconRoot = genParams.beaconRoot
 		} else {
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
@@ -1172,10 +1197,10 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
 	}
-	body := types.Body{Transactions: work.txs} //, Withdrawals: params.withdrawals}
+	body := types.Body{Transactions: work.txs, Withdrawals: params.withdrawals}
 	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
-	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && w.chainConfig.Istanbul == nil { // ##CROSS: istanbul
+	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
 		allLogs := make([]*types.Log, 0)
 		for _, r := range work.receipts {
 			allLogs = append(allLogs, r.Logs...)
@@ -1195,7 +1220,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 		work.header.RequestsHash = &reqHash
 	}
 
-	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
+	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts, nil)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
@@ -1290,7 +1315,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &body, env.receipts)
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &body, env.receipts, nil)
 		if err != nil {
 			return err
 		}
@@ -1317,7 +1342,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 				fees := totalFees(block, env.receipts)
 				feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-					"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther,
+					"txs", env.tcount, "gas", block.GasUsed(), "fees", feesInEther,
 					"elapsed", common.PrettyDuration(time.Since(start)))
 
 			case <-w.exitCh:

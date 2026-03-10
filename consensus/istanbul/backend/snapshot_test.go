@@ -351,21 +351,34 @@ func TestVoting(t *testing.T) {
 				Difficulty: istanbul.DefaultDifficulty,
 				MixDigest:  types.IstanbulDigest,
 			}
+
+			headers[j].Extra = make([]byte, len(genesis.ExtraData))
+			copy(headers[j].Extra, genesis.ExtraData)
+
 			_ = engine.ApplyHeaderIstanbulExtra(
 				headers[j],
 				engine.WriteValidators(validators),
 			)
 
-			if j > 0 {
-				headers[j].ParentHash = headers[j-1].Hash()
-			}
-
-			copy(headers[j].Extra, genesis.ExtraData)
-
 			if len(vote.voted) > 0 {
 				if err := accounts.writeValidatorVote(headers[j], vote.validator, vote.voted, vote.auth); err != nil {
 					t.Errorf("Error writeValidatorVote test: %d, validator: %s, voteType: %v (err=%v)", j, vote.voted, vote.auth, err)
 				}
+			}
+		}
+
+		// Set ParentHash after all headers are fully configured
+		genesisBlock := chain.GetBlockByNumber(0)
+		if genesisBlock == nil {
+			t.Errorf("test %d: failed to get genesis block", i)
+			backend.Stop()
+			continue
+		}
+		for j := range headers {
+			if j == 0 {
+				headers[j].ParentHash = genesisBlock.Hash()
+			} else {
+				headers[j].ParentHash = headers[j-1].Hash()
 			}
 		}
 
@@ -427,7 +440,7 @@ func TestSaveAndLoad(t *testing.T) {
 		ValSet: validator.NewSet([]common.Address{
 			common.BytesToAddress([]byte("1234567894")),
 			common.BytesToAddress([]byte("1234567895")),
-		}, istanbul.NewRoundRobinProposerPolicy()),
+		}, nil, istanbul.NewRoundRobinProposerPolicy()),
 	}
 	db := rawdb.NewMemoryDatabase()
 	err := snap.store(db)

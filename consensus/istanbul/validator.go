@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type Validator interface {
@@ -30,6 +31,9 @@ type Validator interface {
 
 	// String representation of Validator
 	String() string
+
+	// SignerAddress returns the BLS public key which is used to sign the block
+	SignerAddress() types.BLSPublicKey // ##CROSS: bls seal
 }
 
 // ----------------------------------------------------------------------------
@@ -93,7 +97,7 @@ type ValidatorSet interface {
 	// Check whether the validator with given address is a proposer
 	IsProposer(address common.Address) bool
 	// Add validator
-	AddValidator(address common.Address) bool
+	AddValidator(address common.Address, signerAddr types.BLSPublicKey) bool // ##CROSS: bls seal
 	// Remove validator
 	RemoveValidator(address common.Address) bool
 	// Copy validator set

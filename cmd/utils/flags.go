@@ -76,6 +76,7 @@ import (
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
 	pcsclite "github.com/gballet/go-libpcsclite"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	gopsutil "github.com/shirou/gopsutil/mem"
 	"github.com/urfave/cli/v2"
 )
@@ -864,7 +865,7 @@ var (
 		Aliases:  []string{"discv5"},
 		Usage:    "Enables the V5 discovery mechanism",
 		Category: flags.NetworkingCategory,
-		Value:    true,
+		Value:    false,
 	}
 	NetrestrictFlag = &cli.StringFlag{
 		Name:     "netrestrict",
@@ -1019,6 +1020,20 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    params.DefaultExtraReserveForBlobRequests,
 		Category: flags.MiscCategory,
 	}
+	// ##
+
+	// ##CROSS: bls seal
+	BLSKeyFileFlag = &cli.StringFlag{
+		Name:     "bls.key",
+		Usage:    "BLS key file (plain text hex)",
+		Category: flags.IstanbulCategory,
+	}
+	BLSKeyStoreDirFlag = &cli.StringFlag{
+		Name:     "bls.keystore",
+		Usage:    "Directory for the BLS keystore (default = <datadir>/bls-keystore)",
+		Category: flags.AccountCategory,
+	}
+	// ##
 )
 
 var (
@@ -1396,8 +1411,8 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	if ctx.IsSet(MaxPeersFlag.Name) {
 		cfg.MaxPeers = ctx.Int(MaxPeersFlag.Name)
 	}
-	ethPeers := cfg.MaxPeers
-	log.Info("Maximum peer count", "ETH", ethPeers, "total", cfg.MaxPeers)
+	// ethPeers := cfg.MaxPeers
+	// log.Info("Maximum peer count", "ETH", ethPeers, "total", cfg.MaxPeers)
 
 	if ctx.IsSet(MaxPendingPeersFlag.Name) {
 		cfg.MaxPendingPeers = ctx.Int(MaxPendingPeersFlag.Name)
@@ -1429,6 +1444,39 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 }
 
+// ##CROSS: bls seal
+// setBLSKey creates a BLS key from set command line flags, loading it from a file.
+func setBLSKey(ctx *cli.Context, cfg *node.Config) {
+	var (
+		file = ctx.String(BLSKeyFileFlag.Name)
+	)
+	if file == "" {
+		return
+	}
+	keyData, err := os.ReadFile(file)
+	if err != nil {
+		Fatalf("-%s: %v", BLSKeyFileFlag.Name, err)
+	}
+	keyString := strings.TrimSpace(string(keyData))
+	if keyString == "" {
+		Fatalf("-%s: empty BLS key file", BLSKeyFileFlag.Name)
+	}
+	keyBytes := common.FromHex(keyString)
+	if len(keyBytes) != 32 {
+		Fatalf("-%s: invalid BLS key length, expected 32 bytes, got %d", BLSKeyFileFlag.Name, len(keyBytes))
+	}
+
+	secretKey, err := bls.SecretKeyFromBytes(keyBytes)
+	if err != nil {
+		Fatalf("-%s: %v", BLSKeyFileFlag.Name, err)
+	}
+	cfg.BLSSecretKey = secretKey
+
+	log.Info("BLS key loaded", "pubkey", hex.EncodeToString(secretKey.PublicKey().Marshal()))
+}
+
+// ##
+
 // SetNodeConfig applies node-related command line flags to the config.
 func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	SetP2PConfig(ctx, &cfg.P2P)
@@ -1439,6 +1487,7 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setNodeUserIdent(ctx, cfg)
 	SetDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
+	setBLSKey(ctx, cfg) // ##CROSS: bls seal
 
 	if ctx.IsSet(JWTSecretFlag.Name) {
 		cfg.JWTSecret = ctx.String(JWTSecretFlag.Name)
@@ -1512,7 +1561,7 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 		cfg.DataDir = ctx.String(DataDirFlag.Name)
 	case ctx.Bool(DeveloperFlag.Name):
 		cfg.DataDir = "" // unless explicitly requested, use memory databases
-		// ##CROSS: config
+	// ##CROSS: config
 	case ctx.Bool(ZoneZeroFlag.Name) && cfg.DataDir == node.DefaultDataDir():
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "zonezero")
 	case ctx.Bool(CrossDev3Flag.Name) && cfg.DataDir == node.DefaultDataDir():
@@ -1949,9 +1998,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			cfg.Miner.GasPrice = big.NewInt(1)
 		}
 	default:
-		if cfg.NetworkId == 612055 { // ##CROSS: config
+		switch cfg.NetworkId {
+		case 612055: // ##CROSS: config
 			SetDNSDiscoveryDefaults(cfg, params.CrossGenesisHash)
-		} else if cfg.NetworkId == 1 {
+		case 1:
 			SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
 		}
 	}

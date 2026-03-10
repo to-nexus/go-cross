@@ -17,6 +17,8 @@
 package core
 
 import (
+	"math/big"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
@@ -59,7 +61,9 @@ func ExecuteStateless(config *params.ChainConfig, vmconfig vm.Config, block *typ
 	chain := &HeaderChain{
 		config:      config,
 		chainDb:     memdb,
-		headerCache: lru.NewCache[common.Hash, *types.Header](256),
+		headerCache: lru.NewCache[common.Hash, *types.Header](headerCacheLimit),
+		tdCache:     lru.NewCache[common.Hash, *big.Int](tdCacheLimit), // ##CROSS: legacy sync
+		numberCache: lru.NewCache[common.Hash, uint64](numberCacheLimit),
 		engine:      beacon.New(ethash.NewFaker()),
 	}
 	processor := NewStateProcessor(config, chain)

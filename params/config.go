@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params/forks"
 )
@@ -45,7 +47,7 @@ var (
 	BeneficiaryCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 	BeneficiaryCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
 
-	EchoCross = common.HexToAddress("0x0575a1b8e9e8950356b0c682bb270e16905eb108")
+	EcoCross = common.HexToAddress("0x0575a1b8e9e8950356b0c682bb270e16905eb108")
 	// ##
 
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
@@ -77,7 +79,7 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork
+		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
 		CancunTime:              nil,
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
@@ -118,6 +120,9 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
+			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{},
 	}
@@ -141,7 +146,7 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork
+		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
 		CancunTime:              nil,
 		PragueTime:              nil,
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
@@ -169,6 +174,9 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
+			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{},
 	}
@@ -192,12 +200,16 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork
-		CancunTime:              nil,
-		PragueTime:              nil,
-		BreakpointTime:          nil, // ##CROSS: fork breakpoint
+		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
+		CancunTime:              newUint64(1771556400),
+		PragueTime:              newUint64(1771556400),
+		BreakpointTime:          newUint64(1771804800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
 			BlockPeriodSeconds:      1,
@@ -216,13 +228,17 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
-		},
-		Transitions: []Transition{
-			{
-				Block:    big.NewInt(9188602),
-				GasLimit: newUint64(210000000),
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(24 * 3600), // 1 day
+			CouncilPeriod:         newUint64(86400),
+			// ##CROSS: bls seal
+			Signers: []hexutil.Bytes{
+				hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
+				hexutil.MustDecode("0xae82f20b81364837a6f4f86791c792c712f289d01cb956599c50dbd0e047161c9de33bdcbf1fa68ca5b5b30f0b7f7f62"),
+				hexutil.MustDecode("0x89e6ad30b4ce516057f9c7718d2dcc81742a4a4ab8425b8f8cdb7f80a088f7829aff1622b2f1d1a5bd4d3948d65a6387"),
 			},
 		},
+		Transitions: []Transition{},
 	}
 
 	CrossDevChainConfig = &ChainConfig{
@@ -244,12 +260,16 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork
-		CancunTime:              nil,
-		PragueTime:              nil,
-		BreakpointTime:          nil, // ##CROSS: fork breakpoint
+		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
+		CancunTime:              newUint64(1771556400),
+		PragueTime:              newUint64(1771556400),
+		BreakpointTime:          newUint64(1771804800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
 			BlockPeriodSeconds:      1,
@@ -266,6 +286,13 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSAActivationSeconds: newUint64(24 * 3600), // 1 day
+			CouncilPeriod:         newUint64(86400),
+			// ##CROSS: bls seal
+			Signers: []hexutil.Bytes{
+				hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
+			},
 		},
 		Transitions: []Transition{},
 	}
@@ -646,7 +673,7 @@ type ChainConfig struct {
 	// Fork scheduling was switched from blocks to timestamps here
 
 	ShanghaiTime   *uint64 `json:"shanghaiTime,omitempty"`   // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	AdventureTime  *uint64 `json:"adventureTime,omitempty"`  // Adventure switch time (nil = no fork, 0 = already on adventure) ##CROSS: fork
+	AdventureTime  *uint64 `json:"adventureTime,omitempty"`  // Adventure switch time (nil = no fork, 0 = already on adventure) ##CROSS: fork adventure
 	CancunTime     *uint64 `json:"cancunTime,omitempty"`     // Cancun switch time (nil = no fork, 0 = already on cancun)
 	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
 	BreakpointTime *uint64 `json:"breakpointTime,omitempty"` // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
@@ -726,69 +753,49 @@ func (c *ChainConfig) Description() string {
 	// Create a list of forks with a short description of them. Forks that only
 	// makes sense for mainnet should be optional at printing to avoid bloating
 	// the output for testnets and private networks.
-	banner += "Pre-Merge hard forks (block based):\n"
-	banner += fmt.Sprintf(" - Homestead:                   #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/homestead.md)\n", c.HomesteadBlock)
-	if c.DAOForkBlock != nil {
-		banner += fmt.Sprintf(" - DAO Fork:                    #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/dao-fork.md)\n", c.DAOForkBlock)
-	}
-	banner += fmt.Sprintf(" - Tangerine Whistle (EIP 150): #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/tangerine-whistle.md)\n", c.EIP150Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/1 (EIP 155): #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/spurious-dragon.md)\n", c.EIP155Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/2 (EIP 158): #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/spurious-dragon.md)\n", c.EIP155Block)
-	banner += fmt.Sprintf(" - Byzantium:                   #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/byzantium.md)\n", c.ByzantiumBlock)
-	banner += fmt.Sprintf(" - Constantinople:              #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/constantinople.md)\n", c.ConstantinopleBlock)
-	banner += fmt.Sprintf(" - Petersburg:                  #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/petersburg.md)\n", c.PetersburgBlock)
-	banner += fmt.Sprintf(" - Istanbul:                    #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/istanbul.md)\n", c.IstanbulBlock)
-	if c.MuirGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Muir Glacier:                #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/muir-glacier.md)\n", c.MuirGlacierBlock)
-	}
-	banner += fmt.Sprintf(" - Berlin:                      #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/berlin.md)\n", c.BerlinBlock)
-	banner += fmt.Sprintf(" - London:                      #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/london.md)\n", c.LondonBlock)
-	if c.ArrowGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Arrow Glacier:               #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/arrow-glacier.md)\n", c.ArrowGlacierBlock)
-	}
-	if c.GrayGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Gray Glacier:                #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/gray-glacier.md)\n", c.GrayGlacierBlock)
-	}
-	banner += "\n"
-
-	// Add a special section for the merge as it's non-obvious
-	banner += "Merge configured:\n"
-	banner += " - Hard-fork specification:    https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/paris.md\n"
-	banner += " - Network known to be merged\n"
-	banner += fmt.Sprintf(" - Total terminal difficulty:  %v\n", c.TerminalTotalDifficulty)
-	if c.MergeNetsplitBlock != nil {
-		banner += fmt.Sprintf(" - Merge netsplit block:       #%-8v\n", c.MergeNetsplitBlock)
-	}
-	banner += "\n"
-
-	// Create a list of forks post-merge
-	banner += "Post-Merge hard forks (timestamp based):\n"
+	banner += "Hard forks (block based):\n[Omitted]\n\n"
+	banner += "Hard forks (timestamp based):\n"
 	if c.ShanghaiTime != nil {
-		banner += fmt.Sprintf(" - Shanghai:                    @%-10v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/shanghai.md)\n", *c.ShanghaiTime)
+		banner += printFork("Shanghai", c.ShanghaiTime)
 	}
-	// ##CROSS: fork
+	// ##CROSS: fork adventure
 	if c.AdventureTime != nil {
-		banner += fmt.Sprintf(" - Adventure:                   @%-10v\n", *c.AdventureTime)
+		banner += printFork("Adventure", c.AdventureTime)
 	}
 	// ##
 	if c.CancunTime != nil {
-		banner += fmt.Sprintf(" - Cancun:                      @%-10v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/cancun.md)\n", *c.CancunTime)
+		banner += printFork("Cancun", c.CancunTime)
 	}
 	if c.PragueTime != nil {
-		banner += fmt.Sprintf(" - Prague:                      @%-10v\n", *c.PragueTime)
+		banner += printFork("Prague", c.PragueTime)
 	}
 	// ##CROSS: fork breakpoint
 	if c.BreakpointTime != nil {
-		banner += fmt.Sprintf(" - Breakpoint:                  @%-10v\n", *c.BreakpointTime)
+		banner += printFork("Breakpoint", c.BreakpointTime)
+		if c.Istanbul != nil && c.Istanbul.PoSAActivationSeconds != nil {
+			posa := *c.BreakpointTime + *c.Istanbul.PoSAActivationSeconds
+			banner += printFork("  PoSA Activation", &posa)
+		}
 	}
 	// ##
 	if c.OsakaTime != nil {
-		banner += fmt.Sprintf(" - Osaka:                       @%-10v\n", *c.OsakaTime)
+		banner += printFork("Osaka", c.OsakaTime)
 	}
 	if c.VerkleTime != nil {
-		banner += fmt.Sprintf(" - Verkle:                      @%-10v\n", *c.VerkleTime)
+		banner += printFork("Verkle", c.VerkleTime)
 	}
 	return banner
+}
+
+func printFork(fork string, timestamp *uint64) string {
+	if timestamp == nil {
+		return ""
+	}
+	margin := max(1, 30-len(fork))
+	if *timestamp == 0 {
+		return fmt.Sprintf("%v:%[2]*v@%-10v\n", fork, margin, "", *timestamp)
+	}
+	return fmt.Sprintf("%v:%[2]*v@%-10v (%v)\n", fork, margin, "", *timestamp, time.Unix(int64(*timestamp), 0).UTC().Format("2006-01-02T15:04:05"))
 }
 
 // BlobConfig specifies the target and max blobs per block for the associated fork.
@@ -892,7 +899,7 @@ func (c *ChainConfig) IsShanghai(num *big.Int, time uint64) bool {
 }
 
 // IsAdventure returns whether time is either equal to the Adventure fork time or greater.
-func (c *ChainConfig) IsAdventure(num *big.Int, time uint64) bool { // ##CROSS: fork
+func (c *ChainConfig) IsAdventure(num *big.Int, time uint64) bool { // ##CROSS: fork adventure
 	return c.IsLondon(num) && isTimestampForked(c.AdventureTime, time)
 }
 
@@ -906,10 +913,46 @@ func (c *ChainConfig) IsPrague(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.PragueTime, time)
 }
 
+// IsOnPrague returns whether currentBlockTime is either equal to the Prague fork time or greater firstly.
+func (c *ChainConfig) IsOnPrague(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsPrague(lastBlockNumber, lastBlockTime) && c.IsPrague(currentBlockNumber, currentBlockTime)
+}
+
+// ##CROSS: fork breakpoint
 // IsBreakpoint returns whether time is either equal to the Breakpoint fork time or greater.
-func (c *ChainConfig) IsBreakpoint(num *big.Int, time uint64) bool { // ##CROSS: fork breakpoint
+func (c *ChainConfig) IsBreakpoint(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.BreakpointTime, time)
 }
+
+// IsOnBreakpoint returns whether currentBlockTime is either equal to the Breakpoint fork time or greater firstly.
+func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsBreakpoint(lastBlockNumber, lastBlockTime) && c.IsBreakpoint(currentBlockNumber, currentBlockTime)
+}
+
+// ##
+
+// ##CROSS: istanbul posa
+// IsIstanbulPoSA returns whether the Istanbul PoSA is active at the given block and time.
+func (c *ChainConfig) IsIstanbulPoSA(num *big.Int, time uint64) bool {
+	if num.Cmp(big.NewInt(1)) <= 0 || c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSAActivationSeconds == nil {
+		return false
+	}
+	if *c.Istanbul.PoSAActivationSeconds == 0 {
+		// PoSA activation must be at least 1 second after Breakpoint hardfork
+		return c.IsBreakpoint(num, time) && *c.BreakpointTime+1 <= time
+	}
+	return c.IsBreakpoint(num, time) && *c.BreakpointTime+*c.Istanbul.PoSAActivationSeconds <= time
+}
+
+// ##
 
 // IsOsaka returns whether time is either equal to the Osaka fork time or greater.
 func (c *ChainConfig) IsOsaka(num *big.Int, time uint64) bool {
@@ -1000,14 +1043,10 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "grayGlacierBlock", block: c.GrayGlacierBlock, optional: true},
 		{name: "mergeNetsplitBlock", block: c.MergeNetsplitBlock, optional: true},
 		{name: "shanghaiTime", timestamp: c.ShanghaiTime},
-		// ##CROSS: fork
-		{name: "adventureTime", timestamp: c.AdventureTime, optional: true},
-		// ##
+		{name: "adventureTime", timestamp: c.AdventureTime, optional: true}, // ##CROSS: fork adventure
 		{name: "cancunTime", timestamp: c.CancunTime, optional: true},
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
-		// ##CROSS: fork breakpoint
-		{name: "breakpointTime", timestamp: c.BreakpointTime, optional: true},
-		// ##
+		{name: "breakpointTime", timestamp: c.BreakpointTime, optional: true}, // ##CROSS: fork breakpoint
 		{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
@@ -1147,7 +1186,7 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.ShanghaiTime, newcfg.ShanghaiTime, headTimestamp) {
 		return newTimestampCompatError("Shanghai fork timestamp", c.ShanghaiTime, newcfg.ShanghaiTime)
 	}
-	// ##CROSS: fork
+	// ##CROSS: fork adventure
 	if isForkTimestampIncompatible(c.AdventureTime, newcfg.AdventureTime, headTimestamp) {
 		return newTimestampCompatError("Adventure fork timestamp", c.AdventureTime, newcfg.AdventureTime)
 	}
@@ -1196,7 +1235,7 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.Prague
 	case c.IsCancun(london, time):
 		return forks.Cancun
-	case c.IsAdventure(london, time): // ##CROSS: fork
+	case c.IsAdventure(london, time): // ##CROSS: fork adventure
 		return forks.Adventure
 	case c.IsShanghai(london, time):
 		return forks.Shanghai
@@ -1208,18 +1247,18 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 // Timestamp returns the timestamp associated with the fork or returns nil if
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
-	switch {
-	case fork == forks.Osaka:
+	switch fork {
+	case forks.Osaka:
 		return c.OsakaTime
-	case fork == forks.Breakpoint: // ##CROSS: fork breakpoint
+	case forks.Breakpoint: // ##CROSS: fork breakpoint
 		return c.BreakpointTime
-	case fork == forks.Prague:
+	case forks.Prague:
 		return c.PragueTime
-	case fork == forks.Cancun:
+	case forks.Cancun:
 		return c.CancunTime
-	case fork == forks.Adventure: // ##CROSS: fork
+	case forks.Adventure: // ##CROSS: fork adventure
 		return c.AdventureTime
-	case fork == forks.Shanghai:
+	case forks.Shanghai:
 		return c.ShanghaiTime
 	default:
 		return nil
@@ -1378,9 +1417,9 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		chainID = new(big.Int)
 	}
 	// disallow setting Merge out of order
-	isMerge = isMerge && c.IsLondon(num)
+	isMerge = isMerge && c.IsLondon(num) && c.Istanbul == nil // ##CROSS: istanbul
 	isVerkle := isMerge && c.IsVerkle(num, timestamp)
-	isAdventure := c.IsAdventure(num, timestamp) // ##CROSS: fork
+	isAdventure := c.IsAdventure(num, timestamp) // ##CROSS: fork adventure
 	return Rules{
 		ChainID:          new(big.Int).Set(chainID),
 		IsHomestead:      c.IsHomestead(num),
@@ -1396,7 +1435,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsLondon:         c.IsLondon(num),
 		IsMerge:          isMerge,
 		IsShanghai:       (isMerge || isAdventure) && c.IsShanghai(num, timestamp),
-		IsAdventure:      isAdventure, // ##CROSS: fork
+		IsAdventure:      isAdventure, // ##CROSS: fork adventure
 		IsCancun:         (isMerge || isAdventure) && c.IsCancun(num, timestamp),
 		IsPrague:         (isMerge || isAdventure) && c.IsPrague(num, timestamp),
 		IsBreakpoint:     c.IsBreakpoint(num, timestamp), // ##CROSS: fork breakpoint

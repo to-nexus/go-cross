@@ -18,6 +18,7 @@ package core
 
 import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -38,9 +39,13 @@ func (c *Core) broadcastCommit() {
 	var header *types.Header
 	if block, ok := c.current.Proposal().(*types.Block); ok {
 		header = block.Header()
+	} else {
+		logger.Error("Istanbul: invalid proposal", "sub", sub, "proposal", c.current.Proposal())
+		return
 	}
+
 	// Create Commit Seal
-	commitSeal, err := c.backend.SignWithoutHashing(PrepareCommittedSeal(header, uint32(c.currentView().Round.Uint64())))
+	commitSeal, err := c.backend.SignSeal(header, PrepareCommittedSeal(header, uint32(c.currentView().Round.Uint64()))) // ##CROSS: bls seal
 	if err != nil {
 		logger.Error("Istanbul: failed to create COMMIT seal", "sub", sub, "err", err)
 		return
@@ -96,6 +101,14 @@ func (c *Core) handleCommitMsg(commit *protocols.Commit) error {
 		return errInvalidMessage
 	}
 
+	// ##CROSS: bls seal
+	// Check seal
+	if err := c.backend.VerifyCommittedSeal(commit.CommitSeal, commit.Source(), c.current.Proposal(), uint32(commit.Round.Uint64()), c.valSet); err != nil {
+		logger.Error("Istanbul: invalid COMMIT message seal", "err", err)
+		return err
+	}
+	// ##
+
 	// Add to received msgs
 	if err := c.current.Commits.Add(commit); err != nil {
 		logger.Error("Istanbul: failed to save COMMIT message", "err", err)
@@ -124,12 +137,19 @@ func (c *Core) commit() {
 
 	proposal := c.current.Proposal()
 	if proposal != nil {
+		sealSize := c.backend.SealSize(proposal)
+
 		// Compute committed seals
-		committedSeals := make([][]byte, c.current.Commits.Size())
-		for i, msg := range c.current.Commits.Values() {
-			committedSeals[i] = make([]byte, types.IstanbulExtraSeal)
+		committedSeals := make([]istanbul.SignedSeal, 0, c.current.Commits.Size())
+		for _, msg := range c.current.Commits.Values() {
+			idx, _ := c.valSet.GetByAddress(msg.Source())
+			if idx < 0 {
+				continue
+			}
 			commitMsg := msg.(*protocols.Commit)
-			copy(committedSeals[i][:], commitMsg.CommitSeal[:])
+			committedSeal := make([]byte, sealSize)
+			copy(committedSeal, commitMsg.CommitSeal)
+			committedSeals = append(committedSeals, newSignedSeal(uint(idx), commitMsg.Source(), committedSeal))
 		}
 
 		// Commit proposal to database

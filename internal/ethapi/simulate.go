@@ -330,7 +330,7 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	}
 	var requests [][]byte
 	// Process EIP-7685 requests
-	if sim.chainConfig.IsPrague(header.Number, header.Time) {
+	if sim.chainConfig.IsPrague(header.Number, header.Time) && !sim.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
 		requests = [][]byte{}
 		// EIP-6110
 		if err := core.ParseDepositLogs(&requests, allLogs, sim.chainConfig); err != nil {
@@ -351,7 +351,7 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	}
 	blockBody := &types.Body{Transactions: txes, Withdrawals: *block.BlockOverrides.Withdrawals}
 	chainHeadReader := &simChainHeadReader{ctx, sim.b}
-	b, _, err := sim.b.Engine().FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
+	b, _, err := sim.b.Engine().FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts, nil)
 	if err != nil {
 		return nil, nil, nil, err
 	}
