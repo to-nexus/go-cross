@@ -37,6 +37,7 @@ const sampleNumber = 3 // Number of transactions sampled in a block
 
 var (
 	DefaultMaxPrice    = big.NewInt(500 * params.GWei)
+	DefaultMinPrice    = big.NewInt(1 * params.GWei) // ##CROSS: gpo min tip
 	DefaultIgnorePrice = big.NewInt(2 * params.Wei)
 )
 
@@ -46,6 +47,7 @@ type Config struct {
 	MaxHeaderHistory uint64
 	MaxBlockHistory  uint64
 	MaxPrice         *big.Int `toml:",omitempty"`
+	MinPrice         *big.Int `toml:",omitempty"` // ##CROSS: gpo min tip
 	IgnorePrice      *big.Int `toml:",omitempty"`
 }
 
@@ -66,6 +68,7 @@ type Oracle struct {
 	lastHead    common.Hash
 	lastPrice   *big.Int
 	maxPrice    *big.Int
+	minPrice    *big.Int // ##CROSS: gpo min tip
 	ignorePrice *big.Int
 	cacheLock   sync.RWMutex
 	fetchLock   sync.Mutex
@@ -97,6 +100,13 @@ func NewOracle(backend OracleBackend, params Config, startPrice *big.Int) *Oracl
 		maxPrice = DefaultMaxPrice
 		log.Warn("Sanitizing invalid gasprice oracle price cap", "provided", params.MaxPrice, "updated", maxPrice)
 	}
+	// ##CROSS: gpo min tip
+	minPrice := params.MinPrice
+	if minPrice == nil || minPrice.Int64() <= 0 {
+		minPrice = DefaultMinPrice
+		log.Warn("Sanitizing invalid gasprice oracle min price", "provided", params.MinPrice, "updated", minPrice)
+	}
+	// ##
 	ignorePrice := params.IgnorePrice
 	if ignorePrice == nil || ignorePrice.Int64() <= 0 {
 		ignorePrice = DefaultIgnorePrice
@@ -142,6 +152,7 @@ func NewOracle(backend OracleBackend, params Config, startPrice *big.Int) *Oracl
 		backend:          backend,
 		lastPrice:        startPrice,
 		maxPrice:         maxPrice,
+		minPrice:         minPrice,
 		ignorePrice:      ignorePrice,
 		checkBlocks:      blocks,
 		percentile:       percent,
@@ -224,6 +235,11 @@ func (oracle *Oracle) SuggestTipCap(ctx context.Context) (*big.Int, error) {
 	if price.Cmp(oracle.maxPrice) > 0 {
 		price = new(big.Int).Set(oracle.maxPrice)
 	}
+	// ##CROSS: gpo min tip
+	if price.Cmp(oracle.minPrice) < 0 {
+		price = new(big.Int).Set(oracle.minPrice)
+	}
+	// ##
 	oracle.cacheLock.Lock()
 	oracle.lastHead = headHash
 	oracle.lastPrice = price
