@@ -250,7 +250,7 @@ func (oracle *Oracle) FeeHistory(ctx context.Context, blocks uint64, unresolvedL
 		return common.Big0, nil, nil, nil, nil, nil, fmt.Errorf("%w: over the query limit %d", errInvalidPercentile, maxQueryLimit)
 	}
 	if blocks > maxFeeHistory {
-		log.Warn("Sanitizing fee history length", "requested", blocks, "truncated", maxFeeHistory)
+		log.Trace("Sanitizing fee history length", "requested", blocks, "truncated", maxFeeHistory)
 		blocks = maxFeeHistory
 	}
 	for i, p := range rewardPercentiles {
@@ -356,6 +356,15 @@ func (oracle *Oracle) FeeHistory(ctx context.Context, blocks uint64, unresolvedL
 	} else {
 		reward = nil
 	}
+	// ##CROSS: gpo min tip
+	for i := range reward {
+		for j := range reward[i] {
+			if reward[i][j].Cmp(oracle.minPrice) < 0 {
+				reward[i][j] = new(big.Int).Set(oracle.minPrice)
+			}
+		}
+	}
+	// ##
 	baseFee, gasUsedRatio = baseFee[:firstMissing+1], gasUsedRatio[:firstMissing]
 	blobBaseFee, blobGasUsedRatio = blobBaseFee[:firstMissing+1], blobGasUsedRatio[:firstMissing]
 	return new(big.Int).SetUint64(oldestBlock), reward, baseFee, gasUsedRatio, blobBaseFee, blobGasUsedRatio, nil
