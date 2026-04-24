@@ -75,6 +75,8 @@ func TestInitSystemContract(t *testing.T) {
 
 	maxBaseFee := math.NewHexOrDecimal256(1e18)
 	minBaseFee := math.NewHexOrDecimal256(1e8)
+	admin := common.HexToAddress("0x000000000000000000000000000000000000ffff")
+	pool := common.HexToAddress("0x0000000000000000000000000000000000001001")
 	config := &params.ChainConfig{
 		Istanbul: &params.IstanbulConfig{
 			EpochLength:             86400,
@@ -84,6 +86,9 @@ func TestInitSystemContract(t *testing.T) {
 			ProposerPolicy:          0,
 			MaxBaseFee:              maxBaseFee,
 			MinBaseFee:              minBaseFee,
+			PoSAAdmin:               &admin,
+			DelegationPool:          &pool,
+			RewardStartBlock:        big.NewInt(100),
 		},
 	}
 
@@ -120,6 +125,7 @@ func TestInitSystemContract(t *testing.T) {
 						0,                                 // proposerPolicy
 						2e10,                              // gasLimit
 						86400,                             // councilPeriod
+						admin,
 					),
 				},
 				{
@@ -128,7 +134,11 @@ func TestInitSystemContract(t *testing.T) {
 				},
 				{
 					To:   StakeHubAddr,
-					Data: initialize,
+					Data: breakpoint.NewStakeHub().PackInitialize(pool, admin),
+				},
+				{
+					To:   RewardHubAddr,
+					Data: breakpoint.NewRewardHub().PackInitialize(pool, admin, big.NewInt(100)),
 				},
 				{
 					To:   ValidatorSlashAddr,
@@ -136,7 +146,7 @@ func TestInitSystemContract(t *testing.T) {
 				},
 				{
 					To:   GovernorAddr,
-					Data: initialize,
+					Data: breakpoint.NewCrossGovernor().PackInitialize(admin),
 				},
 				{
 					To:   GovernanceTokenAddr,
@@ -152,7 +162,7 @@ func TestInitSystemContract(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			initData := getSystemContractInitialization(upgrades[tt.fork], config, tt.header)
+			initData := getSystemContractInitialization(upgrades[tt.fork][0], config, tt.header)
 			assert.Equal(t, tt.expected, initData)
 		})
 	}

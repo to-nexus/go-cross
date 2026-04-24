@@ -39,13 +39,15 @@ type (
 )
 
 var (
-	upgrades = make(map[forks.Fork]*Upgrade)
+	// fork -> chainID -> upgrade; chainID = 0 for default
+	upgrades = make(map[forks.Fork]map[uint64]*Upgrade)
 )
 
 func init() {
 	initialize := common.FromHex("8129fc1c")
 
-	upgrades[forks.Prague] = &Upgrade{
+	upgrades[forks.Prague] = make(map[uint64]*Upgrade)
+	upgrades[forks.Prague][0] = &Upgrade{
 		UpgradeName: forks.Prague.String(),
 		Configs: []*UpgradeConfig{
 			{
@@ -56,7 +58,8 @@ func init() {
 			},
 		},
 	}
-	upgrades[forks.Breakpoint] = &Upgrade{
+	upgrades[forks.Breakpoint] = make(map[uint64]*Upgrade)
+	upgrades[forks.Breakpoint][0] = &Upgrade{
 		UpgradeName: forks.Breakpoint.String(),
 		Configs: []*UpgradeConfig{
 			{
@@ -71,6 +74,11 @@ func init() {
 				Code:         breakpoint.IstanbulParamMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					admin := config.Istanbul.PoSAAdmin
+					if admin == nil {
+						return nil, fmt.Errorf("PoSA admin is not set")
+					}
+
 					epochLength := uint64(300) // override to 300
 					blockPeriod := config.GetBlockPeriodSeconds(header.Number)
 					emptyBlockPeriod := config.GetEmptyBlockPeriodSeconds(header.Number)
@@ -108,6 +116,7 @@ func init() {
 						proposerPolicy,
 						gasLimit,
 						councilPeriod,
+						*admin,
 					), nil
 				},
 			},
@@ -148,14 +157,31 @@ func init() {
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
+					pool := config.Istanbul.DelegationPool
+					admin := config.Istanbul.PoSAAdmin
+					if pool == nil || admin == nil {
+						return nil, fmt.Errorf("delegation pool or PoSA admin is not set")
+					}
+					return breakpoint.NewStakeHub().PackInitialize(*pool, *admin), nil
 				},
 			},
 			{
-				Name:         "ValidatorShare",
-				ContractAddr: ValidatorShareAddr,
-				Code:         breakpoint.ValidatorShareCode,
+				Name:         "RewardHub",
+				ContractAddr: RewardHubAddr,
+				Code:         breakpoint.RewardHubMetaData.BinRuntime,
 				Deploy:       true,
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					pool := config.Istanbul.DelegationPool
+					admin := config.Istanbul.PoSAAdmin
+					if pool == nil || admin == nil {
+						return nil, fmt.Errorf("delegation pool or PoSA admin is not set")
+					}
+					startBlock := config.Istanbul.RewardStartBlock
+					if startBlock == nil {
+						return nil, fmt.Errorf("reward start block is not set")
+					}
+					return breakpoint.NewRewardHub().PackInitialize(*pool, *admin, startBlock), nil
+				},
 			},
 			{
 				Name:         "ValidatorSlash",
@@ -167,18 +193,16 @@ func init() {
 				},
 			},
 			{
-				Name:         "SystemReward",
-				ContractAddr: SystemRewardAddr,
-				Code:         breakpoint.SystemRewardCode,
-				Deploy:       true,
-			},
-			{
 				Name:         "CrossGovernor",
 				ContractAddr: GovernorAddr,
-				Code:         breakpoint.CrossGovernorCode,
+				Code:         breakpoint.CrossGovernorMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
+					admin := config.Istanbul.PoSAAdmin
+					if admin == nil {
+						return nil, fmt.Errorf("PoSA admin is not set")
+					}
+					return breakpoint.NewCrossGovernor().PackInitialize(*admin), nil
 				},
 			},
 			{
@@ -210,18 +234,27 @@ func init() {
 	}
 }
 
+func getUpgrade(fork forks.Fork, chainID uint64) *Upgrade {
+	upgrade, ok := upgrades[fork][chainID]
+	if !ok {
+		upgrade = upgrades[fork][0]
+	}
+	return upgrade
+}
+
 // TryUpdateSystemContract checks if the block is exactly on the fork and upgrades the system contracts if it is.
 func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, lastBlockTime uint64, statedb vm.StateDB) (upgraded bool) {
 	if config == nil || header == nil || statedb == nil || reflect.ValueOf(statedb).IsNil() {
 		return
 	}
 
+	chainID := config.ChainID.Uint64()
 	if config.IsOnPrague(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(upgrades[forks.Prague], header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Prague, chainID), header, statedb)
 		upgraded = true
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(upgrades[forks.Breakpoint], header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb)
 		upgraded = true
 	}
 	return
@@ -233,8 +266,9 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 		return
 	}
 
+	chainID := config.ChainID.Uint64()
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		initData = append(initData, getSystemContractInitialization(upgrades[forks.Breakpoint], config, header)...)
+		initData = append(initData, getSystemContractInitialization(getUpgrade(forks.Breakpoint, chainID), config, header)...)
 	}
 	return
 }

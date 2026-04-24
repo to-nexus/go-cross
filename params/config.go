@@ -56,7 +56,8 @@ var (
 	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
 )
 
-func newUint64(val uint64) *uint64 { return &val }
+func newUint64(val uint64) *uint64           { return &val }
+func newAddress(addr string) *common.Address { a := common.HexToAddress(addr); return &a }
 
 var (
 	// ##CROSS: config
@@ -231,6 +232,9 @@ var (
 			// ##CROSS: istanbul posa
 			PoSAActivationSeconds: newUint64(24 * 3600), // 1 day
 			CouncilPeriod:         newUint64(86400),
+			// DelegationPool:        newAddress("0x000000016876B41CF2069F3a3A9FD5A82a1945f6"),
+			// PoSAAdmin:             newAddress("0xd2d30476A67c6A274D45A9fFd6538b2e4424481d"),
+			// RewardStartBlock:      big.NewInt(12215754),
 			// ##CROSS: bls seal
 			Signers: []hexutil.Bytes{
 				hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),

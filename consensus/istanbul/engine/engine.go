@@ -60,6 +60,7 @@ type Engine struct {
 	istanbulParam  *breakpoint.IstanbulParam
 	validatorSet   *breakpoint.ValidatorSet
 	stakeHub       *breakpoint.StakeHub
+	rewardHub      *breakpoint.RewardHub
 	validatorSlash *breakpoint.ValidatorSlash
 	// ##
 }
@@ -77,6 +78,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		istanbulParam:   breakpoint.NewIstanbulParam(),
 		validatorSet:    breakpoint.NewValidatorSet(),
 		stakeHub:        breakpoint.NewStakeHub(),
+		rewardHub:       breakpoint.NewRewardHub(),
 		validatorSlash:  breakpoint.NewValidatorSlash(),
 		// ##
 	}
@@ -87,7 +89,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 
 // IsSystemTransaction checks if the transaction is a system transaction.
 // A system transaction is a transaction to a system contract with gas price 0 and sender is the block proposer.
-func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+func IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	if to := tx.To(); to == nil || !contracts.IsSystemContract(*to) {
 		return false, nil
 	}
@@ -101,7 +103,15 @@ func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	return sender == header.Coinbase, nil
 }
 
-// IsSystemContract checks if the address is a system contract.
+// IsSystemTransaction checks if the transaction is a system transaction.
+// If the block coinbase is not set, use the engine's signer as the coinbase.
+func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	if header.Coinbase == (common.Address{}) {
+		return IsSystemTransaction(tx, &types.Header{Coinbase: e.signer})
+	}
+	return IsSystemTransaction(tx, header)
+}
+
 func (e *Engine) IsSystemContract(to *common.Address) bool {
 	if to == nil {
 		return false

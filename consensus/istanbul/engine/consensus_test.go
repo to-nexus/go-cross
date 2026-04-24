@@ -224,7 +224,7 @@ func (m *mockChainContext) GetTd(hash common.Hash, number uint64) *big.Int {
 func TestUpdateValidatorSet(t *testing.T) {
 	code := []byte{1, 2, 3}
 	methodGetValidators := string(breakpoint.NewStakeHub().PackGetValidators(big.NewInt(0), big.NewInt(0))[:4])
-	methodValidatorThreshold := string(breakpoint.NewStakeHub().PackValidatorThreshold()[:4])
+	methodMaxCouncil := string(breakpoint.NewStakeHub().PackMaxCouncil()[:4])
 
 	tests := []struct {
 		name        string
@@ -244,7 +244,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 						[][]byte{signer1, signer2, signer3},
 						[]*big.Int{big.NewInt(1000), big.NewInt(2000), big.NewInt(3000)},
 					)},
-					methodValidatorThreshold: {packValidatorThresholdResponse(t, 2)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 2)},
 				},
 			},
 			expectedErr: nil,
@@ -261,7 +261,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 						[][]byte{},
 						[]*big.Int{},
 					)},
-					methodValidatorThreshold: {packValidatorThresholdResponse(t, 2)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 2)},
 				},
 			},
 			expectedErr: nil,
@@ -277,7 +277,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 						[][]byte{signer1},
 						[]*big.Int{big.NewInt(1000)},
 					)},
-					methodValidatorThreshold: {packValidatorThresholdResponse(t, 0)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 0)},
 				},
 			},
 			expectedErr: errors.New("zero validator threshold"),
@@ -376,16 +376,16 @@ func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, si
 	return retPacked
 }
 
-func packValidatorThresholdResponse(t *testing.T, threshold uint64) []byte {
+func packMaxCouncilResponse(t *testing.T, maxCouncil uint64) []byte {
 	t.Helper()
 
 	parsedABI, err := breakpoint.StakeHubMetaData.ParseABI()
 	require.NoError(t, err)
 
-	method, ok := parsedABI.Methods["validatorThreshold"]
+	method, ok := parsedABI.Methods["maxCouncil"]
 	require.True(t, ok)
 
-	retPacked, err := method.Outputs.Pack(big.NewInt(int64(threshold)))
+	retPacked, err := method.Outputs.Pack(big.NewInt(int64(maxCouncil)))
 	require.NoError(t, err)
 
 	return retPacked
@@ -751,9 +751,10 @@ func TestSlashValidators(t *testing.T) {
 			err := engine.slashValidators(header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
 			require.NoError(t, err)
 
-			assert.Equal(t, tt.expectedSlashed, len(txs))
-			for _, tx := range txs {
-				assert.Equal(t, contracts.ValidatorSlashAddr, *tx.To())
+			if tt.expectedSlashed > 0 {
+				assert.Len(t, txs, 1)
+			} else {
+				assert.Len(t, txs, 0)
 			}
 		})
 	}
@@ -958,7 +959,7 @@ func TestDistributeRewards(t *testing.T) {
 			signer := common.HexToAddress("0x1111111111111111111111111111111111111111")
 			engine := &Engine{
 				contractBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
-				stakeHub:        breakpoint.NewStakeHub(),
+				rewardHub:       breakpoint.NewRewardHub(),
 				signer:          signer,
 				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 					require.Equal(t, account.Address, signer)
@@ -974,7 +975,7 @@ func TestDistributeRewards(t *testing.T) {
 				assert.Equal(t, len(tt.txs)+1, len(txs))
 				tx := txs[len(txs)-1]
 
-				assert.Equal(t, contracts.StakeHubAddr, *tx.To())
+				assert.Equal(t, contracts.RewardHubAddr, *tx.To())
 				// verify fee
 				assert.Equal(t, tt.expectedFee.Uint64(), tx.Value().Uint64())
 			}

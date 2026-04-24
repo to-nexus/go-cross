@@ -156,7 +156,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return nil
 	}
 
-	threshold, err := e.getValidatorThreshold(number)
+	threshold, err := e.getMaxCouncil(number)
 	if err != nil {
 		return err
 	}
@@ -213,13 +213,13 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 		return nil, fmt.Errorf("failed to call getValidators: %w", err)
 	}
 
-	if length := result.TotalLength.Uint64(); length != uint64(len(result.ValidatorAddrs)) || length != uint64(len(result.SignerAddrs)) || length != uint64(len(result.Amounts)) {
+	if length := result.TotalLength.Uint64(); length != uint64(len(result.ValidatorAddrs)) || length != uint64(len(result.SignerAddrs)) || length != uint64(len(result.Powers)) {
 		return nil, errors.New("validator length mismatch")
 	}
 
 	validatorInfos := make([]ValidatorInfo, len(result.ValidatorAddrs))
 	for i, validator := range result.ValidatorAddrs {
-		amountU256, _ := uint256.FromBig(result.Amounts[i])
+		amountU256, _ := uint256.FromBig(result.Powers[i])
 		signer := result.SignerAddrs[i]
 		validatorInfos[i] = ValidatorInfo{
 			address: validator,
@@ -231,22 +231,22 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 	return validatorInfos, nil
 }
 
-// getValidatorThreshold reads the active validator threshold from the StakeHub contract.
-func (e *Engine) getValidatorThreshold(number uint64) (uint64, error) {
+// getMaxCouncil reads the max number of council from the StakeHub contract.
+func (e *Engine) getMaxCouncil(number uint64) (uint64, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
-	calldata := e.stakeHub.PackValidatorThreshold()
-	threshold, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackValidatorThreshold)
+	calldata := e.stakeHub.PackMaxCouncil()
+	cnt, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackMaxCouncil)
 	if err != nil {
 		if errors.Is(err, bind.ErrNoCode) {
 			// contract is not deployed
 			return 0, nil
 		}
-		return 0, fmt.Errorf("failed to call validatorThreshold: %w", err)
+		return 0, fmt.Errorf("failed to call maxCouncil: %w", err)
 	}
 
-	return threshold.Uint64(), nil
+	return cnt.Uint64(), nil
 }
 
 // ##
@@ -272,26 +272,44 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 		return nil
 	}
 
+	slashedCount := map[common.Address]int{}
 	for round, proposer := range slashed {
+		slashedCount[proposer]++
 		log.Info("Slashing offline proposer",
 			"number", header.Number.Uint64(),
 			"block", parent.Number.Uint64(),
 			"round", round,
 			"proposer", proposer,
-			"isMining", systemTxs == nil)
+			"isMining", systemTxs == nil,
+		)
+	}
 
-		data := e.validatorSlash.PackSlashOffline(proposer)
-		msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
-
-		if systemTxs != nil {
-			err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
-		} else {
-			err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
-		}
-		if err != nil {
-			return err
+	// Slashing same proposer multiple times will be reverted; reduce them
+	target := make([]common.Address, 0, len(slashedCount))
+	for proposer, count := range slashedCount {
+		target = append(target, proposer)
+		if count > 1 {
+			log.Warn("Multiple slashed proposer",
+				"number", header.Number.Uint64(),
+				"block", parent.Number.Uint64(),
+				"proposer", proposer,
+				"count", count,
+			)
 		}
 	}
+
+	data := e.validatorSlash.PackSlashOffline(target)
+	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
+
+	if systemTxs != nil {
+		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+	} else {
+		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+	}
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -393,8 +411,9 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 
 	// totalFee := state.GetBalance(params.SystemAddress) // Total fee is already transferred to the system address in the state transition
 
-	// Calculate total transaction fees by summing up the fees of all transactions
-	totalFee := new(uint256.Int)
+	// Calculate total tip and total fee by summing up the tip and fee of all transactions
+	totalTip := new(big.Int)
+	totalFee := new(big.Int)
 	for i, tx := range *txs {
 		if isSystemTx, err := e.IsSystemTransaction(tx, header); err != nil {
 			return err
@@ -408,36 +427,43 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 
 		receipt := (*receipts)[i]
 
-		gasPrice := new(big.Int).Add(header.BaseFee, tx.EffectiveGasTipValue(header.BaseFee)) // base fee is not burned
-		fee := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
+		gasTipCap, err := tx.EffectiveGasTip(header.BaseFee)
+		if err != nil {
+			return err
+		}
+		gasPrice := new(big.Int).Add(header.BaseFee, gasTipCap)
+		total := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
+		tip := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasTipCap)
 
 		// Blob fee is also included in the total fee
 		if receipt.BlobGasPrice != nil && receipt.BlobGasUsed > 0 {
 			blobFee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.BlobGasUsed), receipt.BlobGasPrice)
-			fee.Add(fee, blobFee)
+			total.Add(total, blobFee)
 		}
 
-		feeU256, _ := uint256.FromBig(fee)
-		totalFee.Add(totalFee, feeU256)
+		totalFee.Add(totalFee, total)
+		totalTip.Add(totalTip, tip)
 	}
 
-	if totalFee.IsZero() {
-		return nil
-	}
-
-	// state.SubBalance(params.SystemAddress, totalFee, tracing.BalanceDecreaseDistributeReward)
-	// state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseDistributeReward)
-	state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseRewardTransactionFee)
 	log.Trace("Distributing rewards",
 		"number", header.Number.Uint64(),
 		"validator", coinbase,
 		"totalFee", totalFee,
+		"totalTip", totalTip,
 		"usedGas", *usedGas,
 		"isMining", systemTxs == nil)
 
+	totalFeeU256, _ := uint256.FromBig(totalFee)
+
+	// state.SubBalance(params.SystemAddress, totalFee, tracing.BalanceDecreaseDistributeReward)
+	// state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseDistributeReward)
+	if totalFeeU256.Sign() != 0 {
+		state.AddBalance(coinbase, totalFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
+	}
+
 	// Call 'distributeReward' function to send the collected rewards to the validator share contract
-	data := e.stakeHub.PackDistributeReward(coinbase)
-	msg := newSystemMessage(coinbase, contracts.StakeHubAddr, data, totalFee.ToBig())
+	data := e.rewardHub.PackDistributeReward(coinbase, totalTip)
+	msg := newSystemMessage(coinbase, contracts.RewardHubAddr, data, totalFee)
 
 	var err error
 	if systemTxs != nil {

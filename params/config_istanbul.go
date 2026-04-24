@@ -34,8 +34,11 @@ type IstanbulConfig struct {
 	// ##
 
 	// ##CROSS: istanbul posa
-	PoSAActivationSeconds *uint64 `json:"posaActivationSeconds"` // PoSA activation time in seconds
-	CouncilPeriod         *uint64 `json:"councilPeriod"`         // The period in seconds for the council to be elected
+	PoSAActivationSeconds *uint64         `json:"posaActivationSeconds"` // PoSA activation time in seconds
+	CouncilPeriod         *uint64         `json:"councilPeriod"`         // The period in seconds for the council to be elected
+	DelegationPool        *common.Address `json:"delegationPool"`        // The address of the delegation pool contract
+	PoSAAdmin             *common.Address `json:"posaAdmin"`             // The address of the PoSA admin
+	RewardStartBlock      *big.Int        `json:"rewardStartBlock"`      // The block number to start PoSA rewarding
 	// ##
 
 	// ##CROSS: bls seal
