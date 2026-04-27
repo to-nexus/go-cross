@@ -206,36 +206,6 @@ func NewConfig(config *params.ChainConfig) *Config {
 func (c Config) GetConfig(blockNumber *big.Int) Config {
 	newConfig := c
 
-	// ##CROSS: istanbul param
-	if blockNumber != nil && blockNumber.Cmp(big.NewInt(1)) > 0 {
-		if cfg := params.IstanbulConfigAt(blockNumber.Uint64()); cfg != nil {
-			if cfg.RequestTimeoutSeconds != 0 {
-				newConfig.RequestTimeout = cfg.RequestTimeoutSeconds * 1000
-			}
-			if cfg.BlockPeriodSeconds != 0 {
-				newConfig.BlockPeriod = cfg.BlockPeriodSeconds
-			}
-			if cfg.EmptyBlockPeriodSeconds != 0 {
-				newConfig.EmptyBlockPeriod = cfg.EmptyBlockPeriodSeconds
-			}
-			if newConfig.ProposerPolicy != nil && newConfig.ProposerPolicy.Id != ProposerPolicyId(cfg.ProposerPolicy) {
-				// swap policy id only
-				newConfig.ProposerPolicy.Id = ProposerPolicyId(cfg.ProposerPolicy)
-			}
-			if cfg.EpochLength != 0 {
-				newConfig.Epoch = cfg.EpochLength
-			}
-			if cfg.MaxRequestTimeoutSeconds != nil {
-				newConfig.MaxRequestTimeoutSeconds = *cfg.MaxRequestTimeoutSeconds
-			}
-			if cfg.CouncilPeriod != nil {
-				newConfig.CouncilPeriod = *cfg.CouncilPeriod
-			}
-			return newConfig
-		}
-	}
-	// ##
-
 	c.getTransitionValue(blockNumber, func(transition params.Transition) {
 		if transition.RequestTimeoutSeconds != 0 {
 			// RequestTimeout is on milliseconds

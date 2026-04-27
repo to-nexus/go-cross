@@ -2,7 +2,6 @@ package contracts
 
 import (
 	"fmt"
-	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -68,58 +67,6 @@ func init() {
 				Code:         breakpoint.CrossExCode,
 			},
 			// ##CROSS: consensus system contract
-			{
-				Name:         "IstanbulParam",
-				ContractAddr: IstanbulParamAddr,
-				Code:         breakpoint.IstanbulParamMetaData.BinRuntime,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					admin := config.Istanbul.PoSAAdmin
-					if admin == nil {
-						return nil, fmt.Errorf("PoSA admin is not set")
-					}
-
-					epochLength := uint64(300) // override to 300
-					blockPeriod := config.GetBlockPeriodSeconds(header.Number)
-					emptyBlockPeriod := config.GetEmptyBlockPeriodSeconds(header.Number)
-					requestTimeout := config.GetRequestTimeoutSeconds(header.Number)
-					maxRequestTimeout := config.GetMaxRequestTimeoutSeconds(header.Number)
-					baseFeeChangeDenominator := config.GetBaseFeeChangeDenominator(header.Number)
-					elasticityMultiplier := config.GetElasticityMultiplier(header.Number)
-					maxBaseFee := config.GetMaxBaseFee(header.Number)
-					if maxBaseFee == nil {
-						maxBaseFee = big.NewInt(0)
-					}
-					minBaseFee := config.GetMinBaseFee(header.Number)
-					if minBaseFee == nil {
-						minBaseFee = big.NewInt(0)
-					}
-					proposerPolicy := config.GetProposerPolicy(header.Number)
-					gasLimit := header.GasLimit
-					if limit := config.GetGasLimit(header.Number); limit != nil {
-						gasLimit = *limit
-					}
-					councilPeriod := uint64(86400)
-					if config.Istanbul != nil && config.Istanbul.CouncilPeriod != nil {
-						councilPeriod = *config.Istanbul.CouncilPeriod
-					}
-					return breakpoint.NewIstanbulParam().PackInitialize(
-						epochLength,
-						blockPeriod,
-						emptyBlockPeriod,
-						requestTimeout,
-						maxRequestTimeout,
-						elasticityMultiplier,
-						baseFeeChangeDenominator,
-						maxBaseFee,
-						minBaseFee,
-						proposerPolicy,
-						gasLimit,
-						councilPeriod,
-						*admin,
-					), nil
-				},
-			},
 			{
 				Name:         "ValidatorSet",
 				ContractAddr: ValidatorSetAddr,

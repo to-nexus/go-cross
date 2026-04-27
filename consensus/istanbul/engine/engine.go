@@ -57,7 +57,6 @@ type Engine struct {
 	consensus       consensus.Engine
 
 	// system contracts
-	istanbulParam  *breakpoint.IstanbulParam
 	validatorSet   *breakpoint.ValidatorSet
 	stakeHub       *breakpoint.StakeHub
 	rewardHub      *breakpoint.RewardHub
@@ -75,7 +74,6 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		contractBackend: contractBackend,
 		signTx:          signTx,
 		consensus:       ce,
-		istanbulParam:   breakpoint.NewIstanbulParam(),
 		validatorSet:    breakpoint.NewValidatorSet(),
 		stakeHub:        breakpoint.NewStakeHub(),
 		rewardHub:       breakpoint.NewRewardHub(),
@@ -312,15 +310,6 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	if header.Difficulty == nil || header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
 		return istanbul.ErrInvalidDifficulty
 	}
-
-	// ##CROSS: istanbul param
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		// Need to sync Istanbul param before verifying the header
-		if err := e.SyncIstanbulParam(header); err != nil {
-			return err
-		}
-	}
-	// ##
 
 	// Verify the existence / non-existence of cancun-specific header fields
 	cancun := chain.Config().IsCancun(header.Number, header.Time)

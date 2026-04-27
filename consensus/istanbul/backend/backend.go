@@ -393,13 +393,13 @@ func (sb *Backend) ParentValidators(proposal istanbul.Proposal) istanbul.Validat
 	if block, ok := proposal.(*types.Block); ok {
 		return sb.getValidators(block.Number().Uint64()-1, block.ParentHash())
 	}
-	return validator.NewSet(nil, nil, sb.config.GetConfig(proposal.Number()).ProposerPolicy) // ##CROSS: istanbul param
+	return validator.NewSet(nil, nil, sb.config.ProposerPolicy)
 }
 
 func (sb *Backend) getValidators(number uint64, hash common.Hash) istanbul.ValidatorSet {
 	snap, err := sb.snapshot(sb.chain, number, hash, nil)
 	if err != nil {
-		return validator.NewSet(nil, nil, sb.config.GetConfig(new(big.Int).SetUint64(number)).ProposerPolicy) // ##CROSS: istanbul param
+		return validator.NewSet(nil, nil, sb.config.ProposerPolicy)
 	}
 	return snap.ValSet
 }

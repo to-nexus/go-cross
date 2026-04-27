@@ -10,7 +10,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
@@ -21,75 +20,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
-
-// ##CROSS: istanbul param
-
-// SyncIstanbulParam reads the istanbul parameters from the IstanbulParam contract.
-// It reads all checkpoints up to the given timepoint and caches them.
-func (e *Engine) SyncIstanbulParam(header *types.Header) error {
-	timepoint := header.Number.Uint64()
-	istanbulParamInstance := e.istanbulParam.Instance(e.contractBackend, contracts.IstanbulParamAddr)
-
-	// get the latest param index at this timepoint
-	latestIndex, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamIndex(timepoint), e.istanbulParam.UnpackGetParamIndex)
-	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return nil
-		}
-		return fmt.Errorf("failed to call getParamIndex: %w", err)
-	}
-
-	// get the number of cached configs
-	length := params.IstanbulConfigLength()
-
-	// read uncached configs from the contract
-	for index := uint64(length); index <= latestIndex; index++ {
-		result, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamsByIndex(index), e.istanbulParam.UnpackGetParamsByIndex)
-		if err != nil {
-			return fmt.Errorf("failed to call getParamsByIndex(%d): %w", index, err)
-		}
-
-		log.Info("Syncing istanbul param", "index", index, "number", result.Timepoint, "config", result)
-
-		config := params.IstanbulConfig{
-			EpochLength:             result.EpochLength,
-			BlockPeriodSeconds:      result.BlockPeriod,
-			EmptyBlockPeriodSeconds: result.EmptyBlockPeriod,
-			RequestTimeoutSeconds:   result.RequestTimeout,
-			ProposerPolicy:          result.ProposerPolicy,
-		}
-		if result.MaxRequestTimeout != 0 {
-			config.MaxRequestTimeoutSeconds = &result.MaxRequestTimeout
-		}
-		if result.GasLimit != 0 {
-			config.GasLimit = &result.GasLimit
-		}
-		if result.ElasticityMultiplier != 0 {
-			config.ElasticityMultiplier = &result.ElasticityMultiplier
-		}
-		if result.BaseFeeChangeDenominator != 0 {
-			config.BaseFeeChangeDenominator = &result.BaseFeeChangeDenominator
-		}
-		if result.MaxBaseFee != nil && result.MaxBaseFee.Sign() > 0 {
-			config.MaxBaseFee = (*math.HexOrDecimal256)(result.MaxBaseFee)
-		}
-		if result.MinBaseFee != nil && result.MinBaseFee.Sign() > 0 {
-			config.MinBaseFee = (*math.HexOrDecimal256)(result.MinBaseFee)
-		}
-		if result.CouncilPeriod != 0 {
-			config.CouncilPeriod = &result.CouncilPeriod
-		}
-
-		params.AddIstanbulConfig(&config, result.Timepoint)
-	}
-	return nil
-}
-
-// ##
 
 // ##CROSS: consensus system contract
 

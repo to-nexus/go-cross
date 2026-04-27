@@ -85,12 +85,6 @@ func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition 
 }
 
 func (c *ChainConfig) GetEpochLength(num *big.Int) (epochLength uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.EpochLength != 0 {
-		return cfg.EpochLength
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		epochLength = c.Istanbul.EpochLength
 	}
@@ -106,12 +100,6 @@ func (c *ChainConfig) GetEpochLength(num *big.Int) (epochLength uint64) {
 }
 
 func (c *ChainConfig) GetBlockPeriodSeconds(num *big.Int) (blockPeriod uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.BlockPeriodSeconds != 0 {
-		return cfg.BlockPeriodSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		blockPeriod = c.Istanbul.BlockPeriodSeconds
 	}
@@ -127,12 +115,6 @@ func (c *ChainConfig) GetBlockPeriodSeconds(num *big.Int) (blockPeriod uint64) {
 }
 
 func (c *ChainConfig) GetEmptyBlockPeriodSeconds(num *big.Int) (emptyBlockPeriods uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil {
-		return cfg.EmptyBlockPeriodSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		emptyBlockPeriods = c.Istanbul.EmptyBlockPeriodSeconds
 	}
@@ -145,12 +127,6 @@ func (c *ChainConfig) GetEmptyBlockPeriodSeconds(num *big.Int) (emptyBlockPeriod
 }
 
 func (c *ChainConfig) GetRequestTimeoutSeconds(num *big.Int) (requestTimeout uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.RequestTimeoutSeconds != 0 {
-		return cfg.RequestTimeoutSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		requestTimeout = c.Istanbul.RequestTimeoutSeconds
 	}
@@ -166,12 +142,6 @@ func (c *ChainConfig) GetRequestTimeoutSeconds(num *big.Int) (requestTimeout uin
 }
 
 func (c *ChainConfig) GetMaxRequestTimeoutSeconds(num *big.Int) (maxRequestTimeout uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MaxRequestTimeoutSeconds != nil {
-		return *cfg.MaxRequestTimeoutSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.MaxRequestTimeoutSeconds != nil {
 		maxRequestTimeout = *c.Istanbul.MaxRequestTimeoutSeconds
 	}
@@ -184,12 +154,6 @@ func (c *ChainConfig) GetMaxRequestTimeoutSeconds(num *big.Int) (maxRequestTimeo
 }
 
 func (c *ChainConfig) GetProposerPolicy(num *big.Int) (policy uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil {
-		return cfg.ProposerPolicy
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		policy = c.Istanbul.ProposerPolicy
 	}
@@ -210,12 +174,6 @@ func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.A
 }
 
 func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.GasLimit != nil {
-		return cfg.GasLimit
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.GasLimit != nil {
 		gasLimit = c.Istanbul.GasLimit
 	}
@@ -229,12 +187,6 @@ func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
 
 // ##CROSS: basefee
 func (c *ChainConfig) GetElasticityMultiplier(num *big.Int) (multiplier uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.ElasticityMultiplier != nil {
-		return *cfg.ElasticityMultiplier
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.ElasticityMultiplier != nil {
 		multiplier = *c.Istanbul.ElasticityMultiplier
 	}
@@ -250,12 +202,6 @@ func (c *ChainConfig) GetElasticityMultiplier(num *big.Int) (multiplier uint64) 
 }
 
 func (c *ChainConfig) GetBaseFeeChangeDenominator(num *big.Int) (denominator uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.BaseFeeChangeDenominator != nil {
-		return *cfg.BaseFeeChangeDenominator
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.BaseFeeChangeDenominator != nil {
 		denominator = *c.Istanbul.BaseFeeChangeDenominator
 	}
@@ -271,12 +217,6 @@ func (c *ChainConfig) GetBaseFeeChangeDenominator(num *big.Int) (denominator uin
 }
 
 func (c *ChainConfig) GetMaxBaseFee(num *big.Int) (max *big.Int) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MaxBaseFee != nil {
-		return (*big.Int)(cfg.MaxBaseFee)
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.MaxBaseFee != nil {
 		max = (*big.Int)(c.Istanbul.MaxBaseFee)
 	}
@@ -290,12 +230,6 @@ func (c *ChainConfig) GetMaxBaseFee(num *big.Int) (max *big.Int) {
 }
 
 func (c *ChainConfig) GetMinBaseFee(num *big.Int) (min *big.Int) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MinBaseFee != nil {
-		return (*big.Int)(cfg.MinBaseFee)
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.MinBaseFee != nil {
 		min = (*big.Int)(c.Istanbul.MinBaseFee)
 	}

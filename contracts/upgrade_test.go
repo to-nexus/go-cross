@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -73,8 +72,6 @@ func TestInitSystemContract(t *testing.T) {
 	payload, err := rlp.EncodeToBytes(extra)
 	require.NoError(t, err)
 
-	maxBaseFee := math.NewHexOrDecimal256(1e18)
-	minBaseFee := math.NewHexOrDecimal256(1e8)
 	admin := common.HexToAddress("0x000000000000000000000000000000000000ffff")
 	pool := common.HexToAddress("0x0000000000000000000000000000000000001001")
 	config := &params.ChainConfig{
@@ -84,8 +81,6 @@ func TestInitSystemContract(t *testing.T) {
 			EmptyBlockPeriodSeconds: 0,
 			RequestTimeoutSeconds:   10,
 			ProposerPolicy:          0,
-			MaxBaseFee:              maxBaseFee,
-			MinBaseFee:              minBaseFee,
 			PoSAAdmin:               &admin,
 			DelegationPool:          &pool,
 			RewardStartBlock:        big.NewInt(100),
@@ -110,24 +105,6 @@ func TestInitSystemContract(t *testing.T) {
 				Extra:    payload,
 			},
 			expected: []ContractInitData{
-				{
-					To: IstanbulParamAddr,
-					Data: breakpoint.NewIstanbulParam().PackInitialize(
-						300,                               // epochLength
-						1,                                 // blockPeriod
-						0,                                 // emptyBlockPeriod
-						10,                                // requestTimeout
-						0,                                 // maxRequestTimeout
-						config.ElasticityMultiplier(),     // elasticityMultiplier
-						config.BaseFeeChangeDenominator(), // baseFeeChangeDenominator
-						(*big.Int)(maxBaseFee),            // maxBaseFee
-						(*big.Int)(minBaseFee),            // minBaseFee
-						0,                                 // proposerPolicy
-						2e10,                              // gasLimit
-						86400,                             // councilPeriod
-						admin,
-					),
-				},
 				{
 					To:   ValidatorSetAddr,
 					Data: breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators, signers),

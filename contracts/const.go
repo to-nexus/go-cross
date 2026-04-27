@@ -15,7 +15,6 @@ var (
 
 	// breakpoint
 	// ##CROSS: consensus system contract
-	IstanbulParamAddr      = common.HexToAddress("0x0000000000000000000000000000000000001000")
 	ValidatorSetAddr       = common.HexToAddress("0x0000000000000000000000000000000000001001")
 	StakeHubAddr           = common.HexToAddress("0x0000000000000000000000000000000000001002")
 	RewardHubAddr          = common.HexToAddress("0x0000000000000000000000000000000000001003")
@@ -28,7 +27,6 @@ var (
 )
 
 var systemContracts = map[common.Address]bool{
-	IstanbulParamAddr:      true,
 	ValidatorSetAddr:       true,
 	StakeHubAddr:           true,
 	RewardHubAddr:          true,

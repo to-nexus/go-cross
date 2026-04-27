@@ -59,10 +59,6 @@ func (sb *Backend) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, he
 	return sb.Engine().EstimateGasForSystemTxs(chain, header)
 }
 
-func (sb *Backend) SyncIstanbulParam(header *types.Header) error { // ##CROSS: istanbul param
-	return sb.Engine().SyncIstanbulParam(header)
-}
-
 // ##
 
 // Author retrieves the Ethereum address of the account that minted the given
@@ -426,7 +422,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 				}
 			}
 
-			cfg := sb.config.GetConfig(new(big.Int).SetUint64(number)) // ##CROSS: istanbul param
+			cfg := sb.config.GetConfig(new(big.Int).SetUint64(number))
 			snap = newSnapshot(cfg.Epoch, 0, genesis.Hash(), validator.NewSet(validators, signers, cfg.ProposerPolicy))
 			if err := sb.storeSnap(snap); err != nil {
 				return nil, err
@@ -464,7 +460,6 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 	if err != nil {
 		return nil, err
 	}
-	snap.Epoch = sb.config.GetConfig(new(big.Int).SetUint64(snap.Number)).Epoch // ##CROSS: istanbul param
 	sb.recents.Add(snap.Hash, snap)
 
 	// If we've generated a new checkpoint snapshot, save to disk

@@ -167,9 +167,6 @@ type IstanbulEngine interface {
 	// EstimateGasForSystemTxs estimates the gas cost for system transactions in the given block.
 	EstimateGasForSystemTxs(ChainHeaderReader, *types.Header) uint64
 
-	// SyncIstanbulParam syncs and caches the Istanbul parameters from the system contract.
-	SyncIstanbulParam(*types.Header) error // ##CROSS: istanbul param
-
 	// ValidatorsAt returns the validator addresses at the given block number.
 	ValidatorsAt(ChainHeaderReader, *types.Header) []common.Address // ##CROSS: istanbul posa
 	// ##
