@@ -95,6 +95,11 @@ func (e *Engine) SyncIstanbulParam(header *types.Header) error {
 
 type validatorSet breakpoint.GetActiveValidatorsOutput
 
+var (
+	errValidatorSetLengthMismatch = errors.New("validator set length mismatch")
+	errInvalidValidatorSigner     = errors.New("invalid validator signer")
+)
+
 func (v validatorSet) Len() int { return len(v.ValidatorAddrs) }
 func (v validatorSet) Less(i, j int) bool {
 	return bytes.Compare(v.ValidatorAddrs[i][:], v.ValidatorAddrs[j][:]) < 0
@@ -119,6 +124,15 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.
 		return nil, nil, fmt.Errorf("failed to call getActiveValidators: %w", err)
 	}
 
+	if len(result.ValidatorAddrs) != len(result.SignerAddrs) {
+		return nil, nil, fmt.Errorf("%w: validators %d signers %d", errValidatorSetLengthMismatch, len(result.ValidatorAddrs), len(result.SignerAddrs))
+	}
+	for i, signer := range result.SignerAddrs {
+		if len(signer) != types.BLSPublicKeyLength {
+			return nil, nil, fmt.Errorf("%w: signer %d has length %d", errInvalidValidatorSigner, i, len(signer))
+		}
+	}
+
 	// sort ascending
 	sort.Sort(validatorSet(result))
 
@@ -132,7 +146,7 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.
 type ValidatorInfo struct {
 	address common.Address
 	signer  types.BLSPublicKey
-	amount  *uint256.Int
+	power   *uint256.Int
 }
 
 // updateValidatorSet creates a new validator set and updates the ValidatorSet contract.
@@ -164,9 +178,19 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return errors.New("zero validator threshold")
 	}
 
-	// cut top N validators by their staking amount
+	// sort descending by their staking power
 	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
-		return b.amount.Cmp(a.amount)
+		return b.power.Cmp(a.power)
+	})
+
+	// cut top N validators by their staking power
+	if len(validatorInfos) > int(threshold) {
+		validatorInfos = validatorInfos[:threshold]
+	}
+
+	// sort ascending by their address
+	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
+		return bytes.Compare(a.address[:], b.address[:])
 	})
 
 	validators := make([]common.Address, 0, threshold)
@@ -175,7 +199,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	signers := make([]types.BLSPublicKey, 0, threshold)
 	// ##
 	for _, validator := range validatorInfos {
-		if validator.amount.IsZero() || len(validators) >= int(threshold) {
+		if validator.power.IsZero() || len(validators) >= int(threshold) {
 			// no more active validators or enough validators are collected
 			break
 		}
@@ -219,12 +243,12 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 
 	validatorInfos := make([]ValidatorInfo, len(result.ValidatorAddrs))
 	for i, validator := range result.ValidatorAddrs {
-		amountU256, _ := uint256.FromBig(result.Powers[i])
+		powerU256, _ := uint256.FromBig(result.Powers[i])
 		signer := result.SignerAddrs[i]
 		validatorInfos[i] = ValidatorInfo{
 			address: validator,
 			signer:  types.BytesToBLSPublicKey(signer),
-			amount:  amountU256,
+			power:   powerU256,
 		}
 	}
 
@@ -302,14 +326,10 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
 
 	if systemTxs != nil {
-		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
-	} else {
-		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
-	}
-	if err != nil {
+		_, err = e.applyOptionalReceivedSystemTransaction("validator slash", msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 		return err
 	}
-
+	e.applyOptionalGeneratedSystemTransaction("validator slash", msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
 	return nil
 }
 
@@ -393,11 +413,11 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 
 	log.Info("Mitigating slashed validators", "number", header.Number.Uint64(), "slashed", slashed, "isMining", systemTxs == nil)
 	if systemTxs != nil {
-		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
-	} else {
-		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+		_, err = e.applyOptionalReceivedSystemTransaction("mitigate slashed validators", msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+		return err
 	}
-	return err
+	e.applyOptionalGeneratedSystemTransaction("mitigate slashed validators", msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+	return nil
 }
 
 // ##
@@ -408,8 +428,6 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 	if coinbase == (common.Address{}) {
 		coinbase = e.signer
 	}
-
-	// totalFee := state.GetBalance(params.SystemAddress) // Total fee is already transferred to the system address in the state transition
 
 	// Calculate total tip and total fee by summing up the tip and fee of all transactions
 	totalTip := new(big.Int)
@@ -453,10 +471,9 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 		"usedGas", *usedGas,
 		"isMining", systemTxs == nil)
 
-	totalFeeU256, _ := uint256.FromBig(totalFee)
+	snapshot := newSystemStateSnapshot(state, txs, receipts, usedGas)
 
-	// state.SubBalance(params.SystemAddress, totalFee, tracing.BalanceDecreaseDistributeReward)
-	// state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseDistributeReward)
+	totalFeeU256, _ := uint256.FromBig(totalFee)
 	if totalFeeU256.Sign() != 0 {
 		state.AddBalance(coinbase, totalFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
 	}
@@ -465,16 +482,38 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 	data := e.rewardHub.PackDistributeReward(coinbase, totalTip)
 	msg := newSystemMessage(coinbase, contracts.RewardHubAddr, data, totalFee)
 
-	var err error
 	if systemTxs != nil {
-		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
-	} else {
-		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
-	}
-	if err != nil {
+		included, err := e.applyOptionalReceivedSystemTransaction("distribute rewards", msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+		if err != nil || !included {
+			snapshot.Revert()
+		}
+		if err == nil && !included {
+			// `distributeRewards` is omitted by the proposer, fallback total fee to RewardHub
+			fallbackReward(header, state, coinbase, totalFeeU256)
+		}
 		return err
 	}
+
+	if !e.applyOptionalGeneratedSystemTransaction("distribute rewards", msg, state, header, cx, txs, receipts, usedGas, tracer) {
+		// Failed to distribute rewards, fallback total fee to RewardHub
+		snapshot.Revert()
+		fallbackReward(header, state, coinbase, totalFeeU256)
+	}
 	return nil
+}
+
+// fallbackReward sends the reward to the RewardHub contract, in case the distributeRewards transaction fails.
+func fallbackReward(header *types.Header, state vm.StateDB, coinbase common.Address, amount *uint256.Int) {
+	if amount == nil || amount.IsZero() {
+		return
+	}
+	log.Warn("Falling back reward balance to RewardHub",
+		"number", header.Number.Uint64(),
+		"validator", coinbase,
+		"rewardHub", contracts.RewardHubAddr,
+		"amount", amount,
+	)
+	state.AddBalance(contracts.RewardHubAddr, amount, tracing.BalanceIncreaseRewardTransactionFee)
 }
 
 // ##

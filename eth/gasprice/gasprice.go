@@ -235,11 +235,6 @@ func (oracle *Oracle) SuggestTipCap(ctx context.Context) (*big.Int, error) {
 	if price.Cmp(oracle.maxPrice) > 0 {
 		price = new(big.Int).Set(oracle.maxPrice)
 	}
-	// ##CROSS: gpo min tip
-	if price.Cmp(oracle.minPrice) < 0 {
-		price = new(big.Int).Set(oracle.minPrice)
-	}
-	// ##
 	oracle.cacheLock.Lock()
 	oracle.lastHead = headHash
 	oracle.lastPrice = price

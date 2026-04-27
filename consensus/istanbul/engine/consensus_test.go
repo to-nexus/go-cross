@@ -36,6 +36,8 @@ var (
 	signer3 = common.Hex2Bytes("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
 	signer4 = common.Hex2Bytes("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	// ##
+
+	revertCode = []byte{0x60, 0x00, 0x60, 0x00, 0xfd}
 )
 
 // mockContractBackend implements bind.ContractBackend for testing
@@ -161,6 +163,36 @@ func TestGetCurrentValidators(t *testing.T) {
 			expectedValidators: nil,
 			expectedErr:        callContractErr,
 		},
+		{
+			name:   "validator signer length mismatch",
+			number: 100,
+			mockCaller: &mockContractBackend{
+				codeAtBytes: code,
+				callResponses: map[string][][]byte{
+					method: {packActiveValidatorsResponse(t,
+						[]common.Address{addr1, addr2},
+						[][]byte{signer1},
+					)},
+				},
+			},
+			expectedValidators: nil,
+			expectedErr:        errValidatorSetLengthMismatch,
+		},
+		{
+			name:   "invalid signer length",
+			number: 100,
+			mockCaller: &mockContractBackend{
+				codeAtBytes: code,
+				callResponses: map[string][][]byte{
+					method: {packActiveValidatorsResponse(t,
+						[]common.Address{addr1},
+						[][]byte{[]byte{1, 2, 3}},
+					)},
+				},
+			},
+			expectedValidators: nil,
+			expectedErr:        errInvalidValidatorSigner,
+		},
 	}
 
 	for _, tt := range tests {
@@ -281,15 +313,6 @@ func TestUpdateValidatorSet(t *testing.T) {
 				},
 			},
 			expectedErr: errors.New("zero validator threshold"),
-		},
-		{
-			name:      "error from getValidatorInfo",
-			threshold: 2,
-			mockBackend: &mockContractBackend{
-				codeAtBytes: code,
-				callErr:     errors.New("getValidatorInfo error"),
-			},
-			expectedErr: errors.New("getValidatorInfo error"),
 		},
 		{
 			name:      "error from getValidatorThreshold",
@@ -817,6 +840,51 @@ func createHeaderWithIstanbulExtra(t *testing.T, number uint64, parentHash commo
 	}
 }
 
+func TestSlashValidatorsRevert(t *testing.T) {
+	validators := []common.Address{addr1, addr2, addr3}
+	headers := make(map[common.Hash]*types.Header)
+	h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+	h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[2], validators, 1)
+	h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[0], validators, 0)
+	headers[h0.Hash()] = h0
+	headers[h1.Hash()] = h1
+	headers[h2.Hash()] = h2
+
+	memdb := rawdb.NewMemoryDatabase()
+	triedb := triedb.NewDatabase(memdb, nil)
+	sdb := state.NewDatabase(triedb, nil)
+	statedb, _ := state.New(types.EmptyRootHash, sdb)
+	statedb.SetCode(contracts.ValidatorSlashAddr, revertCode)
+
+	mockChain := &mockChainHeaderReader{
+		headers: headers,
+		config:  params.TestChainConfig,
+	}
+	cx := &chainContext{Chain: mockChain}
+	engine := &Engine{
+		cfg: &istanbul.Config{
+			ProposerPolicy: istanbul.NewRoundRobinProposerPolicy(),
+		},
+		signer:         validators[0],
+		validatorSlash: breakpoint.NewValidatorSlash(),
+		signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+			return tx, nil
+		},
+	}
+
+	var txs []*types.Transaction
+	var receipts []*types.Receipt
+	var usedGas uint64
+
+	err := engine.slashValidators(h2, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, txs)
+	assert.Empty(t, receipts)
+	assert.Zero(t, usedGas)
+	assert.Zero(t, statedb.GetNonce(validators[0]))
+}
+
 // ##
 
 // ##CROSS: validator reward
@@ -980,6 +1048,106 @@ func TestDistributeRewards(t *testing.T) {
 				assert.Equal(t, tt.expectedFee.Uint64(), tx.Value().Uint64())
 			}
 			assert.Equal(t, len(txs), len(receipts))
+		})
+	}
+}
+
+func TestDistributeRewardsOptionalTx(t *testing.T) {
+	signer := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	tests := []struct {
+		name                    string
+		received                bool
+		code                    []byte
+		expectErr               string
+		expectRewardHubFallback bool
+	}{
+		{
+			name:                    "generated reverting optional tx is skipped",
+			code:                    revertCode,
+			expectRewardHubFallback: true,
+		},
+		{
+			name:      "received missing successful optional tx is rejected",
+			received:  true,
+			expectErr: "missing optional system transaction: distribute rewards",
+		},
+		{
+			name:                    "received missing reverting optional tx is accepted",
+			received:                true,
+			code:                    revertCode,
+			expectRewardHubFallback: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			memdb := rawdb.NewMemoryDatabase()
+			triedb := triedb.NewDatabase(memdb, nil)
+			sdb := state.NewDatabase(triedb, nil)
+			statedb, _ := state.New(types.EmptyRootHash, sdb)
+			if len(tt.code) > 0 {
+				statedb.SetCode(contracts.RewardHubAddr, tt.code)
+			}
+
+			cx := &mockChainContext{config: params.TestChainConfig}
+			header := &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				BaseFee:    big.NewInt(1000000000),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+				Time:       1000000000,
+			}
+			txs := []*types.Transaction{
+				types.NewTx(&types.DynamicFeeTx{
+					Nonce:     0,
+					GasTipCap: big.NewInt(1000000000),
+					GasFeeCap: big.NewInt(2000000000),
+					Gas:       21000,
+					To:        ptrAddr(common.HexToAddress("0x2222222222222222222222222222222222222222")),
+					Value:     big.NewInt(0),
+				}),
+			}
+			receipts := []*types.Receipt{
+				{
+					Status:  types.ReceiptStatusSuccessful,
+					GasUsed: 21000,
+				},
+			}
+			var usedGas uint64
+			engine := &Engine{
+				contractBackend: &mockContractBackend{codeAtBytes: []byte{1, 2, 3}},
+				rewardHub:       breakpoint.NewRewardHub(),
+				signer:          signer,
+				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+					require.Equal(t, account.Address, signer)
+					return tx, nil
+				},
+			}
+
+			var systemTxs *[]*types.Transaction
+			if tt.received {
+				emptySystemTxs := []*types.Transaction{}
+				systemTxs = &emptySystemTxs
+			}
+			err := engine.distributeRewards(header, statedb, cx, &txs, &receipts, systemTxs, &usedGas, nil)
+
+			if tt.expectErr != "" {
+				require.ErrorContains(t, err, tt.expectErr)
+			} else {
+				require.NoError(t, err)
+			}
+			expectedFee := new(big.Int).Mul(big.NewInt(21000), big.NewInt(2000000000))
+			assert.Len(t, txs, 1)
+			assert.Len(t, receipts, 1)
+			assert.Zero(t, usedGas)
+			assert.True(t, statedb.GetBalance(signer).IsZero())
+			if tt.expectRewardHubFallback {
+				assert.Equal(t, expectedFee.Uint64(), statedb.GetBalance(contracts.RewardHubAddr).Uint64())
+			} else {
+				assert.True(t, statedb.GetBalance(contracts.RewardHubAddr).IsZero())
+			}
+			assert.Zero(t, statedb.GetNonce(signer))
 		})
 	}
 }
