@@ -198,6 +198,10 @@ var (
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
 		Istanbul: &IstanbulConfig{
 			EpochLength:             86400,
 			BlockPeriodSeconds:      1,
