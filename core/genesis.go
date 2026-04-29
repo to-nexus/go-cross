@@ -285,6 +285,7 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle
 	}
+	cfg.BreakpointTime = nil
 	return cfg.CheckConfigForkOrder()
 }
 

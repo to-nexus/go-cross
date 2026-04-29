@@ -1163,9 +1163,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 		return newTimestampCompatError("Prague fork timestamp", c.PragueTime, newcfg.PragueTime)
 	}
 	// ##CROSS: fork breakpoint
-	if isForkTimestampIncompatible(c.BreakpointTime, newcfg.BreakpointTime, headTimestamp) {
-		return newTimestampCompatError("Breakpoint fork timestamp", c.BreakpointTime, newcfg.BreakpointTime)
-	}
+	// if isForkTimestampIncompatible(c.BreakpointTime, newcfg.BreakpointTime, headTimestamp) {
+	// 	return newTimestampCompatError("Breakpoint fork timestamp", c.BreakpointTime, newcfg.BreakpointTime)
+	// }
 	// ##
 	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
 		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
