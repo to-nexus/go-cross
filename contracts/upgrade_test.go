@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -51,24 +52,25 @@ func TestTryUpdateSystemContract(t *testing.T) {
 
 // ##CROSS: consensus system contract
 func TestInitSystemContract(t *testing.T) {
+	validators := []common.Address{
+		common.HexToAddress("0x000000000000000000000000000000000000aaaa"),
+		common.HexToAddress("0x000000000000000000000000000000000000bbbb"),
+		common.HexToAddress("0x000000000000000000000000000000000000cccc"),
+	}
+	// ##CROSS: bls seal
+	signers := make([][]byte, 0, len(validators))
+	for range len(validators) {
+		signers = append(signers, types.BLSPublicKey{}.Bytes())
+	}
+	// ##
 	extra := &types.IstanbulExtra{
-		VanityData: []byte{},
-		Validators: []common.Address{
-			common.HexToAddress("0x000000000000000000000000000000000000aaaa"),
-			common.HexToAddress("0x000000000000000000000000000000000000bbbb"),
-			common.HexToAddress("0x000000000000000000000000000000000000cccc"),
-		},
+		VanityData:    []byte{},
+		Validators:    validators,
 		CommittedSeal: [][]byte{},
 		Round:         0,
 		Vote:          nil,
 		RandomReveal:  []byte{},
 	}
-	// ##CROSS: bls seal
-	signers := make([][]byte, 0, len(extra.Validators))
-	for range len(extra.Validators) {
-		signers = append(signers, types.BLSPublicKey{}.Bytes())
-	}
-	// ##
 	payload, err := rlp.EncodeToBytes(extra)
 	require.NoError(t, err)
 
@@ -81,10 +83,24 @@ func TestInitSystemContract(t *testing.T) {
 			EmptyBlockPeriodSeconds: 0,
 			RequestTimeoutSeconds:   10,
 			ProposerPolicy:          0,
-			PoSAAdmin:               &admin,
-			DelegationPool:          &pool,
-			RewardStartBlock:        big.NewInt(100),
+			PoSA: &params.PoSAConfig{
+				Admin:            admin,
+				DelegationPool:   pool,
+				RewardStartBlock: new(big.Int).SetUint64(100),
+			},
 		},
+	}
+
+	operators := validators
+	ids := make([]string, 0, len(validators))
+	for i := range validators {
+		ids = append(ids, fmt.Sprintf("test%02d", i+1))
+		config.Istanbul.PoSA.Validators = append(config.Istanbul.PoSA.Validators, params.PoSAValidator{
+			ID:        ids[i],
+			Operator:  operators[i],
+			Validator: validators[i],
+			Signer:    signers[i],
+		})
 	}
 
 	initialize := common.FromHex("8129fc1c")
@@ -111,7 +127,7 @@ func TestInitSystemContract(t *testing.T) {
 				},
 				{
 					To:   StakeHubAddr,
-					Data: breakpoint.NewStakeHub().PackInitialize(pool, admin),
+					Data: breakpoint.NewStakeHub().PackInitialize(pool, admin, operators, validators, signers, ids),
 				},
 				{
 					To:   RewardHubAddr,
@@ -119,18 +135,6 @@ func TestInitSystemContract(t *testing.T) {
 				},
 				{
 					To:   ValidatorSlashAddr,
-					Data: initialize,
-				},
-				{
-					To:   GovernorAddr,
-					Data: breakpoint.NewCrossGovernor().PackInitialize(admin),
-				},
-				{
-					To:   GovernanceTokenAddr,
-					Data: initialize,
-				},
-				{
-					To:   GovernanceTimelockAddr,
 					Data: initialize,
 				},
 			},

@@ -115,9 +115,12 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return b.power.Cmp(a.power)
 	})
 
-	// cut top N validators by their staking power
-	if len(validatorInfos) > int(threshold) {
-		validatorInfos = validatorInfos[:threshold]
+	// cut top N validators by their staking power and remove validators with zero power
+	for n := range validatorInfos {
+		if n >= int(threshold) || validatorInfos[n].power.IsZero() {
+			validatorInfos = validatorInfos[:n]
+			break
+		}
 	}
 
 	// sort ascending by their address
@@ -131,10 +134,6 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	signers := make([]types.BLSPublicKey, 0, threshold)
 	// ##
 	for _, validator := range validatorInfos {
-		if validator.power.IsZero() || len(validators) >= int(threshold) {
-			// no more active validators or enough validators are collected
-			break
-		}
 		validators = append(validators, validator.address)
 		// ##CROSS: bls seal
 		signersBytes = append(signersBytes, validator.signer.Bytes())
@@ -162,10 +161,6 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 	calldata := e.stakeHub.PackGetValidators(big.NewInt(0), big.NewInt(0))
 	result, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackGetValidators)
 	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return nil, nil
-		}
 		return nil, fmt.Errorf("failed to call getValidators: %w", err)
 	}
 
@@ -195,10 +190,6 @@ func (e *Engine) getMaxCouncil(number uint64) (uint64, error) {
 	calldata := e.stakeHub.PackMaxCouncil()
 	cnt, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackMaxCouncil)
 	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return 0, nil
-		}
 		return 0, fmt.Errorf("failed to call maxCouncil: %w", err)
 	}
 
@@ -299,7 +290,8 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 		}
 	}
 	if len(validators) == 0 {
-		return nil, fmt.Errorf("no validators at block %d", header.Number.Uint64())
+		log.Warn("No validators at block", "number", header.Number.Uint64())
+		return nil, nil
 	}
 
 	valSet := validator.NewSet(validators, nil, policy)
@@ -328,11 +320,8 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 	calldata := e.validatorSlash.PackGetSlashedValidators()
 	slashed, err := bind.Call(validatorSlashInstance, callopts, calldata, e.validatorSlash.UnpackGetSlashedValidators)
 	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return nil
-		}
-		return fmt.Errorf("failed to call getSlashedValidators: %w", err)
+		log.Warn("Failed to call getSlashedValidators", "error", err, "number", header.Number.Uint64())
+		return nil
 	}
 
 	if len(slashed) == 0 {

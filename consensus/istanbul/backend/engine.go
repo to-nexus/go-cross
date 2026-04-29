@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -407,18 +408,23 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 				validators []common.Address
 				signers    []types.BLSPublicKey // ##CROSS: bls seal
 			)
-			validatorsFromConfig := sb.config.Validators
-			if len(validatorsFromConfig) > 0 {
-				validators = validatorsFromConfig
-				signers = sb.config.Signers
-				log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
+			// ##CROSS: istanbul posa
+			if chain.Config().BreakpointTime != nil && *chain.Config().BreakpointTime == 0 {
+				// Breakpoint is active at genesis, use the validators and signers from the PoSA config
+				validators, signers = validatorsFromPoSAConfig(chain.Config().Istanbul)
 			} else {
-				var err error
-				validators, signers, err = sb.Engine().ExtractValidators(genesis)
-				log.Info("Istanbul: Initialising snap with extradata", "validators", validators, "signers", signers)
-				if err != nil {
-					log.Error("Istanbul: invalid genesis block", "err", err)
-					return nil, err
+				validatorsFromConfig := sb.config.Validators
+				if len(validatorsFromConfig) > 0 {
+					validators = validatorsFromConfig
+					log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
+				} else {
+					var err error
+					validators, signers, err = sb.Engine().ExtractValidators(genesis)
+					log.Info("Istanbul: Initialising snap with extradata", "validators", validators, "signers", signers)
+					if err != nil {
+						log.Error("Istanbul: invalid genesis block", "err", err)
+						return nil, err
+					}
 				}
 			}
 
@@ -540,26 +546,21 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
 	if parent != nil && chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
-		// ##CROSS: bls seal
-		// Inject signers defined in the config to the snapshot on the beginning of Breakpoint hardfork
-		cfg := chain.Config().Istanbul
-		validators := make([]common.Address, 0, snap.ValSet.Size())
-		signers := make([]types.BLSPublicKey, 0, snap.ValSet.Size())
-		for i, validator := range snap.ValSet.List() {
-			validators = append(validators, validator.Address())
-			if cfg != nil {
-				for idx := range cfg.Validators {
-					if validator.Address() == cfg.Validators[idx] && idx < len(cfg.Signers) {
-						signers = append(signers, types.BytesToBLSPublicKey(cfg.Signers[idx]))
-						break
-					}
-				}
-			}
-			if len(signers) < i+1 {
-				signers = append(signers, types.BLSPublicKey{})
+		// ##CROSS: istanbul posa
+		// Inject validators and signers defined in the config to the snapshot on the beginning of Breakpoint hardfork
+		var (
+			validators []common.Address
+			signers    []types.BLSPublicKey // ##CROSS: bls seal
+		)
+		validators, signers = validatorsFromPoSAConfig(chain.Config().Istanbul)
+		if len(validators) == 0 {
+			// fallback: use the validators and signers from the snapshot
+			for _, validator := range snap.ValSet.List() {
+				validators = append(validators, validator.Address())
+				// ##CROSS: bls seal
+				signers = append(signers, validator.SignerAddress())
 			}
 		}
-		// ##
 		log.Info("Overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
 		snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
 	} else if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
@@ -640,4 +641,18 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		}
 	}
 	return nil
+}
+
+func validatorsFromPoSAConfig(cfg *params.IstanbulConfig) (validators []common.Address, signers []types.BLSPublicKey) {
+	if cfg == nil || cfg.PoSA == nil {
+		return
+	}
+	if len(cfg.PoSA.Validators) > 0 {
+		for _, validator := range cfg.PoSA.Validators {
+			validators = append(validators, validator.Validator)
+			// ##CROSS: bls seal
+			signers = append(signers, types.BytesToBLSPublicKey(validator.Signer))
+		}
+	}
+	return
 }

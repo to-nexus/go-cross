@@ -73,29 +73,21 @@ func init() {
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					extra, err := types.ExtractIstanbulExtra(header)
-					if err != nil {
-						return nil, err
+					// PoSA configuration must be set in the Istanbul config
+					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
+						return nil, fmt.Errorf("PoSA configuration is not set")
 					}
-					// ##CROSS: bls seal
-					// browse Istanbul config to build signers list
-					signers := make([][]byte, 0, len(extra.Validators))
-					for i, validator := range extra.Validators {
-						if config.Istanbul != nil {
-							for idx := range config.Istanbul.Validators {
-								if validator == config.Istanbul.Validators[idx] && idx < len(config.Istanbul.Signers) {
-									signers = append(signers, config.Istanbul.Signers[idx])
-									break
-								}
-							}
-						}
-						if len(signers) < i+1 {
-							// this validator has no signer, write empty signer
-							signers = append(signers, types.BLSPublicKey{}.Bytes())
-						}
+
+					var (
+						validators []common.Address
+						signers    [][]byte // ##CROSS: bls seal
+					)
+					for _, validator := range config.Istanbul.PoSA.Validators {
+						validators = append(validators, validator.Validator)
+						// ##CROSS: bls seal
+						signers = append(signers, types.BytesToBLSPublicKey(validator.Signer).Bytes())
 					}
-					// ##
-					return breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators, signers), nil
+					return breakpoint.NewValidatorSet().PackUpdateValidators(validators, signers), nil
 				},
 			},
 			{
@@ -104,12 +96,31 @@ func init() {
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					pool := config.Istanbul.DelegationPool
-					admin := config.Istanbul.PoSAAdmin
-					if pool == nil || admin == nil {
+					// PoSA configuration must be set in the Istanbul config
+					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
+						return nil, fmt.Errorf("PoSA configuration is not set")
+					}
+
+					pool := config.Istanbul.PoSA.DelegationPool
+					admin := config.Istanbul.PoSA.Admin
+					if pool == (common.Address{}) || admin == (common.Address{}) {
 						return nil, fmt.Errorf("delegation pool or PoSA admin is not set")
 					}
-					return breakpoint.NewStakeHub().PackInitialize(*pool, *admin), nil
+
+					var (
+						operators  []common.Address
+						validators []common.Address
+						signers    [][]byte // ##CROSS: bls seal
+						ids        []string
+					)
+					for _, validator := range config.Istanbul.PoSA.Validators {
+						operators = append(operators, validator.Operator)
+						validators = append(validators, validator.Validator)
+						ids = append(ids, validator.ID)
+						// ##CROSS: bls seal
+						signers = append(signers, validator.Signer)
+					}
+					return breakpoint.NewStakeHub().PackInitialize(pool, admin, operators, validators, signers, ids), nil
 				},
 			},
 			{
@@ -118,16 +129,21 @@ func init() {
 				Code:         breakpoint.RewardHubMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					pool := config.Istanbul.DelegationPool
-					admin := config.Istanbul.PoSAAdmin
-					if pool == nil || admin == nil {
+					// PoSA configuration must be set in the Istanbul config
+					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
+						return nil, fmt.Errorf("PoSA configuration is not set")
+					}
+
+					pool := config.Istanbul.PoSA.DelegationPool
+					admin := config.Istanbul.PoSA.Admin
+					if pool == (common.Address{}) || admin == (common.Address{}) {
 						return nil, fmt.Errorf("delegation pool or PoSA admin is not set")
 					}
-					startBlock := config.Istanbul.RewardStartBlock
+					startBlock := config.Istanbul.PoSA.RewardStartBlock
 					if startBlock == nil {
 						return nil, fmt.Errorf("reward start block is not set")
 					}
-					return breakpoint.NewRewardHub().PackInitialize(*pool, *admin, startBlock), nil
+					return breakpoint.NewRewardHub().PackInitialize(pool, admin, startBlock), nil
 				},
 			},
 			{
@@ -138,43 +154,6 @@ func init() {
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					return initialize, nil
 				},
-			},
-			{
-				Name:         "CrossGovernor",
-				ContractAddr: GovernorAddr,
-				Code:         breakpoint.CrossGovernorMetaData.BinRuntime,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					admin := config.Istanbul.PoSAAdmin
-					if admin == nil {
-						return nil, fmt.Errorf("PoSA admin is not set")
-					}
-					return breakpoint.NewCrossGovernor().PackInitialize(*admin), nil
-				},
-			},
-			{
-				Name:         "GovernanceToken",
-				ContractAddr: GovernanceTokenAddr,
-				Code:         breakpoint.GovernanceTokenCode,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
-				},
-			},
-			{
-				Name:         "GovernanceTimelock",
-				ContractAddr: GovernanceTimelockAddr,
-				Code:         breakpoint.GovernanceTimelockCode,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
-				},
-			},
-			{
-				Name:         "GovernanceExecutor",
-				ContractAddr: GovernanceExecutorAddr,
-				Code:         breakpoint.GovernanceExecutorCode,
-				Deploy:       true,
 			},
 			// ##
 		},

@@ -121,9 +121,6 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
-			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
-			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{},
 	}
@@ -175,9 +172,6 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
-			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(7 * 86400), // 7 days
-			CouncilPeriod:         newUint64(86400),
 		},
 		Transitions: []Transition{},
 	}
@@ -230,16 +224,34 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(24 * 3600), // 1 day
-			CouncilPeriod:         newUint64(86400),
-			// DelegationPool:        newAddress("0x000000016876B41CF2069F3a3A9FD5A82a1945f6"),
-			// PoSAAdmin:             newAddress("0xd2d30476A67c6A274D45A9fFd6538b2e4424481d"),
-			// RewardStartBlock:      big.NewInt(12215754),
-			// ##CROSS: bls seal
-			Signers: []hexutil.Bytes{
-				hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
-				hexutil.MustDecode("0xae82f20b81364837a6f4f86791c792c712f289d01cb956599c50dbd0e047161c9de33bdcbf1fa68ca5b5b30f0b7f7f62"),
-				hexutil.MustDecode("0x89e6ad30b4ce516057f9c7718d2dcc81742a4a4ab8425b8f8cdb7f80a088f7829aff1622b2f1d1a5bd4d3948d65a6387"),
+			PoSA: &PoSAConfig{
+				CouncilPeriod:    86400,
+				DelegationPool:   common.HexToAddress("0x000000016876B41CF2069F3a3A9FD5A82a1945f6"),
+				Admin:            common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
+				RewardStartBlock: big.NewInt(12215754),
+				Validators: []PoSAValidator{
+					{
+						ID:        "cn01",
+						Operator:  common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
+						Validator: common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
+						// ##CROSS: bls seal
+						Signer: hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
+					},
+					{
+						ID:        "cn02",
+						Operator:  common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
+						Validator: common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
+						// ##CROSS: bls seal
+						Signer: hexutil.MustDecode("0xae82f20b81364837a6f4f86791c792c712f289d01cb956599c50dbd0e047161c9de33bdcbf1fa68ca5b5b30f0b7f7f62"),
+					},
+					{
+						ID:        "cn03",
+						Operator:  common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
+						Validator: common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
+						// ##CROSS: bls seal
+						Signer: hexutil.MustDecode("0x89e6ad30b4ce516057f9c7718d2dcc81742a4a4ab8425b8f8cdb7f80a088f7829aff1622b2f1d1a5bd4d3948d65a6387"),
+					},
+				},
 			},
 		},
 		Transitions: []Transition{},
@@ -291,11 +303,20 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSAActivationSeconds: newUint64(24 * 3600), // 1 day
-			CouncilPeriod:         newUint64(86400),
-			// ##CROSS: bls seal
-			Signers: []hexutil.Bytes{
-				hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
+			PoSA: &PoSAConfig{
+				CouncilPeriod:    86400,
+				DelegationPool:   common.HexToAddress("0x000000016876B41CF2069F3a3A9FD5A82a1945f6"),
+				Admin:            common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
+				RewardStartBlock: big.NewInt(12215754),
+				Validators: []PoSAValidator{
+					{
+						ID:        "cross01",
+						Operator:  common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
+						Validator: common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
+						// ##CROSS: bls seal
+						Signer: hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
+					},
+				},
 			},
 		},
 		Transitions: []Transition{},
@@ -776,10 +797,6 @@ func (c *ChainConfig) Description() string {
 	// ##CROSS: fork breakpoint
 	if c.BreakpointTime != nil {
 		banner += printFork("Breakpoint", c.BreakpointTime)
-		if c.Istanbul != nil && c.Istanbul.PoSAActivationSeconds != nil {
-			posa := *c.BreakpointTime + *c.Istanbul.PoSAActivationSeconds
-			banner += printFork("  PoSA Activation", &posa)
-		}
 	}
 	// ##
 	if c.OsakaTime != nil {
@@ -946,14 +963,11 @@ func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime 
 // ##CROSS: istanbul posa
 // IsIstanbulPoSA returns whether the Istanbul PoSA is active at the given block and time.
 func (c *ChainConfig) IsIstanbulPoSA(num *big.Int, time uint64) bool {
-	if num.Cmp(big.NewInt(1)) <= 0 || c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSAActivationSeconds == nil {
+	// Istanbul PoSA config should be set and Breakpoint should be active
+	if num.Cmp(big.NewInt(1)) <= 0 || c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSA == nil {
 		return false
 	}
-	if *c.Istanbul.PoSAActivationSeconds == 0 {
-		// PoSA activation must be at least 1 second after Breakpoint hardfork
-		return c.IsBreakpoint(num, time) && *c.BreakpointTime+1 <= time
-	}
-	return c.IsBreakpoint(num, time) && *c.BreakpointTime+*c.Istanbul.PoSAActivationSeconds <= time
+	return c.IsBreakpoint(num, time) && *c.BreakpointTime+1 <= time
 }
 
 // ##

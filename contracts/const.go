@@ -15,26 +15,18 @@ var (
 
 	// breakpoint
 	// ##CROSS: consensus system contract
-	ValidatorSetAddr       = common.HexToAddress("0x0000000000000000000000000000000000001001")
-	StakeHubAddr           = common.HexToAddress("0x0000000000000000000000000000000000001002")
-	RewardHubAddr          = common.HexToAddress("0x0000000000000000000000000000000000001003")
-	ValidatorSlashAddr     = common.HexToAddress("0x0000000000000000000000000000000000001004")
-	GovernorAddr           = common.HexToAddress("0x0000000000000000000000000000000000001010")
-	GovernanceTokenAddr    = common.HexToAddress("0x0000000000000000000000000000000000001011")
-	GovernanceTimelockAddr = common.HexToAddress("0x0000000000000000000000000000000000001012")
-	GovernanceExecutorAddr = common.HexToAddress("0x0000000000000000000000000000000000001013")
+	ValidatorSetAddr   = common.HexToAddress("0x0000000000000000000000000000000000001001")
+	StakeHubAddr       = common.HexToAddress("0x0000000000000000000000000000000000001002")
+	RewardHubAddr      = common.HexToAddress("0x0000000000000000000000000000000000001003")
+	ValidatorSlashAddr = common.HexToAddress("0x0000000000000000000000000000000000001004")
 	// ##
 )
 
 var systemContracts = map[common.Address]bool{
-	ValidatorSetAddr:       true,
-	StakeHubAddr:           true,
-	RewardHubAddr:          true,
-	ValidatorSlashAddr:     true,
-	GovernorAddr:           true,
-	GovernanceTokenAddr:    true,
-	GovernanceTimelockAddr: true,
-	GovernanceExecutorAddr: true,
+	ValidatorSetAddr:   true,
+	StakeHubAddr:       true,
+	RewardHubAddr:      true,
+	ValidatorSlashAddr: true,
 }
 
 // IsSystemContract checks if the address is a system contract.

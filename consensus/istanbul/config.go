@@ -21,7 +21,6 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/naoina/toml"
@@ -145,8 +144,7 @@ type Config struct {
 	Validators               []common.Address `toml:",omitempty"`
 	MaxRequestTimeoutSeconds uint64           `toml:",omitempty"`
 	Transitions              []params.Transition
-	CouncilPeriod            uint64               `toml:",omitempty"` // The period in seconds for the council to operate // ##CROSS: istanbul posa
-	Signers                  []types.BLSPublicKey `toml:",omitempty"` // ##CROSS: bls seal
+	CouncilPeriod            uint64 `toml:",omitempty"` // The period in seconds for the council to operate // ##CROSS: istanbul posa
 }
 
 var DefaultConfig = &Config{
@@ -189,14 +187,8 @@ func NewConfig(config *params.ChainConfig) *Config {
 	c.Transitions = config.Transitions
 
 	// ##CROSS: istanbul posa
-	if config.Istanbul.CouncilPeriod != nil {
-		c.CouncilPeriod = *config.Istanbul.CouncilPeriod
-	}
-	// ##
-	// ##CROSS: bls seal
-	c.Signers = make([]types.BLSPublicKey, 0, len(config.Istanbul.Signers))
-	for _, signer := range config.Istanbul.Signers {
-		c.Signers = append(c.Signers, types.BytesToBLSPublicKey(signer))
+	if config.Istanbul.PoSA != nil {
+		c.CouncilPeriod = config.Istanbul.PoSA.CouncilPeriod
 	}
 	// ##
 

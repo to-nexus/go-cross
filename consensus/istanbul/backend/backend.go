@@ -436,7 +436,7 @@ func (sb *Backend) startIstanbul() error {
 	sb.logger.Info("Istanbul: activate")
 
 	// ##CROSS: bls seal
-	if sb.chain != nil && sb.chain.Config().Istanbul != nil && sb.chain.Config().Istanbul.PoSAActivationSeconds != nil && sb.blsSecretKey == nil {
+	if sb.chain != nil && sb.chain.Config().Istanbul != nil && sb.chain.Config().Istanbul.PoSA != nil && sb.blsSecretKey == nil {
 		sb.logger.Warn("Istanbul: BLS secret key is not configured - node cannot participate in PoSA")
 	}
 	// ##

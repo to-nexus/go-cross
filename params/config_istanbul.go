@@ -34,20 +34,8 @@ type IstanbulConfig struct {
 	// ##
 
 	// ##CROSS: istanbul posa
-	PoSAActivationSeconds *uint64         `json:"posaActivationSeconds"` // PoSA activation time in seconds
-	CouncilPeriod         *uint64         `json:"councilPeriod"`         // The period in seconds for the council to be elected
-	DelegationPool        *common.Address `json:"delegationPool"`        // The address of the delegation pool contract
-	PoSAAdmin             *common.Address `json:"posaAdmin"`             // The address of the PoSA admin
-	RewardStartBlock      *big.Int        `json:"rewardStartBlock"`      // The block number to start PoSA rewarding
+	PoSA *PoSAConfig `json:"posa"`
 	// ##
-
-	// ##CROSS: bls seal
-	Signers []hexutil.Bytes `json:"signers"` // The BLS public keys of the signers
-	// ##
-}
-
-func (c IstanbulConfig) String() string {
-	return "istanbul"
 }
 
 type Transition struct {
@@ -68,6 +56,28 @@ type Transition struct {
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator,omitempty"` // Bounds the amount the base fee can change between blocks.
 	MaxBaseFee               *math.HexOrDecimal256 `json:"maxbasefee,omitempty"`               // MaxBaseFee
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`               // MinBaseFee
+}
+
+// ##CROSS: istanbul posa
+type PoSAConfig struct {
+	CouncilPeriod    uint64          `json:"councilPeriod"`    // The period in seconds for the council to be elected
+	DelegationPool   common.Address  `json:"delegationPool"`   // The address of the delegation pool contract
+	Admin            common.Address  `json:"admin"`            // The address of the PoSA admin
+	RewardStartBlock *big.Int        `json:"rewardStartBlock"` // The block number to start PoSA rewarding
+	Validators       []PoSAValidator `json:"validators"`       // The validators of the PoSA
+}
+
+type PoSAValidator struct {
+	ID        string         `json:"id"`
+	Operator  common.Address `json:"operator"`
+	Validator common.Address `json:"validator"`
+	Signer    hexutil.Bytes  `json:"signer"` // ##CROSS: bls seal
+}
+
+// ##
+
+func (c IstanbulConfig) String() string {
+	return "istanbul"
 }
 
 func (c *ChainConfig) IsIstanbulConsensus() bool {
