@@ -193,6 +193,12 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		cfg.Eth.OverrideVerkle = &v
 	}
+	// ##CROSS: fork breakpoint
+	if ctx.IsSet(utils.OverrideBreakpoint.Name) {
+		v := ctx.Uint64(utils.OverrideBreakpoint.Name)
+		cfg.Eth.OverrideBreakpoint = &v
+	}
+	// ##
 	if ctx.IsSet(utils.OverrideMinBlocksForBlobRequests.Name) {
 		params.MinBlocksForBlobRequests = ctx.Uint64(utils.OverrideMinBlocksForBlobRequests.Name)
 		params.MinTimeDurationForBlobRequests = params.MinBlocksForBlobRequests

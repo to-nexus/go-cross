@@ -271,6 +271,13 @@ var (
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	// ##CROSS: fork breakpoint
+	OverrideBreakpoint = &cli.Uint64Flag{
+		Name:     "override.breakpoint",
+		Usage:    "Manually specify the Breakpoint fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	// ##
 	// ##CROSS: blob sidecars
 	OverrideMinBlocksForBlobRequests = &cli.Uint64Flag{
 		Name:     "override.minforblobrequest",
