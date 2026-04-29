@@ -193,8 +193,8 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork
-		CancunTime:              nil,
-		PragueTime:              nil,
+		CancunTime:              newUint64(1770076800),
+		PragueTime:              newUint64(1770076800),
 		BreakpointTime:          nil, // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
