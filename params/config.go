@@ -24,40 +24,19 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/params/forks"
 )
 
 // Genesis hashes to enforce below configs on.
 var (
-	// ##CROSS: config
-	CrossGenesisHash     = common.HexToHash("0x675a5d7c97cc1be3bf061635d31206966ef7ae0205a45890a4bab931456a8348")
-	ZoneZeroGenesisHash  = common.HexToHash("0xcd8ce15999597691045f5f9675debfe4e0a7e5dca94b866e01df6b5b9d4263aa")
-	CrossDev3GenesisHash = common.HexToHash("0xda75bb3ff72575b0fdc746a7fd23ebb733c8ce83cc6a6710470d1cf5528eab3f")
-	CrossDevGenesisHash  = common.HexToHash("0x43edb9ebbb2f946b92268c6934a2f89e4f2dc4249223f3ed61a320cb8dcc1b19")
-
-	FoundationCross     = common.HexToAddress("0xb9e345ba27826d71eb89a015852c752e341010ec")
-	FoundationZoneZero  = common.HexToAddress("0x06Dc63E28d18172A689213071884c66c5281b493")
-	FoundationCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
-	FoundationCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
-
-	BeneficiaryCross     = common.HexToAddress("0xeb569ffda1a757938187320866959438aa61f4c6")
-	BeneficiaryZoneZero  = common.HexToAddress("0x579c60A3176C5B588aeAD61a1F878a6A19CCc84E")
-	BeneficiaryCrossDev3 = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
-	BeneficiaryCrossDev  = common.HexToAddress("0xB9032595eC0465f43de9CF68c1E230888a5d16b6")
-
-	EcoCross = common.HexToAddress("0x0575a1b8e9e8950356b0c682bb270e16905eb108")
-	// ##
-
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
 	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
 	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
 	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
 )
 
-func newUint64(val uint64) *uint64           { return &val }
-func newAddress(addr string) *common.Address { a := common.HexToAddress(addr); return &a }
+func newUint64(val uint64) *uint64 { return &val }
 
 var (
 	// ##CROSS: config
@@ -87,33 +66,12 @@ var (
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
-			EpochLength:             86400,
-			BlockPeriodSeconds:      1,
-			EmptyBlockPeriodSeconds: 0,
-			RequestTimeoutSeconds:   5,
-			ProposerPolicy:          0,
-			Validators: []common.Address{
-				common.HexToAddress("0x02f5F938B40A60B2345Ac0C9Fd9D909bD1F012eE"),
-				common.HexToAddress("0x091E0be1D78511dE3b6D7022C99539671d235D73"),
-				common.HexToAddress("0x0A62e6a8553A10B2031fD956df6bc28852F4d91d"),
-				common.HexToAddress("0x49bcC861395C42cA60d773FB053F25DDaACbeA50"),
-				common.HexToAddress("0x60Eef089B72da83eC98330296b1E1Ff37C118588"),
-				common.HexToAddress("0x6C79321D421E9a37041e1477929d478492a04608"),
-				common.HexToAddress("0x7De4fa95e742D34f0979875c060f7e1886948f03"),
-				common.HexToAddress("0x87EB0d108594FFC6DeB4dcBdB43E3B0899B7a863"),
-				common.HexToAddress("0x884DCf7bE65a5287cFb9648283B90C70D0D59c8A"),
-				common.HexToAddress("0x88B9B24C441f8775c01443F6Ce244cEF5dA0364A"),
-				common.HexToAddress("0x90e456Fe1f07A56e891BA11C8dE045091363527D"),
-				common.HexToAddress("0x95fa026C756874f12a499ef0f95531f0b93629F5"),
-				common.HexToAddress("0xAB128537bBC770C8f9E9225c854a2170B708E88A"),
-				common.HexToAddress("0xBb2182CE952F3501325cd77A7327f8De091b394c"),
-				common.HexToAddress("0xbCb02c35e753b25c450727C3cb61F6Aa4D2D545F"),
-				common.HexToAddress("0xc193C8F676aF724B1d2cCF1236200044E8c6C4a6"),
-				common.HexToAddress("0xD6EE737Ff9EABda5f9E9365AfE7D032e2aEb208C"),
-				common.HexToAddress("0xE6927A1181bf5760fC7e25ABC96f7C025fF73802"),
-				common.HexToAddress("0xF405a387AA84e58c1A5D2150305AD1b1788646Cf"),
-				common.HexToAddress("0xfa884b0C778Fa24D015481a262F3efe924dc0D61"),
-			},
+			EpochLength:              86400,
+			BlockPeriodSeconds:       1,
+			EmptyBlockPeriodSeconds:  0,
+			RequestTimeoutSeconds:    5,
+			ProposerPolicy:           0,
+			Validators:               extractValidators(CrossValidators),
 			MaxRequestTimeoutSeconds: newUint64(60),
 			Beneficiary:              &BeneficiaryCross,
 			ElasticityMultiplier:     newUint64(3),
@@ -151,20 +109,12 @@ var (
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		Istanbul: &IstanbulConfig{
-			EpochLength:             86400,
-			BlockPeriodSeconds:      1,
-			EmptyBlockPeriodSeconds: 0,
-			RequestTimeoutSeconds:   5,
-			ProposerPolicy:          0,
-			Validators: []common.Address{
-				common.HexToAddress("0x3AeE6025948c380cD0E4e71cBB041337cc0E2C4E"),
-				common.HexToAddress("0x2bCFC7F77555B585941Ddb04d9B7977f1Ae612CB"),
-				common.HexToAddress("0xfb2Ce154CF90F35851D3D3c2C378D9820dEd4eb5"),
-				common.HexToAddress("0xd3f69551F006075aA71351a387eE23DdeaA5DbF1"),
-				common.HexToAddress("0x28a0Ef4a0cb8204a810615C9b01475006dA35ECD"),
-				common.HexToAddress("0x53bDC4196454c15af773BF00D3b4bC1BC913B751"),
-				common.HexToAddress("0x88501713D1Bb34d81c4857C8F32905574D67Cd57"),
-			},
+			EpochLength:              86400,
+			BlockPeriodSeconds:       1,
+			EmptyBlockPeriodSeconds:  0,
+			RequestTimeoutSeconds:    5,
+			ProposerPolicy:           0,
+			Validators:               extractValidators(ZoneZeroValidators),
 			MaxRequestTimeoutSeconds: newUint64(60),
 			Beneficiary:              &BeneficiaryZoneZero,
 			ElasticityMultiplier:     newUint64(3),
@@ -196,9 +146,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              newUint64(1771556400),
-		PragueTime:              newUint64(1771556400),
-		BreakpointTime:          newUint64(1771804800), // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1770076800),
+		PragueTime:              newUint64(1770076800),
+		BreakpointTime:          newUint64(1777528800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -206,16 +156,12 @@ var (
 			Prague: DefaultPragueBlobConfig,
 		},
 		Istanbul: &IstanbulConfig{
-			EpochLength:             86400,
-			BlockPeriodSeconds:      1,
-			EmptyBlockPeriodSeconds: 0,
-			RequestTimeoutSeconds:   5,
-			ProposerPolicy:          0,
-			Validators: []common.Address{
-				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-				common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
-				common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
-			},
+			EpochLength:              86400,
+			BlockPeriodSeconds:       1,
+			EmptyBlockPeriodSeconds:  0,
+			RequestTimeoutSeconds:    5,
+			ProposerPolicy:           0,
+			Validators:               extractValidators(CrossDev3Validators),
 			MaxRequestTimeoutSeconds: nil,
 			Beneficiary:              &BeneficiaryCrossDev3,
 			ElasticityMultiplier:     newUint64(3),
@@ -224,35 +170,7 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSA: &PoSAConfig{
-				CouncilPeriod:    86400,
-				DelegationPool:   common.HexToAddress("0x000000016876B41CF2069F3a3A9FD5A82a1945f6"),
-				Admin:            common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-				RewardStartBlock: big.NewInt(12215754),
-				Validators: []PoSAValidator{
-					{
-						ID:        "cn01",
-						Operator:  common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-						Validator: common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-						// ##CROSS: bls seal
-						Signer: hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
-					},
-					{
-						ID:        "cn02",
-						Operator:  common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
-						Validator: common.HexToAddress("0x8c04752f2b5b3a541b5709a095887ecb2a815f85"),
-						// ##CROSS: bls seal
-						Signer: hexutil.MustDecode("0xae82f20b81364837a6f4f86791c792c712f289d01cb956599c50dbd0e047161c9de33bdcbf1fa68ca5b5b30f0b7f7f62"),
-					},
-					{
-						ID:        "cn03",
-						Operator:  common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
-						Validator: common.HexToAddress("0x17afdd710ecd39435efc693c8fadc9b8411b8a23"),
-						// ##CROSS: bls seal
-						Signer: hexutil.MustDecode("0x89e6ad30b4ce516057f9c7718d2dcc81742a4a4ab8425b8f8cdb7f80a088f7829aff1622b2f1d1a5bd4d3948d65a6387"),
-					},
-				},
-			},
+			PoSA: CrossDev3PoSAConfig,
 		},
 		Transitions: []Transition{},
 	}
@@ -279,7 +197,7 @@ var (
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
 		CancunTime:              newUint64(1771556400),
 		PragueTime:              newUint64(1771556400),
-		BreakpointTime:          newUint64(1771804800), // ##CROSS: fork breakpoint
+		BreakpointTime:          newUint64(1777518000), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -287,14 +205,12 @@ var (
 			Prague: DefaultPragueBlobConfig,
 		},
 		Istanbul: &IstanbulConfig{
-			EpochLength:             86400,
-			BlockPeriodSeconds:      1,
-			EmptyBlockPeriodSeconds: 0,
-			RequestTimeoutSeconds:   5,
-			ProposerPolicy:          0,
-			Validators: []common.Address{
-				common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-			},
+			EpochLength:              86400,
+			BlockPeriodSeconds:       1,
+			EmptyBlockPeriodSeconds:  0,
+			RequestTimeoutSeconds:    5,
+			ProposerPolicy:           0,
+			Validators:               extractValidators(CrossDevValidators),
 			MaxRequestTimeoutSeconds: newUint64(60),
 			Beneficiary:              &BeneficiaryCrossDev,
 			ElasticityMultiplier:     newUint64(3),
@@ -303,21 +219,7 @@ var (
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
 			// ##CROSS: istanbul posa
-			PoSA: &PoSAConfig{
-				CouncilPeriod:    86400,
-				DelegationPool:   common.HexToAddress("0x000000016876B41CF2069F3a3A9FD5A82a1945f6"),
-				Admin:            common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-				RewardStartBlock: big.NewInt(12215754),
-				Validators: []PoSAValidator{
-					{
-						ID:        "cross01",
-						Operator:  common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-						Validator: common.HexToAddress("0x415b1312a4adc370eb791fd0db6086d5059b746a"),
-						// ##CROSS: bls seal
-						Signer: hexutil.MustDecode("0xa75481e47f8daf60860ad87590f51575507422744c6f5e136df72ebb8cf5084afbe59b8cd4d09f71bc2f04a3fd678b66"),
-					},
-				},
-			},
+			PoSA: CrossDevPoSAConfig,
 		},
 		Transitions: []Transition{},
 	}
@@ -964,7 +866,7 @@ func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime 
 // IsIstanbulPoSA returns whether the Istanbul PoSA is active at the given block and time.
 func (c *ChainConfig) IsIstanbulPoSA(num *big.Int, time uint64) bool {
 	// Istanbul PoSA config should be set and Breakpoint should be active
-	if num.Cmp(big.NewInt(1)) <= 0 || c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSA == nil {
+	if num.Cmp(big.NewInt(1)) < 0 || c.BreakpointTime == nil || c.Istanbul == nil || c.Istanbul.PoSA == nil {
 		return false
 	}
 	return c.IsBreakpoint(num, time) && *c.BreakpointTime+1 <= time
