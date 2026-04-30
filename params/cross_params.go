@@ -147,19 +147,21 @@ func extractValidators(validators []PoSAValidator) []common.Address {
 
 var (
 	CrossDev3PoSAConfig = &PoSAConfig{
-		CouncilPeriod:    86400,
-		DelegationPool:   common.HexToAddress("0x000000af71b874fa018c65A89C9cBe16C5831253"),
-		Admin:            common.HexToAddress("0x901eb0353ca4E815e94EeF2a66F12325ea3Ac859"),
-		RewardStartBlock: big.NewInt(6690300),
-		Validators:       CrossDev3Validators,
+		CouncilPeriod:        86400,
+		ValidatorEpochLength: 300,
+		DelegationPool:       common.HexToAddress("0x000000af71b874fa018c65A89C9cBe16C5831253"),
+		Admin:                common.HexToAddress("0x901eb0353ca4E815e94EeF2a66F12325ea3Ac859"),
+		RewardStartBlock:     big.NewInt(6690300),
+		Validators:           CrossDev3Validators,
 	}
 
 	CrossDevPoSAConfig = &PoSAConfig{
-		CouncilPeriod:    86400,
-		DelegationPool:   common.HexToAddress("0x000000af71b874fa018c65A89C9cBe16C5831253"),
-		Admin:            common.HexToAddress("0x901eb0353ca4E815e94EeF2a66F12325ea3Ac859"),
-		RewardStartBlock: big.NewInt(6690300),
-		Validators:       CrossDevValidators,
+		CouncilPeriod:        86400,
+		ValidatorEpochLength: 300,
+		DelegationPool:       common.HexToAddress("0x000000af71b874fa018c65A89C9cBe16C5831253"),
+		Admin:                common.HexToAddress("0x901eb0353ca4E815e94EeF2a66F12325ea3Ac859"),
+		RewardStartBlock:     big.NewInt(6690300),
+		Validators:           CrossDevValidators,
 	}
 )
 

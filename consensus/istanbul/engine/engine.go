@@ -716,8 +716,7 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 
 	// ##CROSS: istanbul posa
 	// only update validator set on the beginning of a new epoch
-	epochLength := chain.Config().GetEpochLength(header.Number)
-	if header.Number.Uint64()%epochLength != 0 {
+	if !e.cfg.GetConfig(header.Number).OnNewValidatorEpoch(header.Number.Uint64()) {
 		return nil, nil
 	}
 

@@ -56,15 +56,20 @@ type Transition struct {
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator,omitempty"` // Bounds the amount the base fee can change between blocks.
 	MaxBaseFee               *math.HexOrDecimal256 `json:"maxbasefee,omitempty"`               // MaxBaseFee
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`               // MinBaseFee
+
+	// ##CROSS: istanbul posa
+	// CouncilPeriod        *uint64 `json:"councilPeriod,omitempty"`        // The period in seconds for the council to be elected
+	// ValidatorEpochLength *uint64 `json:"validatorEpochLength,omitempty"` // The number of blocks in one validator epoch
 }
 
 // ##CROSS: istanbul posa
 type PoSAConfig struct {
-	CouncilPeriod    uint64          `json:"councilPeriod"`    // The period in seconds for the council to be elected
-	DelegationPool   common.Address  `json:"delegationPool"`   // The address of the delegation pool contract
-	Admin            common.Address  `json:"admin"`            // The address of the PoSA admin
-	RewardStartBlock *big.Int        `json:"rewardStartBlock"` // The block number to start PoSA rewarding
-	Validators       []PoSAValidator `json:"validators"`       // The validators of the PoSA
+	CouncilPeriod        uint64          `json:"councilPeriod"`        // The period in seconds for the council to be elected
+	ValidatorEpochLength uint64          `json:"validatorEpochLength"` // The number of blocks in one validator epoch
+	DelegationPool       common.Address  `json:"delegationPool"`       // The address of the delegation pool contract
+	Admin                common.Address  `json:"admin"`                // The address of the PoSA admin
+	RewardStartBlock     *big.Int        `json:"rewardStartBlock"`     // The block number to start PoSA rewarding
+	Validators           []PoSAValidator `json:"validators"`           // The validators of the PoSA
 }
 
 type PoSAValidator struct {
@@ -92,21 +97,6 @@ func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition 
 			callback(c.Transitions[i])
 		}
 	}
-}
-
-func (c *ChainConfig) GetEpochLength(num *big.Int) (epochLength uint64) {
-	if c.Istanbul != nil {
-		epochLength = c.Istanbul.EpochLength
-	}
-	c.GetTransitionValue(num, func(transition Transition) {
-		if transition.EpochLength != 0 {
-			epochLength = transition.EpochLength
-		}
-	})
-	if epochLength == 0 {
-		epochLength = 30000
-	}
-	return
 }
 
 func (c *ChainConfig) GetBlockPeriodSeconds(num *big.Int) (blockPeriod uint64) {
@@ -326,3 +316,5 @@ func isTransitionsConfigCompatible(c1, c2 *ChainConfig, head *big.Int) (*big.Int
 
 	return big.NewInt(0), big.NewInt(0), nil
 }
+
+// ##

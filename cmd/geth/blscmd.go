@@ -160,7 +160,7 @@ Decrypts the keystore file for the given public key and prints the secret key.
 				Aliases:   []string{"pop"},
 				Usage:     "Generates a proof of possession for the given public key",
 				Action:    blsGenerateProof,
-				ArgsUsage: "<pubkey>",
+				ArgsUsage: "<operator address> <pubkey>",
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.BLSKeyStoreDirFlag,
@@ -168,7 +168,7 @@ Decrypts the keystore file for the given public key and prints the secret key.
 					chainIDFlag,
 				},
 				Description: `
-    geth bls generate-proof --chain-id <chain-id-or-name> <pubkey>
+    geth bls generate-proof --chain-id <chain-id-or-name> <operator address> <pubkey>
 	
 Generates a proof of possession for the given public key. The proof is used to prove the ownership of the BLS public key when registering a validator.
 `,
@@ -204,7 +204,7 @@ func getBLSParams(ctx *cli.Context) (string, int, int) {
 func getChainID(ctx *cli.Context) uint64 {
 	chainID := ctx.String(chainIDFlag.Name)
 	if chainID == "" {
-		return 0
+		return 612055
 	}
 	switch chainID {
 	case "cross":
@@ -371,18 +371,23 @@ func blsDecrypt(ctx *cli.Context) error {
 }
 
 func blsGenerateProof(ctx *cli.Context) error {
-	if ctx.Args().Len() == 0 {
-		utils.Fatalf("No BLS public key specified to generate proof")
+	if ctx.Args().Len() != 2 {
+		utils.Fatalf("Operator address and BLS public key must be specified to generate proof")
 	}
 
 	chainID := getChainID(ctx)
 	if chainID == 0 {
 		utils.Fatalf("Chain ID is not set")
 	}
+	fmt.Println("Chain ID:", chainID)
 
 	dir, _, _ := getBLSParams(ctx)
 
-	pubKeyHex := ctx.Args().First()
+	operatorAddressHex := ctx.Args().Get(0)
+	if !common.IsHexAddress(operatorAddressHex) {
+		utils.Fatalf("Invalid operator address: %s", operatorAddressHex)
+	}
+	pubKeyHex := ctx.Args().Get(1)
 	keyFile, err := blskeystore.FindKeyByPubKey(dir, pubKeyHex)
 	if err != nil {
 		utils.Fatalf("Failed to find BLS key: %v", err)
@@ -402,13 +407,16 @@ func blsGenerateProof(ctx *cli.Context) error {
 		utils.Fatalf("Failed to decrypt BLS key: %v", err)
 	}
 
+	operatorAddressByte := common.HexToAddress(operatorAddressHex).Bytes()
 	publicKeyByte := key.PublicKey.Marshal()
 	chainIDByte := new(big.Int).SetUint64(chainID).FillBytes(make([]byte, 32))
-	msgByte := crypto.Keccak256(publicKeyByte, chainIDByte)
+	msgByte := crypto.Keccak256(operatorAddressByte, publicKeyByte, chainIDByte)
 	proof := key.SecretKey.Sign(msgByte)
-	if len(proof.Marshal()) == 0 {
+	proofByte := proof.Marshal()
+	if len(proofByte) == 0 {
 		return fmt.Errorf("Failed to sign message")
 	}
-	fmt.Printf("Proof: 0x%x\n", proof.Marshal())
+	fmt.Printf("Proof: 0x%x\n", proofByte)
+
 	return nil
 }
