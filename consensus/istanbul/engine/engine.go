@@ -819,7 +819,6 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		// ##CROSS: validator slash
 		if err := e.slashValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
-			return err
 		}
 		// ##
 
@@ -835,7 +834,6 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
-				return err
 			}
 			// ##
 
@@ -1169,73 +1167,6 @@ func (e *Engine) applyGeneratedSystemTransaction(
 	return e.applySystemTransaction(msg, tx, state, header, chainContext, e.signer, txs, receipts, usedGas, tracer)
 }
 
-type systemStateSnapshot struct {
-	state      vm.StateDB
-	snapshot   int
-	txs        *[]*types.Transaction
-	txLen      int
-	receipts   *[]*types.Receipt
-	receiptLen int
-	usedGas    *uint64
-	gasUsed    uint64
-}
-
-func newSystemStateSnapshot(state vm.StateDB, txs *[]*types.Transaction, receipts *[]*types.Receipt, usedGas *uint64) systemStateSnapshot {
-	s := systemStateSnapshot{
-		state:    state,
-		snapshot: state.Snapshot(),
-		txs:      txs,
-		receipts: receipts,
-		usedGas:  usedGas,
-	}
-	if txs != nil {
-		s.txLen = len(*txs)
-	}
-	if receipts != nil {
-		s.receiptLen = len(*receipts)
-	}
-	if usedGas != nil {
-		s.gasUsed = *usedGas
-	}
-	return s
-}
-
-func (s systemStateSnapshot) Revert() {
-	s.state.RevertToSnapshot(s.snapshot)
-	if s.txs != nil {
-		*s.txs = (*s.txs)[:s.txLen]
-	}
-	if s.receipts != nil {
-		*s.receipts = (*s.receipts)[:s.receiptLen]
-	}
-	if s.usedGas != nil {
-		*s.usedGas = s.gasUsed
-	}
-}
-
-// applyOptionalGeneratedSystemTransaction applies a generated optional system transaction.
-// If the call fails, all state and block-local accounting changes are reverted and the tx is omitted.
-func (e *Engine) applyOptionalGeneratedSystemTransaction(
-	name string,
-	msg *core.Message,
-	state vm.StateDB,
-	header *types.Header,
-	chainContext core.ChainContext,
-	txs *[]*types.Transaction,
-	receipts *[]*types.Receipt,
-	usedGas *uint64,
-	tracer *tracing.Hooks,
-) bool {
-	snapshot := newSystemStateSnapshot(state, txs, receipts, usedGas)
-
-	if err := e.applyGeneratedSystemTransaction(msg, state, header, chainContext, txs, receipts, usedGas, tracer); err != nil {
-		snapshot.Revert()
-		log.Warn("Skipping optional system transaction", "name", name, "error", err, "number", header.Number.Uint64())
-		return false
-	}
-	return true
-}
-
 // applyReceivedSystemTransaction applies a received system transaction to the state.
 // It assumes that the given message is equal to the first element of systemTxs and applies it to the state.
 // The applied transaction and receipt is appended to the given slices and removes the transaction from systemTxs.
@@ -1252,10 +1183,14 @@ func (e *Engine) applyReceivedSystemTransaction(
 	usedGas *uint64,
 	tracer *tracing.Hooks,
 ) error {
+	signer := types.LatestSignerForChainID(chainContext.Config().ChainID)
+	nonce := state.GetNonce(msg.From)
+	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	expectedHash := signer.Hash(expectedTx)
 	if systemTxs == nil || len(*systemTxs) == 0 || (*systemTxs)[0] == nil {
 		return errors.New("supposed to get an actual transaction, but got none")
 	}
-	signer, expectedTx, expectedHash := expectedSystemTransaction(msg, state, chainContext)
+
 	actualTx := (*systemTxs)[0]
 	if !bytes.Equal(signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
 		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
@@ -1273,65 +1208,6 @@ func (e *Engine) applyReceivedSystemTransaction(
 	*systemTxs = (*systemTxs)[1:]
 
 	return e.applySystemTransaction(msg, actualTx, state, header, chainContext, header.Coinbase, txs, receipts, usedGas, tracer)
-}
-
-// applyOptionalReceivedSystemTransaction applies a received optional system transaction.
-// If the expected transaction is omitted, the same call must fail in dry-run to be accepted.
-func (e *Engine) applyOptionalReceivedSystemTransaction(
-	name string,
-	msg *core.Message,
-	state vm.StateDB,
-	header *types.Header,
-	chainContext core.ChainContext,
-	txs *[]*types.Transaction,
-	receipts *[]*types.Receipt,
-	systemTxs *[]*types.Transaction,
-	usedGas *uint64,
-	tracer *tracing.Hooks,
-) (bool, error) {
-	if !nextSystemTransactionMatches(msg, state, chainContext, systemTxs) {
-		// If expected transaction is omitted, dry run the transaction to check if it would fail
-		if err := dryRunSystemMessage(msg, state, header, chainContext); err != nil {
-			log.Warn("Accepting omitted optional system transaction", "name", name, "error", err, "number", header.Number.Uint64())
-			return false, nil
-		}
-		return false, fmt.Errorf("missing optional system transaction: %s", name)
-	}
-	if err := e.applyReceivedSystemTransaction(msg, state, header, chainContext, txs, receipts, systemTxs, usedGas, tracer); err != nil {
-		return true, err
-	}
-	return true, nil
-}
-
-func nextSystemTransactionMatches(msg *core.Message, state vm.StateDB, chainContext core.ChainContext, systemTxs *[]*types.Transaction) bool {
-	if systemTxs == nil || len(*systemTxs) == 0 || (*systemTxs)[0] == nil {
-		return false
-	}
-	signer, _, expectedHash := expectedSystemTransaction(msg, state, chainContext)
-	return bytes.Equal(signer.Hash((*systemTxs)[0]).Bytes(), expectedHash.Bytes())
-}
-
-func expectedSystemTransaction(msg *core.Message, state vm.StateDB, chainContext core.ChainContext) (types.Signer, *types.Transaction, common.Hash) {
-	signer := types.LatestSignerForChainID(chainContext.Config().ChainID)
-	nonce := state.GetNonce(msg.From)
-	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
-	return signer, expectedTx, signer.Hash(expectedTx)
-}
-
-func dryRunSystemMessage(
-	msg *core.Message,
-	state vm.StateDB,
-	header *types.Header,
-	chainContext core.ChainContext,
-) error {
-	snapshot := newSystemStateSnapshot(state, nil, nil, nil)
-	context := core.NewEVMBlockContext(header, chainContext, &header.Coinbase)
-	evm := vm.NewEVM(context, state, chainContext.Config(), vm.Config{})
-	evm.SetTxContext(core.NewEVMTxContext(msg))
-	evm.StateDB.AddAddressToAccessList(*msg.To)
-	_, err := applySystemMessage(msg, evm, state, header)
-	snapshot.Revert()
-	return err
 }
 
 func (e *Engine) applySystemTransaction(
