@@ -53,7 +53,8 @@ func (c *Core) broadcastRoundChange(round *big.Int) {
 		return
 	}
 
-	roundChange := protocols.NewRoundChange(c.current.Sequence(), round, c.current.preparedRound, c.current.preparedBlock)
+	preparedRound, preparedBlock, preparedPrepares := c.preparedProposal() // ##CROSS: bad block mitigation
+	roundChange := protocols.NewRoundChange(c.current.Sequence(), round, preparedRound, preparedBlock)
 
 	// Sign message
 	encodedPayload, err := roundChange.EncodePayloadForSigning()
@@ -69,8 +70,8 @@ func (c *Core) broadcastRoundChange(round *big.Int) {
 	roundChange.SetSignature(signature)
 
 	// Extend ROUND-CHANGE message with PREPARE justification
-	if c.PreparedPrepares != nil {
-		roundChange.Justification = c.PreparedPrepares
+	if preparedPrepares != nil {
+		roundChange.Justification = preparedPrepares
 		withMsg(logger, roundChange).Debug("Istanbul: extended ROUND-CHANGE message with PREPARE justification", "justification", roundChange.Justification)
 	}
 
@@ -113,11 +114,18 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 		var pr *big.Int = nil
 		var pb *types.Block = nil
 		if roundChange.PreparedRound != nil && roundChange.PreparedBlock != nil && roundChange.Justification != nil && len(roundChange.Justification) > 0 {
-			prepareMessages = roundChange.Justification
-			pr = roundChange.PreparedRound
-			pb = roundChange.PreparedBlock
+			// ##CROSS: bad block mitigation
+			// If the prepared block is bad, it is ignored and cannot be the highest prepared block
+			// The message itself is still stored
+			if c.hasBadProposal(roundChange.PreparedBlock.Hash()) {
+				logger.Warn("Istanbul: ignoring bad prepared proposal in ROUND-CHANGE", "badProposal", roundChange.PreparedBlock.Hash())
+			} else {
+				prepareMessages = roundChange.Justification
+				pr = roundChange.PreparedRound
+				pb = roundChange.PreparedBlock
+			}
 		}
-		err := c.roundChangeSet.Add(view.Round, roundChange, pr, pb, prepareMessages, c.valSet.QuorumSize())
+		err := c.roundChangeSet.Add(view.Round, roundChange, pr, pb, prepareMessages, c.valSet.QuorumSize(), c.hasBadProposal)
 		if err != nil {
 			logger.Warn("Istanbul: failed to add ROUND-CHANGE message", "err", err)
 			return err
@@ -150,12 +158,17 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 		// then we propose the same block proposal again if not we
 		// propose the block proposal that we generated
 		_, proposal := c.highestPrepared(currentRound)
+		prepareMessages := c.roundChangeSet.prepareMessages[currentRound.Uint64()]
 		if proposal == nil {
-			if c.current != nil && c.current.pendingRequest != nil {
+			// ##CROSS: bad block mitigation
+			// If there is no highest prepared block (because of a bad block?), we drop prepare messages
+			prepareMessages = nil
+			if c.current != nil && c.current.pendingRequest != nil && !c.isBadProposal(c.current.pendingRequest.Proposal) {
+				// As a fallback, we use pending proposal, but it also should not be a bad proposal
 				proposal = c.current.pendingRequest.Proposal
 			} else {
-				logger.Warn("Istanbul: round change returns an error: no proposal as pending request is nil")
-				return errors.New("no proposal as pending request is nil")
+				logger.Warn("Istanbul: round change returns an error: no valid pending proposal")
+				return errors.New("no valid pending proposal")
 			}
 		}
 
@@ -167,8 +180,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 			rcSignedPayloads = append(rcSignedPayloads, &rcMsg.SignedRoundChangePayload)
 		}
 
-		prepareMessages := c.roundChangeSet.prepareMessages[currentRound.Uint64()]
-		if err := isJustified(proposal, rcSignedPayloads, prepareMessages, c.valSet.QuorumSize()); err != nil {
+		if err := isJustified(proposal, rcSignedPayloads, prepareMessages, c.valSet.QuorumSize(), c.hasBadProposal); err != nil {
 			logger.Error("Istanbul: invalid ROUND-CHANGE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return nil
 		}
@@ -187,8 +199,39 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 
 // highestPrepared returns the highest Prepared Round and the corresponding Prepared Block
 func (c *Core) highestPrepared(round *big.Int) (*big.Int, istanbul.Proposal) {
-	return c.roundChangeSet.highestPreparedRound[round.Uint64()], c.roundChangeSet.highestPreparedBlock[round.Uint64()]
+	pr := c.roundChangeSet.highestPreparedRound[round.Uint64()]
+	pb := c.roundChangeSet.highestPreparedBlock[round.Uint64()]
+	// ##CROSS: bad block mitigation
+	// If the highest prepared block is bad, treat it as nil
+	if c.isBadProposal(pb) {
+		c.currentLogger(true, nil).Warn("Istanbul: ignoring bad highest prepared proposal", "badProposal", pb.Hash())
+		return nil, nil
+	}
+	// ##
+	return pr, pb
 }
+
+// ##CROSS: bad block mitigation
+func (c *Core) preparedProposal() (*big.Int, istanbul.Proposal, []*protocols.Prepare) {
+	if c.current == nil || c.current.preparedBlock == nil {
+		return nil, nil, nil
+	}
+	if c.isBadProposal(c.current.preparedBlock) {
+		c.currentLogger(true, nil).Warn("Istanbul: excluding bad prepared proposal from ROUND-CHANGE", "badProposal", c.current.preparedBlock.Hash())
+		return nil, nil, nil
+	}
+	return c.current.preparedRound, c.current.preparedBlock, c.PreparedPrepares
+}
+
+func (c *Core) isBadProposal(proposal istanbul.Proposal) bool {
+	return proposal != nil && c.hasBadProposal(proposal.Hash())
+}
+
+func (c *Core) hasBadProposal(hash common.Hash) bool {
+	return hash != (common.Hash{}) && c.backend.HasBadProposal(hash)
+}
+
+// ##
 
 // ----------------------------------------------------------------------------
 
@@ -225,7 +268,7 @@ func (rcs *roundChangeSet) NewRound(r *big.Int) {
 }
 
 // Add adds the round and message into round change set
-func (rcs *roundChangeSet) Add(r *big.Int, msg protocols.Message, preparedRound *big.Int, preparedBlock istanbul.Proposal, prepareMessages []*protocols.Prepare, quorumSize int) error {
+func (rcs *roundChangeSet) Add(r *big.Int, msg protocols.Message, preparedRound *big.Int, preparedBlock istanbul.Proposal, prepareMessages []*protocols.Prepare, quorumSize int, hasBadProposal func(common.Hash) bool) error {
 	rcs.mu.Lock()
 	defer rcs.mu.Unlock()
 
@@ -238,6 +281,11 @@ func (rcs *roundChangeSet) Add(r *big.Int, msg protocols.Message, preparedRound 
 	}
 
 	if preparedRound != nil && (rcs.highestPreparedRound[round] == nil || preparedRound.Cmp(rcs.highestPreparedRound[round]) > 0) {
+		// ##CROSS: bad block mitigation
+		if preparedBlock != nil && hasBadProposal != nil && hasBadProposal(preparedBlock.Hash()) {
+			return nil
+		}
+		// ##
 		roundChange := msg.(*protocols.RoundChange)
 		if hasMatchingRoundChangeAndPrepares(roundChange, prepareMessages, quorumSize) == nil {
 			rcs.highestPreparedRound[round] = preparedRound

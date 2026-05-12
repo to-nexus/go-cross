@@ -120,6 +120,18 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if _, err := types.Sender(signer, tx); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSender, err)
 	}
+	// ##CROSS: fee delegation
+	// Make sure the fee payer is signed properly
+	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+		recovered, err := types.FeePayer(signer, tx)
+		if err != nil {
+			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
+		}
+		if recovered != *tx.FeePayer() {
+			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), recovered)
+		}
+	}
+	// ##
 	// Ensure the transaction has more gas than the bare minimum needed to cover
 	// the transaction metadata
 	intrGas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, rules.IsIstanbul, rules.IsShanghai)

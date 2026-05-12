@@ -42,6 +42,12 @@ func (c *Core) handleRequest(request *Request) error {
 		}
 		return err
 	}
+	// ##CROSS: bad block mitigation
+	if c.isBadProposal(request.Proposal) {
+		logger.Warn("Istanbul: ignore bad block proposal request", "number", request.Proposal.Number(), "hash", request.Proposal.Hash())
+		return istanbul.ErrBlacklistedHash
+	}
+	// ##
 
 	c.current.pendingRequest = request
 	if c.state == StateAcceptRequest {

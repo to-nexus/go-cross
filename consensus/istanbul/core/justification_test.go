@@ -139,11 +139,56 @@ func testParameterizedCase(
 		fmt.Printf("PR %v\n", m)
 	}
 	fmt.Println("roundChangeMessages", roundChangeMessages, len(roundChangeMessages))
-	if err := isJustified(block, roundChangeMessages, prepareMessages, quorumSize); err == nil && !messageJustified {
+	if err := isJustified(block, roundChangeMessages, prepareMessages, quorumSize, nil); err == nil && !messageJustified {
 		t.Errorf("quorumSize = %v, rcForNil = %v, rcEqualToTargetRound = %v, rcLowerThanTargetRound = %v, rcHigherThanTargetRound = %v, preparesForTargetRound = %v, preparesNotForTargetRound = %v (Expected: %v, Actual: %v)",
 			quorumSize, rcForNil, rcEqualToTargetRound, rcLowerThanTargetRound, rcHigherThanTargetRound, preparesForTargetRound, preparesNotForTargetRound, err == nil, !messageJustified)
 	}
 }
+
+// ##CROSS: bad block mitigation
+func TestJustifyTreatsBadPrepared(t *testing.T) {
+	badBlock := makeBlock(1)
+	proposal := makeBlock(2)
+	roundChangeMessages := []*protocols.SignedRoundChangePayload{
+		createRoundChangeMessage(common.Address{1}, 1, 1, badBlock),
+		createRoundChangeMessage(common.Address{2}, 1, 1, badBlock),
+		createRoundChangeMessage(common.Address{3}, 1, 1, badBlock),
+	}
+	hasBadProposal := func(hash common.Hash) bool {
+		return hash == badBlock.Hash()
+	}
+
+	if err := isJustified(proposal, roundChangeMessages, nil, 3, hasBadProposal); err != nil {
+		t.Fatalf("expected bad prepared round changes to justify a fresh proposal: %v", err)
+	}
+}
+
+func TestRoundChangeSetBadPrepared(t *testing.T) {
+	pp := istanbul.NewRoundRobinProposerPolicy()
+	pp.Use(istanbul.ValidatorSortByByte())
+	validatorSet := validator.NewSet(generateValidators(3), nil, pp)
+	badBlock := makeBlock(1)
+	roundChange := protocols.NewRoundChange(big.NewInt(1), big.NewInt(1), big.NewInt(1), badBlock)
+	roundChange.SetSource(validatorSet.List()[0].Address())
+
+	prepareMessages := make([]*protocols.Prepare, 0, 3)
+	for _, validator := range validatorSet.List() {
+		prepareMessages = append(prepareMessages, createPrepareMessage(validator.Address(), 1, badBlock))
+	}
+	hasBadProposal := func(hash common.Hash) bool {
+		return hash == badBlock.Hash()
+	}
+
+	roundChanges := newRoundChangeSet(validatorSet)
+	if err := roundChanges.Add(big.NewInt(1), roundChange, big.NewInt(1), badBlock, prepareMessages, 3, hasBadProposal); err != nil {
+		t.Fatalf("failed to add round change: %v", err)
+	}
+	if roundChanges.highestPreparedBlock[1] != nil {
+		t.Fatalf("bad prepared block was recorded as highest prepared")
+	}
+}
+
+// ##
 
 func createRoundChangeMessage(from common.Address, round int64, preparedRound int64, preparedBlock istanbul.Proposal) *protocols.SignedRoundChangePayload {
 	m := protocols.NewRoundChange(big.NewInt(1), big.NewInt(1), big.NewInt(preparedRound), preparedBlock)

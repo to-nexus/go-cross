@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -253,8 +254,13 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	// verify the header of proposed block
 	err := e.VerifyHeader(chain, block.Header(), nil, validators)
-	if err == nil || err == istanbul.ErrEmptyCommittedSeals {
-		// ignore errEmptyCommittedSeals error because we don't have the committed seals yet
+	if err == nil || err == istanbul.ErrEmptyCommittedSeals { // ignore errEmptyCommittedSeals error because we don't have the committed seals yet
+		// ##CROSS: bad block mitigation
+		// Verify the transactions in the proposed block
+		if err := e.verifyProposalTransactions(chain, block); err != nil {
+			return 0, err
+		}
+		// ##
 		return 0, nil
 	} else if err == consensus.ErrFutureBlock {
 		return time.Until(time.Unix(int64(block.Header().Time), 0)), consensus.ErrFutureBlock
@@ -271,6 +277,55 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	return 0, err
 }
+
+// ##CROSS: bad block mitigation
+// verifyProposalTransactions carries out the basic validation of the transactions in the proposed block.
+func (e *Engine) verifyProposalTransactions(chain consensus.ChainHeaderReader, block *types.Block) error {
+	header := block.Header()
+	signer := types.MakeSigner(chain.Config(), header.Number, header.Time)
+	opts := &txpool.ValidationOptions{
+		Config: chain.Config(),
+		Accept: 0 |
+			1<<types.LegacyTxType |
+			1<<types.AccessListTxType |
+			1<<types.DynamicFeeTxType |
+			1<<types.FeeDelegatedDynamicFeeTxType |
+			1<<types.SetCodeTxType,
+		MaxSize: math.MaxUint64,
+		MinTip:  common.Big0,
+	}
+
+	var (
+		usedGas      uint64
+		seenSystemTx bool
+	)
+	for i, tx := range block.Transactions() {
+		isSystemTx, err := e.IsSystemTransaction(tx, header)
+		if err != nil {
+			return fmt.Errorf("invalid system transaction %d [%v]: %w", i, tx.Hash(), err)
+		}
+		if isSystemTx {
+			seenSystemTx = true
+			continue
+		}
+		if seenSystemTx {
+			return fmt.Errorf("normal tx %d [%v] after system transaction", i, tx.Hash())
+		}
+		if err := txpool.ValidateTransaction(tx, header, signer, opts); err != nil {
+			return fmt.Errorf("invalid transaction %d [%v]: %w", i, tx.Hash(), err)
+		}
+		if header.BaseFee != nil && chain.Config().IsLondon(header.Number) && tx.GasFeeCapIntCmp(header.BaseFee) < 0 {
+			return fmt.Errorf("invalid transaction %d [%v]: %w: maxFeePerGas %s, baseFee %s", i, tx.Hash(), core.ErrFeeCapTooLow, tx.GasFeeCap(), header.BaseFee)
+		}
+		if tx.Gas() > header.GasLimit-usedGas {
+			return fmt.Errorf("transactions gas exceeds block gas limit at tx %d [%v]: used %d, tx gas %d, limit %d", i, tx.Hash(), usedGas, tx.Gas(), header.GasLimit)
+		}
+		usedGas += tx.Gas()
+	}
+	return nil
+}
+
+// ##
 
 // VerifyHeader verifies the header of the block.
 func (e *Engine) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {
