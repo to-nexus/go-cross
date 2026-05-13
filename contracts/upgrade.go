@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -91,10 +92,24 @@ func init() {
 				},
 			},
 			{
-				Name:         "StakeHub",
-				ContractAddr: StakeHubAddr,
+				Name:         "StakeHubImpl",
+				ContractAddr: StakeHubAddrImpl,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
+				Storage: map[common.Hash]common.Hash{
+					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
+					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
+				},
+			},
+			{
+				Name:         "StakeHubProxy",
+				ContractAddr: StakeHubAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Deploy:       true,
+				Storage: map[common.Hash]common.Hash{
+					// ERC1967Proxy[IMPLEMENTATION] = StakeHubImpl
+					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(StakeHubAddrImpl.Bytes()),
+				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
 					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
@@ -124,10 +139,24 @@ func init() {
 				},
 			},
 			{
-				Name:         "RewardHub",
-				ContractAddr: RewardHubAddr,
+				Name:         "RewardHubImpl",
+				ContractAddr: RewardHubAddrImpl,
 				Code:         breakpoint.RewardHubMetaData.BinRuntime,
 				Deploy:       true,
+				Storage: map[common.Hash]common.Hash{
+					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
+					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
+				},
+			},
+			{
+				Name:         "RewardHubProxy",
+				ContractAddr: RewardHubAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Deploy:       true,
+				Storage: map[common.Hash]common.Hash{
+					// ERC1967Proxy[IMPLEMENTATION] = RewardHubImpl
+					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(RewardHubAddrImpl.Bytes()),
+				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
 					if config.Istanbul == nil || config.Istanbul.PoSA == nil {

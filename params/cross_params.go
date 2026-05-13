@@ -93,25 +93,46 @@ var (
 	}
 	ZoneZeroValidators = []PoSAValidator{
 		{
+			ID:        "cross01",
+			Operator:  common.HexToAddress("0x83dd61e67ebfb60bb4bc3f814d8095cb50217aaa"),
 			Validator: common.HexToAddress("0x3AeE6025948c380cD0E4e71cBB041337cc0E2C4E"),
+			Signer:    hexutil.MustDecode("0xa64af411e912aed7f7060fe83f666d31a01bffbb65ffc23ed3869c3f65fccd02a2b8ce1249f9494ad6f73dadc4ccaa86"),
 		},
 		{
+			ID:        "cross02",
+			Operator:  common.HexToAddress("0x51e9fadb56701d4822a662b84b12261752bbbd0a"),
 			Validator: common.HexToAddress("0x2bCFC7F77555B585941Ddb04d9B7977f1Ae612CB"),
+			Signer:    hexutil.MustDecode("0xa1bdecc1744d0130b43dcc7d3120de493727e4ca040ebc984baf305e689e47e93cbea42a842349e0501e11b8c3992b23"),
 		},
 		{
+			ID:        "cross03",
+			Operator:  common.HexToAddress("0x5044693656f8b4c0c613e475f24a3ac4e9f95b4d"),
 			Validator: common.HexToAddress("0xfb2Ce154CF90F35851D3D3c2C378D9820dEd4eb5"),
+			Signer:    hexutil.MustDecode("0x9205dcff62f1df29e2b4efd8a69d60125629fc686608e7e0d4e80da26b15e806a636ea9ce0714bb5569db611f3f18506"),
 		},
 		{
+			ID:        "cross04",
+			Operator:  common.HexToAddress("0x76760a878f7000485943d626384ce8bdb64c91cc"),
 			Validator: common.HexToAddress("0xd3f69551F006075aA71351a387eE23DdeaA5DbF1"),
+			Signer:    hexutil.MustDecode("0xb297b9ba8fecffff5e5399db7a49e6ae0e6f9f18e8718b5337db9db5c13f8b21f75ec88afba6f40b16127242a3ee44e1"),
 		},
 		{
-			Validator: common.HexToAddress("0x28a0Ef4a0cb8204a810615C9b01475006dA35ECD"),
-		},
-		{
+			ID:        "cross05",
+			Operator:  common.HexToAddress("0x1ff80eab19c61915ef0ec7752163d72e7274416b"),
 			Validator: common.HexToAddress("0x53bDC4196454c15af773BF00D3b4bC1BC913B751"),
+			Signer:    hexutil.MustDecode("0xb65cd9b1401a72ff382a5740a4171dcab7f74417497c4c5c5c627d7aef9489d16e655823a49a93a04be8c7a0f2961105"),
 		},
 		{
+			ID:        "cross06",
+			Operator:  common.HexToAddress("0xddd4f04dd932f4c2ba7b8d12e8b1136d2c7f850b"),
+			Validator: common.HexToAddress("0x28a0Ef4a0cb8204a810615C9b01475006dA35ECD"),
+			Signer:    hexutil.MustDecode("0x919ab85dd0f4e5a871f1ae922240b8ae81ca2fe0a5d51592833b23727b001c6de28fdb3c452af9e85a40b8af06b0fa5a"),
+		},
+		{
+			ID:        "cross07",
+			Operator:  common.HexToAddress("0xebb17c6cbe05507eb358c4be1305e179a721bfd0"),
 			Validator: common.HexToAddress("0x88501713D1Bb34d81c4857C8F32905574D67Cd57"),
+			Signer:    hexutil.MustDecode("0xb42ae214f042f3eaa1092378c3cff63d2fb412775f03f08e394e52712cd9077133d712bc47f665f13e6554c6e02f3d8b"),
 		},
 	}
 	CrossDev3Validators = []PoSAValidator{
@@ -146,6 +167,24 @@ func extractValidators(validators []PoSAValidator) []common.Address {
 }
 
 var (
+	CrossPoSAConfig = &PoSAConfig{
+		CouncilPeriod:        86400,
+		ValidatorEpochLength: 300,
+		DelegationPool:       common.HexToAddress("0x000000068122d9bB43B4BCF5497A10EdfA9F5E93"),
+		Admin:                common.HexToAddress("0x22C1522276855B028c31a731BA10D125811Af37c"),
+		RewardStartBlock:     big.NewInt(30748187),
+		Validators:           CrossValidators,
+	}
+
+	ZoneZeroPoSAConfig = &PoSAConfig{
+		CouncilPeriod:        86400,
+		ValidatorEpochLength: 300,
+		DelegationPool:       common.HexToAddress("0x0000000c5BB5C7B081237B5efaFC753D61201b94"),
+		Admin:                common.HexToAddress("0x22C1522276855B028c31a731BA10D125811Af37c"),
+		RewardStartBlock:     big.NewInt(26182221),
+		Validators:           ZoneZeroValidators,
+	}
+
 	CrossDev3PoSAConfig = &PoSAConfig{
 		CouncilPeriod:        86400,
 		ValidatorEpochLength: 300,

@@ -59,12 +59,16 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              nil,
-		PragueTime:              nil,
-		BreakpointTime:          nil, // ##CROSS: fork breakpoint
+		AdventureTime:           newUint64(0),          // ##CROSS: fork adventure
+		CancunTime:              newUint64(1780282800), // 2026-06-01 03:00:00 UTC
+		PragueTime:              newUint64(1780282800),
+		BreakpointTime:          newUint64(1780282800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
 		Istanbul: &IstanbulConfig{
 			EpochLength:              86400,
 			BlockPeriodSeconds:       1,
@@ -102,12 +106,16 @@ var (
 		GrayGlacierBlock:        big.NewInt(0),
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
-		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              nil,
-		PragueTime:              nil,
-		BreakpointTime:          nil, // ##CROSS: fork breakpoint
+		AdventureTime:           newUint64(0),          // ##CROSS: fork adventure
+		CancunTime:              newUint64(1778814000), // 2026-05-15 03:00:00 UTC
+		PragueTime:              newUint64(1778814000),
+		BreakpointTime:          newUint64(1778814000), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
 		Istanbul: &IstanbulConfig{
 			EpochLength:              86400,
 			BlockPeriodSeconds:       1,

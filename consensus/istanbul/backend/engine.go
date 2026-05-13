@@ -420,7 +420,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 					log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
 				} else {
 					var err error
-					validators, _, err = sb.Engine().ExtractValidators(genesis)
+					validators, signers, err = sb.Engine().ExtractValidators(genesis)
 					log.Info("Istanbul: Initialising snap with extradata", "validators", validators, "signers", signers)
 					if err != nil {
 						log.Error("Istanbul: invalid genesis block", "err", err)

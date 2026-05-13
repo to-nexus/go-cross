@@ -19,6 +19,8 @@ var (
 	StakeHubAddr       = common.HexToAddress("0x0000000000000000000000000000000000001002")
 	RewardHubAddr      = common.HexToAddress("0x0000000000000000000000000000000000001003")
 	ValidatorSlashAddr = common.HexToAddress("0x0000000000000000000000000000000000001004")
+	StakeHubAddrImpl   = common.HexToAddress("0x000000000000000000000000000000000000a002")
+	RewardHubAddrImpl  = common.HexToAddress("0x000000000000000000000000000000000000a003")
 	// ##
 )
 
