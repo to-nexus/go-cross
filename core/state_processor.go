@@ -69,15 +69,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		misc.ApplyDAOHardFork(statedb)
 	}
 
-	// ##CROSS: istanbul param
-	if p.chain.istanbul != nil && p.config.IsIstanbulPoSA(block.Number(), block.Time()) {
-		// sync istanbul parameter after PoSA activation
-		if err := p.chain.istanbul.SyncIstanbulParam(header); err != nil {
-			return nil, err
-		}
-	}
-	// ##
-
 	var (
 		context vm.BlockContext
 		signer  = types.MakeSigner(p.config, header.Number, header.Time)

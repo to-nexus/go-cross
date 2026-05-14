@@ -429,8 +429,12 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 		OldestBlock: big.NewInt(2),
 		Reward: [][]*big.Int{
 			{
-				big.NewInt(234375000),
-				big.NewInt(234375000),
+				// ##CROSS: gpo min tip
+				// big.NewInt(234375000),
+				// big.NewInt(234375000),
+				big.NewInt(1000000000),
+				big.NewInt(1000000000),
+				// ##
 			},
 		},
 		BaseFee: []*big.Int{

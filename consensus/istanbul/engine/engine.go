@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -57,9 +58,9 @@ type Engine struct {
 	consensus       consensus.Engine
 
 	// system contracts
-	istanbulParam  *breakpoint.IstanbulParam
 	validatorSet   *breakpoint.ValidatorSet
 	stakeHub       *breakpoint.StakeHub
+	rewardHub      *breakpoint.RewardHub
 	validatorSlash *breakpoint.ValidatorSlash
 	// ##
 }
@@ -74,9 +75,9 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		contractBackend: contractBackend,
 		signTx:          signTx,
 		consensus:       ce,
-		istanbulParam:   breakpoint.NewIstanbulParam(),
 		validatorSet:    breakpoint.NewValidatorSet(),
 		stakeHub:        breakpoint.NewStakeHub(),
+		rewardHub:       breakpoint.NewRewardHub(),
 		validatorSlash:  breakpoint.NewValidatorSlash(),
 		// ##
 	}
@@ -87,7 +88,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 
 // IsSystemTransaction checks if the transaction is a system transaction.
 // A system transaction is a transaction to a system contract with gas price 0 and sender is the block proposer.
-func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+func IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	if to := tx.To(); to == nil || !contracts.IsSystemContract(*to) {
 		return false, nil
 	}
@@ -101,7 +102,15 @@ func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	return sender == header.Coinbase, nil
 }
 
-// IsSystemContract checks if the address is a system contract.
+// IsSystemTransaction checks if the transaction is a system transaction.
+// If the block coinbase is not set, use the engine's signer as the coinbase.
+func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	if header.Coinbase == (common.Address{}) {
+		return IsSystemTransaction(tx, &types.Header{Coinbase: e.signer})
+	}
+	return IsSystemTransaction(tx, header)
+}
+
 func (e *Engine) IsSystemContract(to *common.Address) bool {
 	if to == nil {
 		return false
@@ -245,8 +254,13 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	// verify the header of proposed block
 	err := e.VerifyHeader(chain, block.Header(), nil, validators)
-	if err == nil || err == istanbul.ErrEmptyCommittedSeals {
-		// ignore errEmptyCommittedSeals error because we don't have the committed seals yet
+	if err == nil || err == istanbul.ErrEmptyCommittedSeals { // ignore errEmptyCommittedSeals error because we don't have the committed seals yet
+		// ##CROSS: bad block mitigation
+		// Verify the transactions in the proposed block
+		if err := e.verifyProposalTransactions(chain, block); err != nil {
+			return 0, err
+		}
+		// ##
 		return 0, nil
 	} else if err == consensus.ErrFutureBlock {
 		return time.Until(time.Unix(int64(block.Header().Time), 0)), consensus.ErrFutureBlock
@@ -263,6 +277,55 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	return 0, err
 }
+
+// ##CROSS: bad block mitigation
+// verifyProposalTransactions carries out the basic validation of the transactions in the proposed block.
+func (e *Engine) verifyProposalTransactions(chain consensus.ChainHeaderReader, block *types.Block) error {
+	header := block.Header()
+	signer := types.MakeSigner(chain.Config(), header.Number, header.Time)
+	opts := &txpool.ValidationOptions{
+		Config: chain.Config(),
+		Accept: 0 |
+			1<<types.LegacyTxType |
+			1<<types.AccessListTxType |
+			1<<types.DynamicFeeTxType |
+			1<<types.FeeDelegatedDynamicFeeTxType |
+			1<<types.SetCodeTxType,
+		MaxSize: math.MaxUint64,
+		MinTip:  common.Big0,
+	}
+
+	var (
+		usedGas      uint64
+		seenSystemTx bool
+	)
+	for i, tx := range block.Transactions() {
+		isSystemTx, err := e.IsSystemTransaction(tx, header)
+		if err != nil {
+			return fmt.Errorf("invalid system transaction %d [%v]: %w", i, tx.Hash(), err)
+		}
+		if isSystemTx {
+			seenSystemTx = true
+			continue
+		}
+		if seenSystemTx {
+			return fmt.Errorf("normal tx %d [%v] after system transaction", i, tx.Hash())
+		}
+		if err := txpool.ValidateTransaction(tx, header, signer, opts); err != nil {
+			return fmt.Errorf("invalid transaction %d [%v]: %w", i, tx.Hash(), err)
+		}
+		if header.BaseFee != nil && chain.Config().IsLondon(header.Number) && tx.GasFeeCapIntCmp(header.BaseFee) < 0 {
+			return fmt.Errorf("invalid transaction %d [%v]: %w: maxFeePerGas %s, baseFee %s", i, tx.Hash(), core.ErrFeeCapTooLow, tx.GasFeeCap(), header.BaseFee)
+		}
+		if tx.Gas() > header.GasLimit-usedGas {
+			return fmt.Errorf("transactions gas exceeds block gas limit at tx %d [%v]: used %d, tx gas %d, limit %d", i, tx.Hash(), usedGas, tx.Gas(), header.GasLimit)
+		}
+		usedGas += tx.Gas()
+	}
+	return nil
+}
+
+// ##
 
 // VerifyHeader verifies the header of the block.
 func (e *Engine) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {
@@ -302,15 +365,6 @@ func (e *Engine) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 	if header.Difficulty == nil || header.Difficulty.Cmp(istanbul.DefaultDifficulty) != 0 {
 		return istanbul.ErrInvalidDifficulty
 	}
-
-	// ##CROSS: istanbul param
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		// Need to sync Istanbul param before verifying the header
-		if err := e.SyncIstanbulParam(header); err != nil {
-			return err
-		}
-	}
-	// ##
 
 	// Verify the existence / non-existence of cancun-specific header fields
 	cancun := chain.Config().IsCancun(header.Number, header.Time)
@@ -717,8 +771,7 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 
 	// ##CROSS: istanbul posa
 	// only update validator set on the beginning of a new epoch
-	epochLength := chain.Config().GetEpochLength(header.Number)
-	if header.Number.Uint64()%epochLength != 0 {
+	if !e.cfg.GetConfig(header.Number).OnNewValidatorEpoch(header.Number.Uint64()) {
 		return nil, nil
 	}
 
@@ -821,7 +874,6 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		// ##CROSS: validator slash
 		if err := e.slashValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
-			return err
 		}
 		// ##
 
@@ -837,7 +889,6 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
-				return err
 			}
 			// ##
 
@@ -855,6 +906,10 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 	// ##
 
+	// All expected system transactions must be consumed by Finalize; anything left means the block contained an unknown, duplicated, or misordered system tx
+	if systemTxs != nil && len(*systemTxs) > 0 {
+		return fmt.Errorf("unexpected remaining system transaction(s): count=%d first=%s", len(*systemTxs), (*systemTxs)[0].Hash())
+	}
 	return nil
 }
 
@@ -1187,10 +1242,10 @@ func (e *Engine) applyReceivedSystemTransaction(
 	nonce := state.GetNonce(msg.From)
 	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
 	expectedHash := signer.Hash(expectedTx)
-
 	if systemTxs == nil || len(*systemTxs) == 0 || (*systemTxs)[0] == nil {
 		return errors.New("supposed to get an actual transaction, but got none")
 	}
+
 	actualTx := (*systemTxs)[0]
 	if !bytes.Equal(signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
 		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",

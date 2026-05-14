@@ -124,7 +124,7 @@ func TestWriteCommittedSealsBLS(t *testing.T) {
 			LondonBlock:    big.NewInt(0),
 			BreakpointTime: &ts,
 			Istanbul: &params.IstanbulConfig{
-				PoSAActivationSeconds: &ts,
+				PoSA: &params.PoSAConfig{},
 			},
 		},
 	}

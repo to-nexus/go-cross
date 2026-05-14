@@ -176,6 +176,9 @@ type Config struct {
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
+	// OverrideBreakpoint (TODO: remove after the fork)
+	OverrideBreakpoint *uint64 `toml:",omitempty"` // ##CROSS: fork breakpoint
+
 	// blob setting
 	BlobExtraReserve uint64 // ##CROSS: blob sidecars
 }

@@ -270,8 +270,9 @@ func (e *GenesisMismatchError) Error() string {
 
 // ChainOverrides contains the changes to chain config.
 type ChainOverrides struct {
-	OverridePrague *uint64
-	OverrideVerkle *uint64
+	OverridePrague     *uint64
+	OverrideVerkle     *uint64
+	OverrideBreakpoint *uint64 // ##CROSS: fork breakpoint
 }
 
 // apply applies the chain overrides on the supplied chain config.
@@ -285,6 +286,11 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle
 	}
+	// ##CROSS: fork breakpoint
+	if o.OverrideBreakpoint != nil {
+		cfg.BreakpointTime = o.OverrideBreakpoint
+	}
+	// ##
 	return cfg.CheckConfigForkOrder()
 }
 

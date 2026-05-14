@@ -34,17 +34,8 @@ type IstanbulConfig struct {
 	// ##
 
 	// ##CROSS: istanbul posa
-	PoSAActivationSeconds *uint64 `json:"posaActivationSeconds"` // PoSA activation time in seconds
-	CouncilPeriod         *uint64 `json:"councilPeriod"`         // The period in seconds for the council to be elected
+	PoSA *PoSAConfig `json:"posa"`
 	// ##
-
-	// ##CROSS: bls seal
-	Signers []hexutil.Bytes `json:"signers"` // The BLS public keys of the signers
-	// ##
-}
-
-func (c IstanbulConfig) String() string {
-	return "istanbul"
 }
 
 type Transition struct {
@@ -65,6 +56,33 @@ type Transition struct {
 	BaseFeeChangeDenominator *uint64               `json:"basefeechangedenominator,omitempty"` // Bounds the amount the base fee can change between blocks.
 	MaxBaseFee               *math.HexOrDecimal256 `json:"maxbasefee,omitempty"`               // MaxBaseFee
 	MinBaseFee               *math.HexOrDecimal256 `json:"minbasefee,omitempty"`               // MinBaseFee
+
+	// ##CROSS: istanbul posa
+	// CouncilPeriod        *uint64 `json:"councilPeriod,omitempty"`        // The period in seconds for the council to be elected
+	// ValidatorEpochLength *uint64 `json:"validatorEpochLength,omitempty"` // The number of blocks in one validator epoch
+}
+
+// ##CROSS: istanbul posa
+type PoSAConfig struct {
+	CouncilPeriod        uint64          `json:"councilPeriod"`        // The period in seconds for the council to be elected
+	ValidatorEpochLength uint64          `json:"validatorEpochLength"` // The number of blocks in one validator epoch
+	DelegationPool       common.Address  `json:"delegationPool"`       // The address of the delegation pool contract
+	Admin                common.Address  `json:"admin"`                // The address of the PoSA admin
+	RewardStartBlock     *big.Int        `json:"rewardStartBlock"`     // The block number to start PoSA rewarding
+	Validators           []PoSAValidator `json:"validators"`           // The validators of the PoSA
+}
+
+type PoSAValidator struct {
+	ID        string         `json:"id"`
+	Operator  common.Address `json:"operator"`
+	Validator common.Address `json:"validator"`
+	Signer    hexutil.Bytes  `json:"signer"` // ##CROSS: bls seal
+}
+
+// ##
+
+func (c IstanbulConfig) String() string {
+	return "istanbul"
 }
 
 func (c *ChainConfig) IsIstanbulConsensus() bool {
@@ -81,34 +99,7 @@ func (c *ChainConfig) GetTransitionValue(num *big.Int, callback func(transition 
 	}
 }
 
-func (c *ChainConfig) GetEpochLength(num *big.Int) (epochLength uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.EpochLength != 0 {
-		return cfg.EpochLength
-	}
-	// ##
-
-	if c.Istanbul != nil {
-		epochLength = c.Istanbul.EpochLength
-	}
-	c.GetTransitionValue(num, func(transition Transition) {
-		if transition.EpochLength != 0 {
-			epochLength = transition.EpochLength
-		}
-	})
-	if epochLength == 0 {
-		epochLength = 30000
-	}
-	return
-}
-
 func (c *ChainConfig) GetBlockPeriodSeconds(num *big.Int) (blockPeriod uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.BlockPeriodSeconds != 0 {
-		return cfg.BlockPeriodSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		blockPeriod = c.Istanbul.BlockPeriodSeconds
 	}
@@ -124,12 +115,6 @@ func (c *ChainConfig) GetBlockPeriodSeconds(num *big.Int) (blockPeriod uint64) {
 }
 
 func (c *ChainConfig) GetEmptyBlockPeriodSeconds(num *big.Int) (emptyBlockPeriods uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil {
-		return cfg.EmptyBlockPeriodSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		emptyBlockPeriods = c.Istanbul.EmptyBlockPeriodSeconds
 	}
@@ -142,12 +127,6 @@ func (c *ChainConfig) GetEmptyBlockPeriodSeconds(num *big.Int) (emptyBlockPeriod
 }
 
 func (c *ChainConfig) GetRequestTimeoutSeconds(num *big.Int) (requestTimeout uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.RequestTimeoutSeconds != 0 {
-		return cfg.RequestTimeoutSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		requestTimeout = c.Istanbul.RequestTimeoutSeconds
 	}
@@ -163,12 +142,6 @@ func (c *ChainConfig) GetRequestTimeoutSeconds(num *big.Int) (requestTimeout uin
 }
 
 func (c *ChainConfig) GetMaxRequestTimeoutSeconds(num *big.Int) (maxRequestTimeout uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MaxRequestTimeoutSeconds != nil {
-		return *cfg.MaxRequestTimeoutSeconds
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.MaxRequestTimeoutSeconds != nil {
 		maxRequestTimeout = *c.Istanbul.MaxRequestTimeoutSeconds
 	}
@@ -181,12 +154,6 @@ func (c *ChainConfig) GetMaxRequestTimeoutSeconds(num *big.Int) (maxRequestTimeo
 }
 
 func (c *ChainConfig) GetProposerPolicy(num *big.Int) (policy uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil {
-		return cfg.ProposerPolicy
-	}
-	// ##
-
 	if c.Istanbul != nil {
 		policy = c.Istanbul.ProposerPolicy
 	}
@@ -207,12 +174,6 @@ func (c *ChainConfig) GetBeneficiaryAddress(num *big.Int) (beneficiary *common.A
 }
 
 func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.GasLimit != nil {
-		return cfg.GasLimit
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.GasLimit != nil {
 		gasLimit = c.Istanbul.GasLimit
 	}
@@ -226,12 +187,6 @@ func (c *ChainConfig) GetGasLimit(num *big.Int) (gasLimit *uint64) {
 
 // ##CROSS: basefee
 func (c *ChainConfig) GetElasticityMultiplier(num *big.Int) (multiplier uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.ElasticityMultiplier != nil {
-		return *cfg.ElasticityMultiplier
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.ElasticityMultiplier != nil {
 		multiplier = *c.Istanbul.ElasticityMultiplier
 	}
@@ -247,12 +202,6 @@ func (c *ChainConfig) GetElasticityMultiplier(num *big.Int) (multiplier uint64) 
 }
 
 func (c *ChainConfig) GetBaseFeeChangeDenominator(num *big.Int) (denominator uint64) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.BaseFeeChangeDenominator != nil {
-		return *cfg.BaseFeeChangeDenominator
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.BaseFeeChangeDenominator != nil {
 		denominator = *c.Istanbul.BaseFeeChangeDenominator
 	}
@@ -268,12 +217,6 @@ func (c *ChainConfig) GetBaseFeeChangeDenominator(num *big.Int) (denominator uin
 }
 
 func (c *ChainConfig) GetMaxBaseFee(num *big.Int) (max *big.Int) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MaxBaseFee != nil {
-		return (*big.Int)(cfg.MaxBaseFee)
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.MaxBaseFee != nil {
 		max = (*big.Int)(c.Istanbul.MaxBaseFee)
 	}
@@ -287,12 +230,6 @@ func (c *ChainConfig) GetMaxBaseFee(num *big.Int) (max *big.Int) {
 }
 
 func (c *ChainConfig) GetMinBaseFee(num *big.Int) (min *big.Int) {
-	// ##CROSS: istanbul param
-	if cfg := IstanbulConfigAt(num.Uint64()); cfg != nil && cfg.MinBaseFee != nil {
-		return (*big.Int)(cfg.MinBaseFee)
-	}
-	// ##
-
 	if c.Istanbul != nil && c.Istanbul.MinBaseFee != nil {
 		min = (*big.Int)(c.Istanbul.MinBaseFee)
 	}
@@ -379,3 +316,5 @@ func isTransitionsConfigCompatible(c1, c2 *ChainConfig, head *big.Int) (*big.Int
 
 	return big.NewInt(0), big.NewInt(0), nil
 }
+
+// ##

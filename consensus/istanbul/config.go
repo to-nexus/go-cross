@@ -21,7 +21,6 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/naoina/toml"
@@ -145,8 +144,9 @@ type Config struct {
 	Validators               []common.Address `toml:",omitempty"`
 	MaxRequestTimeoutSeconds uint64           `toml:",omitempty"`
 	Transitions              []params.Transition
-	CouncilPeriod            uint64               `toml:",omitempty"` // The period in seconds for the council to operate // ##CROSS: istanbul posa
-	Signers                  []types.BLSPublicKey `toml:",omitempty"` // ##CROSS: bls seal
+	// ##CROSS: istanbul posa
+	CouncilPeriod        uint64 `toml:",omitempty"` // The period in seconds for the council to operate
+	ValidatorEpochLength uint64 `toml:",omitempty"` // The number of blocks in one validator epoch
 }
 
 var DefaultConfig = &Config{
@@ -156,7 +156,9 @@ var DefaultConfig = &Config{
 	ProposerPolicy:         NewRoundRobinProposerPolicy(),
 	Epoch:                  30000,
 	AllowedFutureBlockTime: 0,
-	CouncilPeriod:          86400, // ##CROSS: istanbul posa
+	// ##CROSS: istanbul posa
+	CouncilPeriod:        86400,
+	ValidatorEpochLength: 300,
 }
 
 func NewConfig(config *params.ChainConfig) *Config {
@@ -189,14 +191,9 @@ func NewConfig(config *params.ChainConfig) *Config {
 	c.Transitions = config.Transitions
 
 	// ##CROSS: istanbul posa
-	if config.Istanbul.CouncilPeriod != nil {
-		c.CouncilPeriod = *config.Istanbul.CouncilPeriod
-	}
-	// ##
-	// ##CROSS: bls seal
-	c.Signers = make([]types.BLSPublicKey, 0, len(config.Istanbul.Signers))
-	for _, signer := range config.Istanbul.Signers {
-		c.Signers = append(c.Signers, types.BytesToBLSPublicKey(signer))
+	if config.Istanbul.PoSA != nil {
+		c.CouncilPeriod = config.Istanbul.PoSA.CouncilPeriod
+		c.ValidatorEpochLength = config.Istanbul.PoSA.ValidatorEpochLength
 	}
 	// ##
 
@@ -205,36 +202,6 @@ func NewConfig(config *params.ChainConfig) *Config {
 
 func (c Config) GetConfig(blockNumber *big.Int) Config {
 	newConfig := c
-
-	// ##CROSS: istanbul param
-	if blockNumber != nil && blockNumber.Cmp(big.NewInt(1)) > 0 {
-		if cfg := params.IstanbulConfigAt(blockNumber.Uint64()); cfg != nil {
-			if cfg.RequestTimeoutSeconds != 0 {
-				newConfig.RequestTimeout = cfg.RequestTimeoutSeconds * 1000
-			}
-			if cfg.BlockPeriodSeconds != 0 {
-				newConfig.BlockPeriod = cfg.BlockPeriodSeconds
-			}
-			if cfg.EmptyBlockPeriodSeconds != 0 {
-				newConfig.EmptyBlockPeriod = cfg.EmptyBlockPeriodSeconds
-			}
-			if newConfig.ProposerPolicy != nil && newConfig.ProposerPolicy.Id != ProposerPolicyId(cfg.ProposerPolicy) {
-				// swap policy id only
-				newConfig.ProposerPolicy.Id = ProposerPolicyId(cfg.ProposerPolicy)
-			}
-			if cfg.EpochLength != 0 {
-				newConfig.Epoch = cfg.EpochLength
-			}
-			if cfg.MaxRequestTimeoutSeconds != nil {
-				newConfig.MaxRequestTimeoutSeconds = *cfg.MaxRequestTimeoutSeconds
-			}
-			if cfg.CouncilPeriod != nil {
-				newConfig.CouncilPeriod = *cfg.CouncilPeriod
-			}
-			return newConfig
-		}
-	}
-	// ##
 
 	c.getTransitionValue(blockNumber, func(transition params.Transition) {
 		if transition.RequestTimeoutSeconds != 0 {
@@ -256,6 +223,14 @@ func (c Config) GetConfig(blockNumber *big.Int) Config {
 		if transition.MaxRequestTimeoutSeconds != nil {
 			newConfig.MaxRequestTimeoutSeconds = *transition.MaxRequestTimeoutSeconds
 		}
+		// ##CROSS: istanbul posa
+		// if transition.CouncilPeriod != nil {
+		// 	newConfig.CouncilPeriod = *transition.CouncilPeriod
+		// }
+		// if transition.ValidatorEpochLength != nil {
+		// 	newConfig.ValidatorEpochLength = transition.ValidatorEpochLength
+		// }
+		// ##
 	})
 
 	return newConfig
@@ -274,11 +249,24 @@ func (c *Config) String() string {
 	return "istanbul"
 }
 
+// ##CROSS: istanbul posa
+
 // OnNewCouncilPeriod checks if the given block time is the beginning of a new council period.
 func (c Config) OnNewCouncilPeriod(lastBlockTime, currentBlockTime uint64) bool {
 	period := c.CouncilPeriod
 	if period == 0 {
-		period = 86400
+		period = DefaultConfig.CouncilPeriod
 	}
 	return lastBlockTime != 0 && lastBlockTime/period != currentBlockTime/period
 }
+
+// OnNewValidatorEpoch checks if the given block number is the beginning of a new validator epoch.
+func (c Config) OnNewValidatorEpoch(blockNumber uint64) bool {
+	epochLength := c.ValidatorEpochLength
+	if epochLength == 0 {
+		epochLength = DefaultConfig.ValidatorEpochLength
+	}
+	return blockNumber%epochLength == 0
+}
+
+// ##

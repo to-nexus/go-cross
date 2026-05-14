@@ -84,14 +84,19 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if !rules.IsCancun && tx.Type() == types.BlobTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in Cancun", core.ErrTxTypeNotSupported, tx.Type())
 	}
-	// ##CROSS: istanbul blob tx
-	if opts.Config.Istanbul != nil && tx.Type() == types.BlobTxType {
-		return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support blob transactions", core.ErrTxTypeNotSupported, tx.Type())
-	}
-	// ##
 	if !rules.IsPrague && tx.Type() == types.SetCodeTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in Prague", core.ErrTxTypeNotSupported, tx.Type())
 	}
+	// ##CROSS: istanbul
+	if opts.Config.IsIstanbulConsensus() {
+		switch tx.Type() {
+		case types.BlobTxType: // ##CROSS: istanbul blob tx
+			return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support blob transactions", core.ErrTxTypeNotSupported, tx.Type())
+		case types.SetCodeTxType: // ##CROSS: istanbul set code tx
+			return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support set code transactions", core.ErrTxTypeNotSupported, tx.Type())
+		}
+	}
+	// ##
 	// Check whether the init code size has been exceeded
 	if rules.IsShanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", core.ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
@@ -120,6 +125,18 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if _, err := types.Sender(signer, tx); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSender, err)
 	}
+	// ##CROSS: fee delegation
+	// Make sure the fee payer is signed properly
+	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+		recovered, err := types.FeePayer(signer, tx)
+		if err != nil {
+			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
+		}
+		if recovered != *tx.FeePayer() {
+			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), recovered)
+		}
+	}
+	// ##
 	// Ensure the transaction has more gas than the bare minimum needed to cover
 	// the transaction metadata
 	intrGas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, rules.IsIstanbul, rules.IsShanghai)
@@ -143,7 +160,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if tx.GasTipCapIntCmp(opts.MinTip) < 0 {
 		return fmt.Errorf("%w: gas tip cap %v, minimum needed %v", ErrTxGasPriceTooLow, tx.GasTipCap(), opts.MinTip)
 	}
-	// ##CROSS: istanbul param
+	// ##CROSS: istanbul
 	if types.IsIstanbulDigest(head.MixDigest) {
 		// Ensure tx.GasFeeCap() >= (MinBaseFee + MinTip) as required by the Istanbul consensus fee policy.
 		// Reject the transaction if its max fee cap is below the minimum acceptable gas fee.

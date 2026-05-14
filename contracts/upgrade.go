@@ -2,11 +2,11 @@ package contracts
 
 import (
 	"fmt"
-	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -39,13 +39,15 @@ type (
 )
 
 var (
-	upgrades = make(map[forks.Fork]*Upgrade)
+	// fork -> chainID -> upgrade; chainID = 0 for default
+	upgrades = make(map[forks.Fork]map[uint64]*Upgrade)
 )
 
 func init() {
 	initialize := common.FromHex("8129fc1c")
 
-	upgrades[forks.Prague] = &Upgrade{
+	upgrades[forks.Prague] = make(map[uint64]*Upgrade)
+	upgrades[forks.Prague][0] = &Upgrade{
 		UpgradeName: forks.Prague.String(),
 		Configs: []*UpgradeConfig{
 			{
@@ -56,7 +58,8 @@ func init() {
 			},
 		},
 	}
-	upgrades[forks.Breakpoint] = &Upgrade{
+	upgrades[forks.Breakpoint] = make(map[uint64]*Upgrade)
+	upgrades[forks.Breakpoint][0] = &Upgrade{
 		UpgradeName: forks.Breakpoint.String(),
 		Configs: []*UpgradeConfig{
 			{
@@ -66,96 +69,111 @@ func init() {
 			},
 			// ##CROSS: consensus system contract
 			{
-				Name:         "IstanbulParam",
-				ContractAddr: IstanbulParamAddr,
-				Code:         breakpoint.IstanbulParamMetaData.BinRuntime,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					epochLength := uint64(300) // override to 300
-					blockPeriod := config.GetBlockPeriodSeconds(header.Number)
-					emptyBlockPeriod := config.GetEmptyBlockPeriodSeconds(header.Number)
-					requestTimeout := config.GetRequestTimeoutSeconds(header.Number)
-					maxRequestTimeout := config.GetMaxRequestTimeoutSeconds(header.Number)
-					baseFeeChangeDenominator := config.GetBaseFeeChangeDenominator(header.Number)
-					elasticityMultiplier := config.GetElasticityMultiplier(header.Number)
-					maxBaseFee := config.GetMaxBaseFee(header.Number)
-					if maxBaseFee == nil {
-						maxBaseFee = big.NewInt(0)
-					}
-					minBaseFee := config.GetMinBaseFee(header.Number)
-					if minBaseFee == nil {
-						minBaseFee = big.NewInt(0)
-					}
-					proposerPolicy := config.GetProposerPolicy(header.Number)
-					gasLimit := header.GasLimit
-					if limit := config.GetGasLimit(header.Number); limit != nil {
-						gasLimit = *limit
-					}
-					councilPeriod := uint64(86400)
-					if config.Istanbul != nil && config.Istanbul.CouncilPeriod != nil {
-						councilPeriod = *config.Istanbul.CouncilPeriod
-					}
-					return breakpoint.NewIstanbulParam().PackInitialize(
-						epochLength,
-						blockPeriod,
-						emptyBlockPeriod,
-						requestTimeout,
-						maxRequestTimeout,
-						elasticityMultiplier,
-						baseFeeChangeDenominator,
-						maxBaseFee,
-						minBaseFee,
-						proposerPolicy,
-						gasLimit,
-						councilPeriod,
-					), nil
-				},
-			},
-			{
 				Name:         "ValidatorSet",
 				ContractAddr: ValidatorSetAddr,
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
 				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					extra, err := types.ExtractIstanbulExtra(header)
-					if err != nil {
-						return nil, err
+					// PoSA configuration must be set in the Istanbul config
+					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
+						return nil, fmt.Errorf("PoSA configuration is not set")
 					}
-					// ##CROSS: bls seal
-					// browse Istanbul config to build signers list
-					signers := make([][]byte, 0, len(extra.Validators))
-					for i, validator := range extra.Validators {
-						if config.Istanbul != nil {
-							for idx := range config.Istanbul.Validators {
-								if validator == config.Istanbul.Validators[idx] && idx < len(config.Istanbul.Signers) {
-									signers = append(signers, config.Istanbul.Signers[idx])
-									break
-								}
-							}
-						}
-						if len(signers) < i+1 {
-							// this validator has no signer, write empty signer
-							signers = append(signers, types.BLSPublicKey{}.Bytes())
-						}
+
+					var (
+						validators []common.Address
+						signers    [][]byte // ##CROSS: bls seal
+					)
+					for _, validator := range config.Istanbul.PoSA.Validators {
+						validators = append(validators, validator.Validator)
+						// ##CROSS: bls seal
+						signers = append(signers, types.BytesToBLSPublicKey(validator.Signer).Bytes())
 					}
-					// ##
-					return breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators, signers), nil
+					return breakpoint.NewValidatorSet().PackUpdateValidators(validators, signers), nil
 				},
 			},
 			{
-				Name:         "StakeHub",
-				ContractAddr: StakeHubAddr,
+				Name:         "StakeHubImpl",
+				ContractAddr: StakeHubAddrImpl,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
+				Storage: map[common.Hash]common.Hash{
+					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
+					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
 				},
 			},
 			{
-				Name:         "ValidatorShare",
-				ContractAddr: ValidatorShareAddr,
-				Code:         breakpoint.ValidatorShareCode,
+				Name:         "StakeHubProxy",
+				ContractAddr: StakeHubAddr,
+				Code:         predeploy.ERC1967ProxyCode,
 				Deploy:       true,
+				Storage: map[common.Hash]common.Hash{
+					// ERC1967Proxy[IMPLEMENTATION] = StakeHubImpl
+					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(StakeHubAddrImpl.Bytes()),
+				},
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					// PoSA configuration must be set in the Istanbul config
+					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
+						return nil, fmt.Errorf("PoSA configuration is not set")
+					}
+
+					pool := config.Istanbul.PoSA.DelegationPool
+					admin := config.Istanbul.PoSA.Admin
+					if pool == (common.Address{}) || admin == (common.Address{}) {
+						return nil, fmt.Errorf("delegation pool or PoSA admin is not set")
+					}
+
+					var (
+						operators  []common.Address
+						validators []common.Address
+						signers    [][]byte // ##CROSS: bls seal
+						ids        []string
+					)
+					for _, validator := range config.Istanbul.PoSA.Validators {
+						operators = append(operators, validator.Operator)
+						validators = append(validators, validator.Validator)
+						ids = append(ids, validator.ID)
+						// ##CROSS: bls seal
+						signers = append(signers, validator.Signer)
+					}
+					return breakpoint.NewStakeHub().PackInitialize(pool, admin, operators, validators, signers, ids), nil
+				},
+			},
+			{
+				Name:         "RewardHubImpl",
+				ContractAddr: RewardHubAddrImpl,
+				Code:         breakpoint.RewardHubMetaData.BinRuntime,
+				Deploy:       true,
+				Storage: map[common.Hash]common.Hash{
+					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
+					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
+				},
+			},
+			{
+				Name:         "RewardHubProxy",
+				ContractAddr: RewardHubAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Deploy:       true,
+				Storage: map[common.Hash]common.Hash{
+					// ERC1967Proxy[IMPLEMENTATION] = RewardHubImpl
+					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(RewardHubAddrImpl.Bytes()),
+				},
+				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
+					// PoSA configuration must be set in the Istanbul config
+					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
+						return nil, fmt.Errorf("PoSA configuration is not set")
+					}
+
+					pool := config.Istanbul.PoSA.DelegationPool
+					admin := config.Istanbul.PoSA.Admin
+					if pool == (common.Address{}) || admin == (common.Address{}) {
+						return nil, fmt.Errorf("delegation pool or PoSA admin is not set")
+					}
+					startBlock := config.Istanbul.PoSA.RewardStartBlock
+					if startBlock == nil {
+						return nil, fmt.Errorf("reward start block is not set")
+					}
+					return breakpoint.NewRewardHub().PackInitialize(pool, admin, startBlock), nil
+				},
 			},
 			{
 				Name:         "ValidatorSlash",
@@ -166,48 +184,17 @@ func init() {
 					return initialize, nil
 				},
 			},
-			{
-				Name:         "SystemReward",
-				ContractAddr: SystemRewardAddr,
-				Code:         breakpoint.SystemRewardCode,
-				Deploy:       true,
-			},
-			{
-				Name:         "CrossGovernor",
-				ContractAddr: GovernorAddr,
-				Code:         breakpoint.CrossGovernorCode,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
-				},
-			},
-			{
-				Name:         "GovernanceToken",
-				ContractAddr: GovernanceTokenAddr,
-				Code:         breakpoint.GovernanceTokenCode,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
-				},
-			},
-			{
-				Name:         "GovernanceTimelock",
-				ContractAddr: GovernanceTimelockAddr,
-				Code:         breakpoint.GovernanceTimelockCode,
-				Deploy:       true,
-				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
-				},
-			},
-			{
-				Name:         "GovernanceExecutor",
-				ContractAddr: GovernanceExecutorAddr,
-				Code:         breakpoint.GovernanceExecutorCode,
-				Deploy:       true,
-			},
 			// ##
 		},
 	}
+}
+
+func getUpgrade(fork forks.Fork, chainID uint64) *Upgrade {
+	upgrade, ok := upgrades[fork][chainID]
+	if !ok {
+		upgrade = upgrades[fork][0]
+	}
+	return upgrade
 }
 
 // TryUpdateSystemContract checks if the block is exactly on the fork and upgrades the system contracts if it is.
@@ -216,12 +203,13 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 		return
 	}
 
+	chainID := config.ChainID.Uint64()
 	if config.IsOnPrague(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(upgrades[forks.Prague], header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Prague, chainID), header, statedb)
 		upgraded = true
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(upgrades[forks.Breakpoint], header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb)
 		upgraded = true
 	}
 	return
@@ -233,8 +221,9 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 		return
 	}
 
+	chainID := config.ChainID.Uint64()
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		initData = append(initData, getSystemContractInitialization(upgrades[forks.Breakpoint], config, header)...)
+		initData = append(initData, getSystemContractInitialization(getUpgrade(forks.Breakpoint, chainID), config, header)...)
 	}
 	return
 }

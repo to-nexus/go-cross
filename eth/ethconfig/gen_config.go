@@ -57,6 +57,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RPCTxFeeCap             float64
 		OverridePrague          *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
+		OverrideBreakpoint      *uint64 `toml:",omitempty"`
 		BlobExtraReserve        uint64
 	}
 	var enc Config
@@ -99,6 +100,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
 	enc.OverridePrague = c.OverridePrague
 	enc.OverrideVerkle = c.OverrideVerkle
+	enc.OverrideBreakpoint = c.OverrideBreakpoint
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	return &enc, nil
 }
@@ -145,6 +147,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RPCTxFeeCap             *float64
 		OverridePrague          *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
+		OverrideBreakpoint      *uint64 `toml:",omitempty"`
 		BlobExtraReserve        *uint64
 	}
 	var dec Config
@@ -267,6 +270,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
+	}
+	if dec.OverrideBreakpoint != nil {
+		c.OverrideBreakpoint = dec.OverrideBreakpoint
 	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve

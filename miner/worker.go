@@ -1069,15 +1069,9 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		Coinbase: genParams.coinbase,
 	}
 
-	// ##CROSS: istanbul param
-	if w.istanbulBackend != nil && w.chainConfig.IsIstanbulPoSA(header.Number, header.Time) {
-		// sync istanbul parameter after PoSA activation
-		if err := w.istanbulBackend.SyncIstanbulParam(header); err != nil {
-			return nil, err
-		}
-		if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
-			header.GasLimit = *gasLimit
-		}
+	// ##CROSS: istanbul
+	if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
+		header.GasLimit = *gasLimit
 	}
 	// ##
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
@@ -21,79 +20,17 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
-
-// ##CROSS: istanbul param
-
-// SyncIstanbulParam reads the istanbul parameters from the IstanbulParam contract.
-// It reads all checkpoints up to the given timepoint and caches them.
-func (e *Engine) SyncIstanbulParam(header *types.Header) error {
-	timepoint := header.Number.Uint64()
-	istanbulParamInstance := e.istanbulParam.Instance(e.contractBackend, contracts.IstanbulParamAddr)
-
-	// get the latest param index at this timepoint
-	latestIndex, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamIndex(timepoint), e.istanbulParam.UnpackGetParamIndex)
-	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return nil
-		}
-		return fmt.Errorf("failed to call getParamIndex: %w", err)
-	}
-
-	// get the number of cached configs
-	length := params.IstanbulConfigLength()
-
-	// read uncached configs from the contract
-	for index := uint64(length); index <= latestIndex; index++ {
-		result, err := bind.Call(istanbulParamInstance, nil, e.istanbulParam.PackGetParamsByIndex(index), e.istanbulParam.UnpackGetParamsByIndex)
-		if err != nil {
-			return fmt.Errorf("failed to call getParamsByIndex(%d): %w", index, err)
-		}
-
-		log.Info("Syncing istanbul param", "index", index, "number", result.Timepoint, "config", result)
-
-		config := params.IstanbulConfig{
-			EpochLength:             result.EpochLength,
-			BlockPeriodSeconds:      result.BlockPeriod,
-			EmptyBlockPeriodSeconds: result.EmptyBlockPeriod,
-			RequestTimeoutSeconds:   result.RequestTimeout,
-			ProposerPolicy:          result.ProposerPolicy,
-		}
-		if result.MaxRequestTimeout != 0 {
-			config.MaxRequestTimeoutSeconds = &result.MaxRequestTimeout
-		}
-		if result.GasLimit != 0 {
-			config.GasLimit = &result.GasLimit
-		}
-		if result.ElasticityMultiplier != 0 {
-			config.ElasticityMultiplier = &result.ElasticityMultiplier
-		}
-		if result.BaseFeeChangeDenominator != 0 {
-			config.BaseFeeChangeDenominator = &result.BaseFeeChangeDenominator
-		}
-		if result.MaxBaseFee != nil && result.MaxBaseFee.Sign() > 0 {
-			config.MaxBaseFee = (*math.HexOrDecimal256)(result.MaxBaseFee)
-		}
-		if result.MinBaseFee != nil && result.MinBaseFee.Sign() > 0 {
-			config.MinBaseFee = (*math.HexOrDecimal256)(result.MinBaseFee)
-		}
-		if result.CouncilPeriod != 0 {
-			config.CouncilPeriod = &result.CouncilPeriod
-		}
-
-		params.AddIstanbulConfig(&config, result.Timepoint)
-	}
-	return nil
-}
-
-// ##
 
 // ##CROSS: consensus system contract
 
 type validatorSet breakpoint.GetActiveValidatorsOutput
+
+var (
+	errValidatorSetLengthMismatch = errors.New("validator set length mismatch")
+	errInvalidValidatorSigner     = errors.New("invalid validator signer")
+)
 
 func (v validatorSet) Len() int { return len(v.ValidatorAddrs) }
 func (v validatorSet) Less(i, j int) bool {
@@ -119,6 +56,15 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.
 		return nil, nil, fmt.Errorf("failed to call getActiveValidators: %w", err)
 	}
 
+	if len(result.ValidatorAddrs) != len(result.SignerAddrs) {
+		return nil, nil, fmt.Errorf("%w: validators %d signers %d", errValidatorSetLengthMismatch, len(result.ValidatorAddrs), len(result.SignerAddrs))
+	}
+	for i, signer := range result.SignerAddrs {
+		if len(signer) != types.BLSPublicKeyLength {
+			return nil, nil, fmt.Errorf("%w: signer %d has length %d", errInvalidValidatorSigner, i, len(signer))
+		}
+	}
+
 	// sort ascending
 	sort.Sort(validatorSet(result))
 
@@ -132,7 +78,7 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.
 type ValidatorInfo struct {
 	address common.Address
 	signer  types.BLSPublicKey
-	amount  *uint256.Int
+	power   *uint256.Int
 }
 
 // updateValidatorSet creates a new validator set and updates the ValidatorSet contract.
@@ -156,7 +102,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return nil
 	}
 
-	threshold, err := e.getValidatorThreshold(number)
+	threshold, err := e.getMaxCouncil(number)
 	if err != nil {
 		return err
 	}
@@ -164,9 +110,22 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return errors.New("zero validator threshold")
 	}
 
-	// cut top N validators by their staking amount
+	// sort descending by their staking power
 	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
-		return b.amount.Cmp(a.amount)
+		return b.power.Cmp(a.power)
+	})
+
+	// cut top N validators by their staking power and remove validators with zero power
+	for n := range validatorInfos {
+		if n >= int(threshold) || validatorInfos[n].power.IsZero() {
+			validatorInfos = validatorInfos[:n]
+			break
+		}
+	}
+
+	// sort ascending by their address
+	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
+		return bytes.Compare(a.address[:], b.address[:])
 	})
 
 	validators := make([]common.Address, 0, threshold)
@@ -175,10 +134,6 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	signers := make([]types.BLSPublicKey, 0, threshold)
 	// ##
 	for _, validator := range validatorInfos {
-		if validator.amount.IsZero() || len(validators) >= int(threshold) {
-			// no more active validators or enough validators are collected
-			break
-		}
 		validators = append(validators, validator.address)
 		// ##CROSS: bls seal
 		signersBytes = append(signersBytes, validator.signer.Bytes())
@@ -206,47 +161,39 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 	calldata := e.stakeHub.PackGetValidators(big.NewInt(0), big.NewInt(0))
 	result, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackGetValidators)
 	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return nil, nil
-		}
 		return nil, fmt.Errorf("failed to call getValidators: %w", err)
 	}
 
-	if length := result.TotalLength.Uint64(); length != uint64(len(result.ValidatorAddrs)) || length != uint64(len(result.SignerAddrs)) || length != uint64(len(result.Amounts)) {
+	if length := result.TotalLength.Uint64(); length != uint64(len(result.ValidatorAddrs)) || length != uint64(len(result.SignerAddrs)) || length != uint64(len(result.Powers)) {
 		return nil, errors.New("validator length mismatch")
 	}
 
 	validatorInfos := make([]ValidatorInfo, len(result.ValidatorAddrs))
 	for i, validator := range result.ValidatorAddrs {
-		amountU256, _ := uint256.FromBig(result.Amounts[i])
+		powerU256, _ := uint256.FromBig(result.Powers[i])
 		signer := result.SignerAddrs[i]
 		validatorInfos[i] = ValidatorInfo{
 			address: validator,
 			signer:  types.BytesToBLSPublicKey(signer),
-			amount:  amountU256,
+			power:   powerU256,
 		}
 	}
 
 	return validatorInfos, nil
 }
 
-// getValidatorThreshold reads the active validator threshold from the StakeHub contract.
-func (e *Engine) getValidatorThreshold(number uint64) (uint64, error) {
+// getMaxCouncil reads the max number of council from the StakeHub contract.
+func (e *Engine) getMaxCouncil(number uint64) (uint64, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
-	calldata := e.stakeHub.PackValidatorThreshold()
-	threshold, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackValidatorThreshold)
+	calldata := e.stakeHub.PackMaxCouncil()
+	cnt, err := bind.Call(stakeHubInstance, callopts, calldata, e.stakeHub.UnpackMaxCouncil)
 	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return 0, nil
-		}
-		return 0, fmt.Errorf("failed to call validatorThreshold: %w", err)
+		return 0, fmt.Errorf("failed to call maxCouncil: %w", err)
 	}
 
-	return threshold.Uint64(), nil
+	return cnt.Uint64(), nil
 }
 
 // ##
@@ -272,27 +219,41 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 		return nil
 	}
 
+	slashedCount := map[common.Address]int{}
 	for round, proposer := range slashed {
+		slashedCount[proposer]++
 		log.Info("Slashing offline proposer",
 			"number", header.Number.Uint64(),
 			"block", parent.Number.Uint64(),
 			"round", round,
 			"proposer", proposer,
-			"isMining", systemTxs == nil)
+			"isMining", systemTxs == nil,
+		)
+	}
 
-		data := e.validatorSlash.PackSlashOffline(proposer)
-		msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
-
-		if systemTxs != nil {
-			err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
-		} else {
-			err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
-		}
-		if err != nil {
-			return err
+	// Slashing same proposer multiple times will be reverted; reduce them
+	target := make([]common.Address, 0, len(slashedCount))
+	for proposer, count := range slashedCount {
+		target = append(target, proposer)
+		if count > 1 {
+			log.Warn("Multiple slashed proposer",
+				"number", header.Number.Uint64(),
+				"block", parent.Number.Uint64(),
+				"proposer", proposer,
+				"count", count,
+			)
 		}
 	}
-	return nil
+
+	data := e.validatorSlash.PackSlashOffline(target)
+	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
+
+	if systemTxs != nil {
+		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+	} else {
+		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+	}
+	return err
 }
 
 // offlineProposers collects the offline proposers of the given header.
@@ -329,7 +290,8 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 		}
 	}
 	if len(validators) == 0 {
-		return nil, fmt.Errorf("no validators at block %d", header.Number.Uint64())
+		log.Warn("No validators at block", "number", header.Number.Uint64())
+		return nil, nil
 	}
 
 	valSet := validator.NewSet(validators, nil, policy)
@@ -358,11 +320,8 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 	calldata := e.validatorSlash.PackGetSlashedValidators()
 	slashed, err := bind.Call(validatorSlashInstance, callopts, calldata, e.validatorSlash.UnpackGetSlashedValidators)
 	if err != nil {
-		if errors.Is(err, bind.ErrNoCode) {
-			// contract is not deployed
-			return nil
-		}
-		return fmt.Errorf("failed to call getSlashedValidators: %w", err)
+		log.Warn("Failed to call getSlashedValidators", "error", err, "number", header.Number.Uint64())
+		return nil
 	}
 
 	if len(slashed) == 0 {
@@ -391,10 +350,9 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 		coinbase = e.signer
 	}
 
-	// totalFee := state.GetBalance(params.SystemAddress) // Total fee is already transferred to the system address in the state transition
-
-	// Calculate total transaction fees by summing up the fees of all transactions
-	totalFee := new(uint256.Int)
+	// Calculate total tip and total fee by summing up the tip and fee of all transactions
+	totalTip := new(big.Int)
+	totalFee := new(big.Int)
 	for i, tx := range *txs {
 		if isSystemTx, err := e.IsSystemTransaction(tx, header); err != nil {
 			return err
@@ -408,47 +366,48 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 
 		receipt := (*receipts)[i]
 
-		gasPrice := new(big.Int).Add(header.BaseFee, tx.EffectiveGasTipValue(header.BaseFee)) // base fee is not burned
-		fee := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
+		gasTipCap, err := tx.EffectiveGasTip(header.BaseFee)
+		if err != nil {
+			return err
+		}
+		gasPrice := new(big.Int).Add(header.BaseFee, gasTipCap)
+		total := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
+		tip := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasTipCap)
 
 		// Blob fee is also included in the total fee
 		if receipt.BlobGasPrice != nil && receipt.BlobGasUsed > 0 {
 			blobFee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.BlobGasUsed), receipt.BlobGasPrice)
-			fee.Add(fee, blobFee)
+			total.Add(total, blobFee)
 		}
 
-		feeU256, _ := uint256.FromBig(fee)
-		totalFee.Add(totalFee, feeU256)
+		totalFee.Add(totalFee, total)
+		totalTip.Add(totalTip, tip)
 	}
 
-	if totalFee.IsZero() {
-		return nil
-	}
-
-	// state.SubBalance(params.SystemAddress, totalFee, tracing.BalanceDecreaseDistributeReward)
-	// state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseDistributeReward)
-	state.AddBalance(coinbase, totalFee, tracing.BalanceIncreaseRewardTransactionFee)
 	log.Trace("Distributing rewards",
 		"number", header.Number.Uint64(),
 		"validator", coinbase,
 		"totalFee", totalFee,
+		"totalTip", totalTip,
 		"usedGas", *usedGas,
 		"isMining", systemTxs == nil)
 
+	totalFeeU256, _ := uint256.FromBig(totalFee)
+	if totalFeeU256.Sign() != 0 {
+		state.AddBalance(coinbase, totalFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
+	}
+
 	// Call 'distributeReward' function to send the collected rewards to the validator share contract
-	data := e.stakeHub.PackDistributeReward(coinbase)
-	msg := newSystemMessage(coinbase, contracts.StakeHubAddr, data, totalFee.ToBig())
+	data := e.rewardHub.PackDistributeReward(coinbase, totalTip)
+	msg := newSystemMessage(coinbase, contracts.RewardHubAddr, data, totalFee)
 
 	var err error
 	if systemTxs != nil {
 		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 	} else {
-		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
+		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, usedGas, tracer)
 	}
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // ##

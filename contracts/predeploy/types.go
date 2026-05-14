@@ -13,4 +13,6 @@ var (
 	CrossBridgeImplCode string
 	//go:embed multicall3
 	Multicall3Code string
+	//go:embed erc1967_proxy
+	ERC1967ProxyCode string
 )

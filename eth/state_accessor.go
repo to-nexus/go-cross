@@ -235,15 +235,6 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		return nil, vm.BlockContext{}, nil, nil, err
 	}
 
-	// ##CROSS: istanbul param
-	if eth.istanbul != nil && eth.blockchain.Config().IsIstanbulPoSA(block.Number(), block.Time()) {
-		// sync istanbul parameter after PoSA activation
-		if err := eth.istanbul.SyncIstanbulParam(block.Header()); err != nil {
-			return nil, vm.BlockContext{}, nil, nil, err
-		}
-	}
-	// ##
-
 	// Insert parent beacon block root in the state as per EIP-4788.
 	context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil)
 	evm := vm.NewEVM(context, statedb, eth.blockchain.Config(), vm.Config{})

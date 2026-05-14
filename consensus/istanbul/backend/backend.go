@@ -393,13 +393,13 @@ func (sb *Backend) ParentValidators(proposal istanbul.Proposal) istanbul.Validat
 	if block, ok := proposal.(*types.Block); ok {
 		return sb.getValidators(block.Number().Uint64()-1, block.ParentHash())
 	}
-	return validator.NewSet(nil, nil, sb.config.GetConfig(proposal.Number()).ProposerPolicy) // ##CROSS: istanbul param
+	return validator.NewSet(nil, nil, sb.config.ProposerPolicy)
 }
 
 func (sb *Backend) getValidators(number uint64, hash common.Hash) istanbul.ValidatorSet {
 	snap, err := sb.snapshot(sb.chain, number, hash, nil)
 	if err != nil {
-		return validator.NewSet(nil, nil, sb.config.GetConfig(new(big.Int).SetUint64(number)).ProposerPolicy) // ##CROSS: istanbul param
+		return validator.NewSet(nil, nil, sb.config.ProposerPolicy)
 	}
 	return snap.ValSet
 }
@@ -436,7 +436,7 @@ func (sb *Backend) startIstanbul() error {
 	sb.logger.Info("Istanbul: activate")
 
 	// ##CROSS: bls seal
-	if sb.chain != nil && sb.chain.Config().Istanbul != nil && sb.chain.Config().Istanbul.PoSAActivationSeconds != nil && sb.blsSecretKey == nil {
+	if sb.chain != nil && sb.chain.Config().Istanbul != nil && sb.chain.Config().Istanbul.PoSA != nil && sb.blsSecretKey == nil {
 		sb.logger.Warn("Istanbul: BLS secret key is not configured - node cannot participate in PoSA")
 	}
 	// ##

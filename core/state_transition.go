@@ -190,9 +190,22 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 		BlobGasFeeCap:         tx.BlobGasFeeCap(),
 	}
 
-	if tx.FeePayer() != nil { // ##CROSS: fee delegation
-		msg.FeePayer = tx.FeePayer()
+	// ##CROSS: fee delegation
+	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+		fp := tx.FeePayer()
+		if fp == nil {
+			return nil, fmt.Errorf("%w: fee payer is nil", ErrInvalidFeePayer)
+		}
+		recovered, err := types.FeePayer(s, tx)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidFeePayer, err)
+		}
+		if recovered != *fp {
+			return nil, fmt.Errorf("%w: feepayer: %v, sig: %v", ErrInvalidFeePayer, *fp, recovered)
+		}
+		msg.FeePayer = fp
 	}
+	// ##
 
 	// If baseFee provided, set gasPrice to effectiveGasPrice.
 	if baseFee != nil {

@@ -43,6 +43,12 @@ func (c *Core) sendPreprepareMsg(request *Request) {
 
 	// If I'm the proposer and I have the same sequence with the proposal
 	if c.current.Sequence().Cmp(request.Proposal.Number()) == 0 && c.IsProposer() {
+		// ##CROSS: bad block mitigation
+		if c.isBadProposal(request.Proposal) {
+			logger.Warn("Istanbul: skip bad block proposal", "proposal.number", request.Proposal.Number(), "proposal.hash", request.Proposal.Hash())
+			return
+		}
+		// ##
 		// Creates PRE-PREPARE message
 		curView := c.currentView()
 		preprepare := protocols.NewPreprepare(curView.Sequence, curView.Round, request.Proposal)
@@ -119,7 +125,7 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 
 	// Validates PRE-PREPARE message justification
 	if preprepare.Round.Uint64() > 0 {
-		if err := isJustified(preprepare.Proposal, preprepare.JustificationRoundChanges, preprepare.JustificationPrepares, c.valSet.QuorumSize()); err != nil {
+		if err := isJustified(preprepare.Proposal, preprepare.JustificationRoundChanges, preprepare.JustificationPrepares, c.valSet.QuorumSize(), c.hasBadProposal); err != nil {
 			logger.Warn("Istanbul: invalid PRE-PREPARE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return errInvalidPreparedBlock
 		}

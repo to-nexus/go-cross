@@ -1,12 +1,12 @@
 package contracts
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -52,29 +52,30 @@ func TestTryUpdateSystemContract(t *testing.T) {
 
 // ##CROSS: consensus system contract
 func TestInitSystemContract(t *testing.T) {
+	validators := []common.Address{
+		common.HexToAddress("0x000000000000000000000000000000000000aaaa"),
+		common.HexToAddress("0x000000000000000000000000000000000000bbbb"),
+		common.HexToAddress("0x000000000000000000000000000000000000cccc"),
+	}
+	// ##CROSS: bls seal
+	signers := make([][]byte, 0, len(validators))
+	for range len(validators) {
+		signers = append(signers, types.BLSPublicKey{}.Bytes())
+	}
+	// ##
 	extra := &types.IstanbulExtra{
-		VanityData: []byte{},
-		Validators: []common.Address{
-			common.HexToAddress("0x000000000000000000000000000000000000aaaa"),
-			common.HexToAddress("0x000000000000000000000000000000000000bbbb"),
-			common.HexToAddress("0x000000000000000000000000000000000000cccc"),
-		},
+		VanityData:    []byte{},
+		Validators:    validators,
 		CommittedSeal: [][]byte{},
 		Round:         0,
 		Vote:          nil,
 		RandomReveal:  []byte{},
 	}
-	// ##CROSS: bls seal
-	signers := make([][]byte, 0, len(extra.Validators))
-	for range len(extra.Validators) {
-		signers = append(signers, types.BLSPublicKey{}.Bytes())
-	}
-	// ##
 	payload, err := rlp.EncodeToBytes(extra)
 	require.NoError(t, err)
 
-	maxBaseFee := math.NewHexOrDecimal256(1e18)
-	minBaseFee := math.NewHexOrDecimal256(1e8)
+	admin := common.HexToAddress("0x000000000000000000000000000000000000ffff")
+	pool := common.HexToAddress("0x0000000000000000000000000000000000001001")
 	config := &params.ChainConfig{
 		Istanbul: &params.IstanbulConfig{
 			EpochLength:             86400,
@@ -82,9 +83,24 @@ func TestInitSystemContract(t *testing.T) {
 			EmptyBlockPeriodSeconds: 0,
 			RequestTimeoutSeconds:   10,
 			ProposerPolicy:          0,
-			MaxBaseFee:              maxBaseFee,
-			MinBaseFee:              minBaseFee,
+			PoSA: &params.PoSAConfig{
+				Admin:            admin,
+				DelegationPool:   pool,
+				RewardStartBlock: new(big.Int).SetUint64(100),
+			},
 		},
+	}
+
+	operators := validators
+	ids := make([]string, 0, len(validators))
+	for i := range validators {
+		ids = append(ids, fmt.Sprintf("test%02d", i+1))
+		config.Istanbul.PoSA.Validators = append(config.Istanbul.PoSA.Validators, params.PoSAValidator{
+			ID:        ids[i],
+			Operator:  operators[i],
+			Validator: validators[i],
+			Signer:    signers[i],
+		})
 	}
 
 	initialize := common.FromHex("8129fc1c")
@@ -106,44 +122,19 @@ func TestInitSystemContract(t *testing.T) {
 			},
 			expected: []ContractInitData{
 				{
-					To: IstanbulParamAddr,
-					Data: breakpoint.NewIstanbulParam().PackInitialize(
-						300,                               // epochLength
-						1,                                 // blockPeriod
-						0,                                 // emptyBlockPeriod
-						10,                                // requestTimeout
-						0,                                 // maxRequestTimeout
-						config.ElasticityMultiplier(),     // elasticityMultiplier
-						config.BaseFeeChangeDenominator(), // baseFeeChangeDenominator
-						(*big.Int)(maxBaseFee),            // maxBaseFee
-						(*big.Int)(minBaseFee),            // minBaseFee
-						0,                                 // proposerPolicy
-						2e10,                              // gasLimit
-						86400,                             // councilPeriod
-					),
-				},
-				{
 					To:   ValidatorSetAddr,
 					Data: breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators, signers),
 				},
 				{
 					To:   StakeHubAddr,
-					Data: initialize,
+					Data: breakpoint.NewStakeHub().PackInitialize(pool, admin, operators, validators, signers, ids),
+				},
+				{
+					To:   RewardHubAddr,
+					Data: breakpoint.NewRewardHub().PackInitialize(pool, admin, big.NewInt(100)),
 				},
 				{
 					To:   ValidatorSlashAddr,
-					Data: initialize,
-				},
-				{
-					To:   GovernorAddr,
-					Data: initialize,
-				},
-				{
-					To:   GovernanceTokenAddr,
-					Data: initialize,
-				},
-				{
-					To:   GovernanceTimelockAddr,
 					Data: initialize,
 				},
 			},
@@ -152,7 +143,7 @@ func TestInitSystemContract(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			initData := getSystemContractInitialization(upgrades[tt.fork], config, tt.header)
+			initData := getSystemContractInitialization(upgrades[tt.fork][0], config, tt.header)
 			assert.Equal(t, tt.expected, initData)
 		})
 	}
