@@ -83,6 +83,8 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSA: CrossPoSAConfig,
 		},
 		Transitions: []Transition{},
 	}
@@ -130,6 +132,8 @@ var (
 			// ##CROSS: basefee
 			MaxBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e18)), // 1 Ether
 			MinBaseFee: (*cmath.HexOrDecimal256)(big.NewInt(1e9)),  // 1 Gwei
+			// ##CROSS: istanbul posa
+			PoSA: ZoneZeroPoSAConfig,
 		},
 		Transitions: []Transition{},
 	}
