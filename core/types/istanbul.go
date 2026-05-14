@@ -22,6 +22,7 @@ import (
 	"io"
 	"reflect"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -208,6 +209,27 @@ func (qst *IstanbulExtra) DecodeRLP(s *rlp.Stream) error {
 	// ##
 	return nil
 }
+
+// ##CROSS: bls seal
+// Committers computes the committers from the signers bitset and the validators list.
+// Validator list and signers bitset are expected to exist in the extra data.
+func (qst *IstanbulExtra) Committers() (committers []common.Address) {
+	bs := bitset.From(qst.SignersBitset)
+	if bs.Count() == 0 {
+		return
+	}
+
+	committers = make([]common.Address, 0, bs.Count())
+	for index, validator := range qst.Validators {
+		if !bs.Test(uint(index)) {
+			continue
+		}
+		committers = append(committers, validator)
+	}
+	return
+}
+
+// ##
 
 type ValidatorVote struct {
 	RecipientAddress common.Address
