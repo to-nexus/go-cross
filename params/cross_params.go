@@ -180,7 +180,7 @@ var (
 		CouncilPeriod:        86400,
 		ValidatorEpochLength: 300,
 		DelegationPool:       common.HexToAddress("0x0000000c5BB5C7B081237B5efaFC753D61201b94"),
-		Admin:                common.HexToAddress("0x22C1522276855B028c31a731BA10D125811Af37c"),
+		Admin:                common.HexToAddress("0x1b1154b25435bB1dE06C6FC8CA8Df79050ca33c1"),
 		RewardStartBlock:     big.NewInt(26182221),
 		Validators:           ZoneZeroValidators,
 	}
