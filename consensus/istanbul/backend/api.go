@@ -285,8 +285,9 @@ type IstanbulConfig struct {
 	MaxBaseFee               *big.Int         `json:"maxBaseFee"`
 	MinBaseFee               *big.Int         `json:"minBaseFee"`
 	// ##CROSS: istanbul posa
-	CouncilPeriod        uint64 `json:"councilPeriod"`
-	ValidatorEpochLength uint64 `json:"validatorEpochLength"`
+	CouncilPeriod        uint64   `json:"councilPeriod"`
+	ValidatorEpochLength uint64   `json:"validatorEpochLength"`
+	RewardStartBlock     *big.Int `json:"rewardStartBlock"`
 	// ##
 }
 
@@ -311,8 +312,10 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 		Epoch:                  istConfig.Epoch,
 		AllowedFutureBlockTime: istConfig.AllowedFutureBlockTime,
 		MaxRequestTimeout:      istConfig.MaxRequestTimeoutSeconds,
-		CouncilPeriod:          istConfig.CouncilPeriod,
-		ValidatorEpochLength:   istConfig.ValidatorEpochLength,
+		// ##CROSS: istanbul posa
+		CouncilPeriod:        istConfig.CouncilPeriod,
+		ValidatorEpochLength: istConfig.ValidatorEpochLength,
+		// ##
 	}
 	if istConfig.ProposerPolicy != nil {
 		ret.ProposerPolicy = uint64(istConfig.ProposerPolicy.Id)
@@ -330,6 +333,11 @@ func (api *API) GetConfig(number *rpc.BlockNumber) (*IstanbulConfig, error) {
 	ret.BaseFeeChangeDenominator = chainConfig.GetBaseFeeChangeDenominator(header.Number)
 	ret.MaxBaseFee = chainConfig.GetMaxBaseFee(header.Number)
 	ret.MinBaseFee = chainConfig.GetMinBaseFee(header.Number)
+	// ##CROSS: istanbul posa
+	if chainConfig.IsIstanbulConsensus() && chainConfig.Istanbul.PoSA != nil {
+		ret.RewardStartBlock = chainConfig.Istanbul.PoSA.RewardStartBlock
+	}
+	// ##
 
 	return ret, nil
 }
