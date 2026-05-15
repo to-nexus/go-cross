@@ -369,13 +369,13 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 
 		receipt := (*receipts)[i]
 
-		gasTipCap, err := tx.EffectiveGasTip(header.BaseFee)
+		gasTip, err := tx.EffectiveGasTip(header.BaseFee)
 		if err != nil {
 			return err
 		}
-		gasPrice := new(big.Int).Add(header.BaseFee, gasTipCap)
+		gasPrice := new(big.Int).Add(header.BaseFee, gasTip)
 		total := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
-		tip := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasTipCap)
+		tip := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasTip)
 
 		// Blob fee is also included in the total fee
 		if receipt.BlobGasPrice != nil && receipt.BlobGasUsed > 0 {
