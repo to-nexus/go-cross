@@ -579,11 +579,16 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 
 	if st.evm.ChainConfig().IsIstanbulConsensus() {
 		// ##CROSS: istanbul
-		// When Istanbul consensus is used, the beneficiary is configured in the chain config
-		if collector := st.evm.ChainConfig().GetBeneficiaryAddress(st.evm.Context.BlockNumber); collector != nil {
-			beneficiary = *collector
+		if st.evm.Context.PoSAActive {
+			// ##CROSS: istanbul posa
+			// When PoSA is active, the coinbase is the beneficiary as Ethereum
+		} else {
+			// When Istanbul consensus is used, the beneficiary is configured in the chain config
+			// BaseFee is not subtracted from the GasPrice, meaning no fee is burned and all fees go to the beneficiary
+			if collector := st.evm.ChainConfig().GetBeneficiaryAddress(st.evm.Context.BlockNumber); collector != nil {
+				beneficiary = *collector
+			}
 		}
-		// BaseFee is not subtracted from the GasPrice, meaning no fee is burned and all fees go to the beneficiary
 	} else {
 		if rules.IsLondon {
 			effectiveTip = new(big.Int).Sub(msg.GasPrice, st.evm.Context.BaseFee)
@@ -599,26 +604,11 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		fee := new(uint256.Int).SetUint64(st.gasUsed())
 		fee.Mul(fee, effectiveTipU256)
 
-		if st.evm.Context.PoSAActive { // ##CROSS: istanbul posa
-			// Fee collection is deferred to the block finalization step
+		st.state.AddBalance(beneficiary, fee, tracing.BalanceIncreaseRewardTransactionFee)
 
-			/* // Fee is forwarded to the system address temporarily
-			st.state.AddBalance(params.SystemAddress, fee, tracing.BalanceIncreaseRewardTransactionFee)
-			if rules.IsCancun {
-				// Blob fee is not burned too
-				blobFee := new(big.Int).Mul(new(big.Int).SetUint64(st.blobGasUsed()), st.evm.Context.BlobBaseFee)
-				if blobFee.Sign() != 0 {
-					blobFeeU256, _ := uint256.FromBig(blobFee)
-					st.state.AddBalance(params.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
-				}
-			}*/
-		} else {
-			st.state.AddBalance(beneficiary, fee, tracing.BalanceIncreaseRewardTransactionFee)
-
-			// add the beneficiary to the witness if the fee is greater than 0
-			if rules.IsEIP4762 && fee.Sign() != 0 {
-				st.evm.AccessEvents.AddAccount(beneficiary, true)
-			}
+		// add the beneficiary to the witness if the fee is greater than 0
+		if rules.IsEIP4762 && fee.Sign() != 0 {
+			st.evm.AccessEvents.AddAccount(beneficiary, true)
 		}
 	}
 

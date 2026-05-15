@@ -369,13 +369,13 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 
 		receipt := (*receipts)[i]
 
-		gasTipCap, err := tx.EffectiveGasTip(header.BaseFee)
+		gasTip, err := tx.EffectiveGasTip(header.BaseFee)
 		if err != nil {
 			return err
 		}
-		gasPrice := new(big.Int).Add(header.BaseFee, gasTipCap)
+		gasPrice := new(big.Int).Add(header.BaseFee, gasTip)
 		total := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasPrice)
-		tip := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasTipCap)
+		tip := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), gasTip)
 
 		// Blob fee is also included in the total fee
 		if receipt.BlobGasPrice != nil && receipt.BlobGasUsed > 0 {
@@ -395,12 +395,8 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 		"usedGas", *usedGas,
 		"isMining", systemTxs == nil)
 
-	totalFeeU256, _ := uint256.FromBig(totalFee)
-	if totalFeeU256.Sign() != 0 {
-		state.AddBalance(coinbase, totalFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
-	}
-
 	// Call 'distributeReward' function to send the collected rewards to the validator share contract
+	// Total fee is already collected to the coinbase's balance in the state transition.
 	data := e.rewardHub.PackDistributeReward(coinbase, totalTip)
 	msg := newSystemMessage(coinbase, contracts.RewardHubAddr, data, totalFee)
 
