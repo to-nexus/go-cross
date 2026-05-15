@@ -244,6 +244,9 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 			)
 		}
 	}
+	slices.SortFunc(target, func(a, b common.Address) int {
+		return bytes.Compare(a[:], b[:])
+	})
 
 	data := e.validatorSlash.PackSlashOffline(target)
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
