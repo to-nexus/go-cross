@@ -395,12 +395,8 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 		"usedGas", *usedGas,
 		"isMining", systemTxs == nil)
 
-	totalFeeU256, _ := uint256.FromBig(totalFee)
-	if totalFeeU256.Sign() != 0 {
-		state.AddBalance(coinbase, totalFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
-	}
-
 	// Call 'distributeReward' function to send the collected rewards to the validator share contract
+	// Total fee is already collected to the coinbase's balance in the state transition.
 	data := e.rewardHub.PackDistributeReward(coinbase, totalTip)
 	msg := newSystemMessage(coinbase, contracts.RewardHubAddr, data, totalFee)
 
