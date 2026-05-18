@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -38,6 +39,9 @@ import (
 
 var (
 	nilUncleHash = types.CalcUncleHash(nil) // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW.
+
+	slashSystemTxSkippedMeter    = metrics.NewRegisteredMeter("consensus/istanbul/engine/systemtx/slash/skipped", nil)
+	mitigateSystemTxSkippedMeter = metrics.NewRegisteredMeter("consensus/istanbul/engine/systemtx/mitigate/skipped", nil)
 )
 
 type SignerFn func(data []byte) ([]byte, error)
@@ -89,6 +93,9 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 // IsSystemTransaction checks if the transaction is a system transaction.
 // A system transaction is a transaction to a system contract with gas price 0 and sender is the block proposer.
 func IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	if tx.Type() != types.LegacyTxType {
+		return false, nil
+	}
 	if to := tx.To(); to == nil || !contracts.IsSystemContract(*to) {
 		return false, nil
 	}
@@ -119,9 +126,9 @@ func (e *Engine) IsSystemContract(to *common.Address) bool {
 }
 
 const (
-	systemTxsGasBreakpoint = 2_000_000
-	systemTxsGasNewPeriod  = 1_500_000
-	systemTxsGasUsual      = 1_000_000
+	systemTxsGasBreakpoint = 3_000_000
+	systemTxsGasNewPeriod  = 1_000_000
+	systemTxsGasUsual      = 900_000
 )
 
 func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
@@ -133,7 +140,7 @@ func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, head
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent != nil {
 		// Possible system transactions and approx. gas costs:
-		//   Initialize system contracts (on hardfork): 1,100,000 on Breakpoint
+		//   Initialize system contracts (on hardfork): 2,200,000 on Breakpoint
 		//   Slash and jail a validator: 300,000
 		//   Distribute rewards: 200,000
 		//   Reduce slash counters (on new day block): 30,000
@@ -596,6 +603,11 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 		if len(committedSeal) != 1 {
 			return istanbul.ErrInvalidCommittedSeals
 		}
+		if !e.cfg.GetConfig(header.Number).OnNewValidatorEpoch(header.Number.Uint64()) &&
+			(len(extra.Signers) > 0 || len(extra.Validators) > 0) {
+			// Validators and signers list are only set on the boundary of new validator epoch
+			return istanbul.ErrInvalidCommittedSeals
+		}
 
 		// Verify the BLS aggregated signature
 		_, pubs, err := e.BLSSigners(header, validators)
@@ -840,13 +852,23 @@ func WriteRandomReveal(chain consensus.ChainHeaderReader, header *types.Header, 
 //
 // All system transactions will be consumed in this function.
 func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction, receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
-	// ##CROSS: contract upgrade
+	// ##CROSS: istanbul posa
+	posa := chain.Config().IsIstanbulPoSA(header.Number, header.Time)
+	if posa {
+		if err := e.verifyValidators(chain, header); err != nil {
+			log.Error("Finalize: failed to verify validators", "error", err, "number", header.Number.Uint64())
+			return err
+		}
+	}
+	// ##
+
 	cx := &chainContext{Chain: chain, engine: e.consensus}
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
 
+	// ##CROSS: contract upgrade
 	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
 	if upgraded {
 		// consume system transactions
@@ -870,16 +892,17 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// ##
 
 	// ##CROSS: istanbul posa
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+	if posa {
 		// ##CROSS: validator slash
 		if err := e.slashValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
-			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
+			slashSystemTxSkippedMeter.Mark(1)
+			log.Error("Finalize: Failed to slash validators", "error", err, "number", header.Number.Uint64())
 		}
 		// ##
 
 		// ##CROSS: validator reward
 		if err := e.distributeRewards(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
-			log.Error("Failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", header.Coinbase, "usedGas", *usedGas)
+			log.Error("Finalize: failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", header.Coinbase, "usedGas", *usedGas)
 			return err
 		}
 		// ##
@@ -888,7 +911,8 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
-				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
+				mitigateSystemTxSkippedMeter.Mark(1)
+				log.Error("Finalize: Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
 			}
 			// ##
 
@@ -896,7 +920,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			// Update validator set so it can be used in the new day
 			log.Info("Finalize: updating validator set for the new day", "number", header.Number.Uint64(), "blockTime", header.Time)
 			if err := e.updateValidatorSet(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
-				log.Error("Failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
+				log.Error("Finalize: failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
 				return err
 			}
 		}
@@ -956,14 +980,14 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: validator slash
 		if err := e.slashValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
-			log.Error("Failed to slash validators", "error", err, "number", header.Number.Uint64())
-			return nil, nil, err
+			slashSystemTxSkippedMeter.Mark(1)
+			log.Error("FinalizeAndAssemble: failed to slash validators", "error", err, "number", header.Number.Uint64())
 		}
 		// ##
 
 		// ##CROSS: validator reward
 		if err := e.distributeRewards(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
-			log.Error("Failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", e.signer, "usedGas", header.GasUsed)
+			log.Error("FinalizeAndAssemble: failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", e.signer, "usedGas", header.GasUsed)
 			return nil, nil, err
 		}
 		// ##
@@ -972,15 +996,15 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
-				log.Error("Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
-				return nil, nil, err
+				mitigateSystemTxSkippedMeter.Mark(1)
+				log.Error("FinalizeAndAssemble: failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
 			}
 			// ##
 
 			// Update validator set so it can be used in the new day
 			log.Info("FinalizeAndAssemble: updating validator set for the new day", "number", header.Number.Uint64(), "blockTime", header.Time)
 			if err := e.updateValidatorSet(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
-				log.Error("Failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
+				log.Error("FinalizeAndAssemble: failed to update validator set", "error", err, "number", header.Number.Uint64(), "blockTime", header.Time)
 				return nil, nil, err
 			}
 		}
@@ -1192,6 +1216,7 @@ func setExtra(h *types.Header, extra *types.IstanbulExtra) error {
 
 // AccumulateRewards credits the beneficiary of the given block with a reward.
 func (e *Engine) accumulateRewards(chain consensus.ChainHeaderReader, state vm.StateDB, header *types.Header) {
+	// No default rewards for non-PoSA paths
 }
 
 // ##CROSS: consensus system contract

@@ -66,7 +66,6 @@ var (
 		utils.SmartCardDaemonPathFlag,
 		utils.OverridePrague,
 		utils.OverrideVerkle,
-		utils.OverrideBreakpoint, // ##CROSS: fork breakpoint
 		// ##CROSS: blob sidecars
 		utils.OverrideMinBlocksForBlobRequests,
 		utils.OverrideDefaultExtraReserveForBlobRequests,

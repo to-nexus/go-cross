@@ -420,7 +420,7 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 					log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
 				} else {
 					var err error
-					validators, signers, err = sb.Engine().ExtractValidators(genesis)
+					validators, _, err = sb.Engine().ExtractValidators(genesis)
 					log.Info("Istanbul: Initialising snap with extradata", "validators", validators, "signers", signers)
 					if err != nil {
 						log.Error("Istanbul: invalid genesis block", "err", err)
@@ -562,19 +562,21 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 				signers = append(signers, validator.SignerAddress())
 			}
 		}
-		log.Info("Overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
+		log.Info("Istanbul: overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
 		snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
 	} else if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: istanbul posa
 		// Validators are managed by the system contract, we don't check the votes anymore
-		validators, signers, err := sb.Engine().ExtractValidators(header)
-		if err != nil {
-			return err
-		}
-		// Only update validator set if validators are present in the header (at epoch boundaries)
-		// Otherwise, keep the existing validator set from the snapshot
-		if len(validators) > 0 {
-			snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+		if sb.config.OnNewValidatorEpoch(header.Number.Uint64()) {
+			// Only update validator set at epoch boundaries
+			// Otherwise, keep the existing validator set from the snapshot
+			validators, signers, err := sb.Engine().ExtractValidators(header)
+			if err != nil {
+				return err
+			}
+			if len(validators) > 0 {
+				snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+			}
 		}
 		// ##
 	} else {
