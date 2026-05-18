@@ -413,13 +413,14 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 				// Breakpoint is active at genesis, use the validators and signers from the PoSA config
 				validators, signers = validatorsFromPoSAConfig(chain.Config().Istanbul)
 			} else {
+				// Before Breakpoint, no signers
 				validatorsFromConfig := sb.config.Validators
 				if len(validatorsFromConfig) > 0 {
 					validators = validatorsFromConfig
 					log.Info("Istanbul: Initialising snap with config validators", "validators", validators)
 				} else {
 					var err error
-					validators, signers, err = sb.Engine().ExtractValidators(genesis)
+					validators, _, err = sb.Engine().ExtractValidators(genesis)
 					log.Info("Istanbul: Initialising snap with extradata", "validators", validators, "signers", signers)
 					if err != nil {
 						log.Error("Istanbul: invalid genesis block", "err", err)
