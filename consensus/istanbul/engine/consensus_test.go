@@ -211,6 +211,98 @@ func TestGetCurrentValidators(t *testing.T) {
 	}
 }
 
+func TestVerifyValidators(t *testing.T) {
+	code := []byte{1, 2, 3}
+	method := string(breakpoint.NewValidatorSet().PackGetActiveValidators()[:4])
+	signerKey1 := types.BytesToBLSPublicKey(signer1)
+	signerKey2 := types.BytesToBLSPublicKey(signer2)
+	signerKey3 := types.BytesToBLSPublicKey(signer3)
+
+	tests := []struct {
+		name               string
+		number             uint64
+		headerValidators   []common.Address
+		headerSigners      []types.BLSPublicKey
+		contractValidators []common.Address
+		contractSigners    [][]byte
+		expectedErr        error
+		expectedCalls      int
+	}{
+		{
+			name:             "success",
+			number:           100,
+			headerValidators: []common.Address{addr1, addr2},
+			headerSigners:    []types.BLSPublicKey{signerKey1, signerKey2},
+			// The contract response is sorted by GetAcviteValidators before verification.
+			contractValidators: []common.Address{addr2, addr1},
+			contractSigners:    [][]byte{signer2, signer1},
+			expectedCalls:      1,
+		},
+		{
+			name:               "validator mismatch",
+			number:             100,
+			headerValidators:   []common.Address{addr1, addr3},
+			headerSigners:      []types.BLSPublicKey{signerKey1, signerKey3},
+			contractValidators: []common.Address{addr1, addr2},
+			contractSigners:    [][]byte{signer1, signer2},
+			expectedErr:        errValidatorSetMismatch,
+			expectedCalls:      1,
+		},
+		{
+			name:               "signer mismatch",
+			number:             100,
+			headerValidators:   []common.Address{addr1, addr2},
+			headerSigners:      []types.BLSPublicKey{signerKey1, signerKey3},
+			contractValidators: []common.Address{addr1, addr2},
+			contractSigners:    [][]byte{signer1, signer2},
+			expectedErr:        errValidatorSignerMismatch,
+			expectedCalls:      1,
+		},
+		{
+			name:             "not validator epoch",
+			number:           101,
+			headerValidators: []common.Address{addr1},
+			headerSigners:    []types.BLSPublicKey{signerKey1},
+		},
+		{
+			name:               "empty contract validators",
+			number:             100,
+			headerValidators:   []common.Address{addr1},
+			headerSigners:      []types.BLSPublicKey{signerKey1},
+			contractValidators: []common.Address{},
+			contractSigners:    [][]byte{},
+			expectedErr:        errValidatorSetMismatch,
+			expectedCalls:      1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockBackend := &mockContractBackend{codeAtBytes: code}
+			if tt.contractValidators != nil {
+				mockBackend.callResponses = map[string][][]byte{
+					method: {packActiveValidatorsResponse(t, tt.contractValidators, tt.contractSigners)},
+				}
+			}
+			engine := &Engine{
+				cfg:             &istanbul.Config{ValidatorEpochLength: 100},
+				contractBackend: mockBackend,
+				validatorSet:    breakpoint.NewValidatorSet(),
+			}
+			header := createHeaderWithValidatorsAndSigners(t, tt.number, tt.headerValidators, tt.headerSigners)
+			chain := &mockChainHeaderReader{
+				headers: map[common.Hash]*types.Header{},
+				config:  params.TestChainConfig,
+			}
+
+			err := engine.verifyValidators(chain, header)
+
+			require.ErrorIs(t, err, tt.expectedErr)
+			assert.Equal(t, tt.expectedCalls, mockBackend.callCnt)
+		})
+	}
+}
+
 func packActiveValidatorsResponse(t *testing.T, validators []common.Address, signers [][]byte) []byte {
 	t.Helper()
 
@@ -539,6 +631,30 @@ func TestSlashValidators(t *testing.T) {
 	}
 }
 
+func TestOfflineProposers(t *testing.T) {
+	validators := []common.Address{addr1, addr2, addr3}
+	headers := make(map[common.Hash]*types.Header)
+	h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+	h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[1], validators, 3)
+	headers[h0.Hash()] = h0
+	headers[h1.Hash()] = h1
+
+	mockChain := &mockChainHeaderReader{
+		headers: headers,
+		config:  params.TestChainConfig,
+	}
+	engine := &Engine{
+		cfg: &istanbul.Config{
+			ProposerPolicy: istanbul.NewRoundRobinProposerPolicy(),
+		},
+	}
+
+	proposers, err := engine.offlineProposers(mockChain, h1)
+
+	require.NoError(t, err)
+	assert.Equal(t, []common.Address{validators[1], validators[2], validators[0]}, proposers)
+}
+
 // mockChainHeaderReader implements consensus.ChainHeaderReader for testing
 type mockChainHeaderReader struct {
 	headers map[common.Hash]*types.Header
@@ -589,6 +705,32 @@ func createHeaderWithIstanbulExtra(t *testing.T, number uint64, parentHash commo
 		Number:     big.NewInt(int64(number)),
 		ParentHash: parentHash,
 		Coinbase:   coinbase,
+		Extra:      extraBytes,
+		BaseFee:    big.NewInt(0),
+		GasLimit:   10000000,
+		Difficulty: big.NewInt(0),
+	}
+}
+
+func createHeaderWithValidatorsAndSigners(t *testing.T, number uint64, validators []common.Address, signers []types.BLSPublicKey) *types.Header {
+	t.Helper()
+
+	extra := &types.IstanbulExtra{
+		VanityData:    make([]byte, types.IstanbulExtraVanity),
+		Validators:    validators,
+		Vote:          nil,
+		Round:         0,
+		CommittedSeal: [][]byte{},
+		RandomReveal:  []byte{},
+		Signers:       signers,
+	}
+
+	extraBytes, err := rlp.EncodeToBytes(extra)
+	require.NoError(t, err)
+
+	return &types.Header{
+		Number:     big.NewInt(int64(number)),
+		ParentHash: common.Hash{},
 		Extra:      extraBytes,
 		BaseFee:    big.NewInt(0),
 		GasLimit:   10000000,

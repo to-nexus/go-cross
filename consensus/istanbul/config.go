@@ -18,6 +18,7 @@ package istanbul
 
 import (
 	"math/big"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -90,6 +91,10 @@ func (p *ProposerPolicy) UnmarshalTOML(decode func(interface{}) error) error {
 	}
 	p.Id = pp.Id
 	p.By = ValidatorSortByString()
+
+	if p.registryMU == nil {
+		p.registryMU = new(sync.Mutex)
+	}
 	return nil
 }
 
@@ -182,6 +187,8 @@ func NewConfig(config *params.ChainConfig) *Config {
 	}
 	if config.Istanbul.ProposerPolicy != 0 {
 		c.ProposerPolicy = NewProposerPolicy(ProposerPolicyId(config.Istanbul.ProposerPolicy))
+	} else {
+		c.ProposerPolicy = NewRoundRobinProposerPolicy()
 	}
 	c.Validators = config.Istanbul.Validators
 
@@ -189,6 +196,9 @@ func NewConfig(config *params.ChainConfig) *Config {
 		c.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
 	}
 	c.Transitions = config.Transitions
+	slices.SortFunc(c.Transitions, func(a, b params.Transition) int {
+		return a.Block.Cmp(b.Block)
+	})
 
 	// ##CROSS: istanbul posa
 	if config.Istanbul.PoSA != nil {

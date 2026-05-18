@@ -562,19 +562,22 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 				signers = append(signers, validator.SignerAddress())
 			}
 		}
-		log.Info("Overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
+		log.Info("Istanbul: overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
 		snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
 	} else if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: istanbul posa
 		// Validators are managed by the system contract, we don't check the votes anymore
-		validators, signers, err := sb.Engine().ExtractValidators(header)
-		if err != nil {
-			return err
-		}
-		// Only update validator set if validators are present in the header (at epoch boundaries)
-		// Otherwise, keep the existing validator set from the snapshot
-		if len(validators) > 0 {
-			snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+		if sb.config.OnNewValidatorEpoch(header.Number.Uint64()) {
+			// Only update validator set at epoch boundaries
+			// Otherwise, keep the existing validator set from the snapshot
+			// validators, signers, err := sb.Engine().GetActiveValidators(header.Number.Uint64() - 1)
+			validators, signers, err := sb.Engine().ExtractValidators(header)
+			if err != nil {
+				return err
+			}
+			if len(validators) > 0 {
+				snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+			}
 		}
 		// ##
 	} else {
