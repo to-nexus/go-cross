@@ -90,6 +90,10 @@ func (p *ProposerPolicy) UnmarshalTOML(decode func(interface{}) error) error {
 	}
 	p.Id = pp.Id
 	p.By = ValidatorSortByString()
+
+	if p.registryMU == nil {
+		p.registryMU = new(sync.Mutex)
+	}
 	return nil
 }
 
@@ -182,6 +186,8 @@ func NewConfig(config *params.ChainConfig) *Config {
 	}
 	if config.Istanbul.ProposerPolicy != 0 {
 		c.ProposerPolicy = NewProposerPolicy(ProposerPolicyId(config.Istanbul.ProposerPolicy))
+	} else {
+		c.ProposerPolicy = NewRoundRobinProposerPolicy()
 	}
 	c.Validators = config.Istanbul.Validators
 

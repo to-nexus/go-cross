@@ -158,7 +158,7 @@ type IstanbulPeer interface {
 type IstanbulEngine interface {
 	// ##CROSS: consensus system contract
 	// IsSystemTransaction checks if the transaction is a system transaction,
-	// which is a transaction to a system contract with gas price 0 and sender is the block proposer.
+	// which is a legacy transaction to a system contract with gas price 0 and sender is the block proposer.
 	IsSystemTransaction(*types.Transaction, *types.Header) (bool, error)
 
 	// IsSystemContract checks if the address is a system contract.

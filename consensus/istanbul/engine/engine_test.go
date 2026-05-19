@@ -8,7 +8,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,6 +34,40 @@ func TestPrepareExtra(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, h.Extra, expectedResult)
 }
+
+// ##CROSS: consensus system contract
+func TestIsSystemTransaction(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	to := contracts.ValidatorSetAddr
+	header := &types.Header{Coinbase: crypto.PubkeyToAddress(key.PublicKey)}
+	signer := types.LatestSignerForChainID(params.TestChainConfig.ChainID)
+
+	legacyTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(0),
+		Gas:      21000,
+		To:       &to,
+	})
+	isSystemTx, err := IsSystemTransaction(legacyTx, header)
+	require.NoError(t, err)
+	assert.True(t, isSystemTx)
+
+	dynamicFeeTx := types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
+		ChainID:   params.TestChainConfig.ChainID,
+		Nonce:     1,
+		GasTipCap: big.NewInt(0),
+		GasFeeCap: big.NewInt(0),
+		Gas:       21000,
+		To:        &to,
+	})
+	isSystemTx, err = IsSystemTransaction(dynamicFeeTx, header)
+	require.NoError(t, err)
+	assert.False(t, isSystemTx)
+}
+
+// ##
 
 // ##CROSS: bls seal
 type signedSeal struct {

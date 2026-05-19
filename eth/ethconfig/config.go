@@ -19,6 +19,7 @@ package ethconfig
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -176,15 +177,12 @@ type Config struct {
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
-	// OverrideBreakpoint (TODO: remove after the fork)
-	OverrideBreakpoint *uint64 `toml:",omitempty"` // ##CROSS: fork breakpoint
-
 	// blob setting
 	BlobExtraReserve uint64 // ##CROSS: blob sidecars
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.
-// Clique is allowed for now to live standalone, but ethash is forbidden and can
+// ClFique is allowed for now to live standalone, but ethash is forbidden and can
 // only exist on already merged networks.
 func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Config, stack *node.Node, db ethdb.Database) (consensus.Engine, error) {
 	if config.TerminalTotalDifficulty == nil {
@@ -205,6 +203,9 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 
 	if len(config.Transitions) > 0 && istanbulCfg != nil {
 		istanbulCfg.Transitions = config.Transitions
+		slices.SortFunc(istanbulCfg.Transitions, func(a, b params.Transition) int {
+			return a.Block.Cmp(b.Block)
+		})
 	}
 
 	return beacon.New(ethash.NewFaker()), nil

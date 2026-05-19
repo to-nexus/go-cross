@@ -29,8 +29,54 @@ type validatorSet breakpoint.GetActiveValidatorsOutput
 
 var (
 	errValidatorSetLengthMismatch = errors.New("validator set length mismatch")
+	errValidatorSetMismatch       = errors.New("validator set mismatch")
+	errValidatorSignerMismatch    = errors.New("validator signer mismatch")
 	errInvalidValidatorSigner     = errors.New("invalid validator signer")
 )
+
+// verifyValidators checks the validators and signers in the header against the current active validators from the ValidatorSet contract.
+func (e *Engine) verifyValidators(chain consensus.ChainHeaderReader, header *types.Header) error {
+	if header == nil || header.Number.Uint64() == 0 {
+		return nil
+	}
+	// Validator set is only updated on the beginning of a new epoch
+	if !e.cfg.GetConfig(header.Number).OnNewValidatorEpoch(header.Number.Uint64()) {
+		return nil
+	}
+
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
+		return err
+	}
+
+	validatorList, signerList, err := e.getCurrentValidators(header.Number.Uint64() - 1)
+	if err != nil {
+		return err
+	}
+	if len(validatorList) == 0 {
+		// Fallback: when the contract has not been initialized yet, the header keeps carrying the current snapshot validators
+		log.Warn("verifyValidators: fallback to snapshot validators", "number", header.Number.Uint64())
+		if ie := consensus.ToIstanbulEngine(e.consensus); ie != nil && chain != nil {
+			parent := chain.GetHeaderByHash(header.ParentHash)
+			if parent == nil {
+				return consensus.ErrUnknownAncestor
+			}
+			validatorList = ie.ValidatorsAt(chain, parent)
+		}
+		if !slices.Equal(extra.Validators, validatorList) {
+			return fmt.Errorf("%w: header %v, snapshot %v", errValidatorSetMismatch, extra.Validators, validatorList)
+		}
+		return nil
+	}
+
+	if !slices.Equal(extra.Validators, validatorList) {
+		return fmt.Errorf("%w: header %v, contract %v", errValidatorSetMismatch, extra.Validators, validatorList)
+	}
+	if !slices.Equal(extra.Signers, signerList) {
+		return fmt.Errorf("%w: header %v, contract %v", errValidatorSignerMismatch, extra.Signers, signerList)
+	}
+	return nil
+}
 
 func (v validatorSet) Len() int { return len(v.ValidatorAddrs) }
 func (v validatorSet) Less(i, j int) bool {
@@ -41,7 +87,7 @@ func (v validatorSet) Swap(i, j int) {
 	v.SignerAddrs[i], v.SignerAddrs[j] = v.SignerAddrs[j], v.SignerAddrs[i]
 }
 
-// getCurrentValidators reads the active validators from the ValidatorSet contract.
+// getCurrentValidators reads the current active validators from the ValidatorSet contract.
 func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.BLSPublicKey, error) {
 	validatorSetInstance := e.validatorSet.Instance(e.contractBackend, contracts.ValidatorSetAddr)
 
@@ -284,13 +330,10 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 		return nil, nil
 	}
 
-	// If extra.Round > 0, collect proposers of previous rounds
-	validators := extra.Validators
-	if len(validators) == 0 {
-		// Fallback to IstanbulEngine to get validators
-		if ie := consensus.ToIstanbulEngine(e.consensus); ie != nil {
-			validators = ie.ValidatorsAt(chain, header)
-		}
+	// If extra.Round > 0, collect proposers of previous rounds; select proposers from the parent snapshot validator set
+	var validators []common.Address
+	if ie := consensus.ToIstanbulEngine(e.consensus); ie != nil {
+		validators = ie.ValidatorsAt(chain, parent)
 	}
 	if len(validators) == 0 {
 		log.Warn("No validators at block", "number", header.Number.Uint64())
@@ -304,7 +347,6 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 		valSet.CalcProposer(lastProposer, uint64(round))
 		proposer := valSet.GetProposer()
 		proposers = append(proposers, proposer.Address())
-		lastProposer = proposer.Address()
 	}
 
 	return proposers, nil
