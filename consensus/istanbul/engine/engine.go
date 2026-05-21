@@ -638,7 +638,14 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 			for _, pubkey := range pubkeys {
 				pubkeystr = append(pubkeystr, hexutil.Encode(pubkey.Marshal()))
 			}
-			log.Error("Istanbul: failed to verify aggregated seal", "sig", hexutil.Encode(sig.Marshal()), "pubkeys", pubkeystr, "proposalSeal", proposalSeal.String())
+			log.Error("Istanbul: failed to verify aggregated seal",
+				"number", header.Number.Uint64(),
+				"sig", hexutil.Encode(sig.Marshal()),
+				"proposalSeal", proposalSeal.String(),
+				"pubkeys", pubkeystr,
+				"validators", validators.List(),
+				"extra", hexutil.Encode(header.Extra),
+			)
 			return istanbul.ErrInvalidCommittedSeals
 		}
 		// ##

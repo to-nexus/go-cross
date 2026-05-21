@@ -225,8 +225,8 @@ func (s *Snapshot) UnmarshalJSON(b []byte) error {
 	s.Votes = j.Votes
 	s.Tally = j.Tally
 
-	// Setting the By function to ValidatorSortByStringFunc should be fine, as the validator do not change only the order changes
-	pp := istanbul.NewProposerPolicyByIdAndSortFunc(j.Policy, istanbul.ValidatorSortByString())
+	// Keep snapshot restores consistent with the bitset indexes used by BLS committed seals.
+	pp := istanbul.NewProposerPolicyByIdAndSortFunc(j.Policy, istanbul.ValidatorSortByByte())
 	s.ValSet = validator.NewSet(j.Validators, j.Signers, pp) // ##CROSS: bls seal
 	return nil
 }

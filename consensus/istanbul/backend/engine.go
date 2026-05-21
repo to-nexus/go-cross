@@ -567,7 +567,7 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 	} else if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: istanbul posa
 		// Validators are managed by the system contract, we don't check the votes anymore
-		if sb.config.OnNewValidatorEpoch(header.Number.Uint64()) {
+		if sb.config.GetConfig(header.Number).OnNewValidatorEpoch(header.Number.Uint64()) {
 			// Only update validator set at epoch boundaries
 			// Otherwise, keep the existing validator set from the snapshot
 			validators, signers, err := sb.Engine().ExtractValidators(header)
