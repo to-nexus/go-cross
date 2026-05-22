@@ -180,8 +180,6 @@ Source code lives in the `cross-contracts` repository — <https://github.com/to
 
 System-contract entry points are gated by **`msg.sender == block.coinbase && tx.gasprice == 0`** (`SystemBase._isSystemCall`); ordinary users cannot invoke them.
 
-Upgradeable (UUPS) contracts each have their own admin, and any admin action must pass a **2-day timelock** (`AdminControl`) to take effect.
-
 ---
 
 ## 7. Staking
