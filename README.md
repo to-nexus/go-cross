@@ -235,7 +235,6 @@ earned(account)
 - `applyValidator` checks only **whitelist membership** (`onlyWhiteListed`), so any address that has not passed KYB cannot register as a validator under any circumstance.
   → Regular stake / unstake operations are available to everyone without KYB.
 - Blacklisted accounts are blocked from staking, unstaking, and claiming; if the account is a validator, it is jailed immediately (`StakeHub.addToBlackList`).
-- The whitelist (KYB result) / blacklist managers are configured by the admin via `setWhiteListManager` and `setKeeper`.
 
 ---
 
