@@ -49,7 +49,6 @@ It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-
 - **Block reward**: starts at 9.5129376 CROSS/block, halved every year (10 tiers)
 - **Validator commission**: 5 % by default (configurable, capped at 50 %)
 - **Base fee (EIP-1559 burn)**: 100 % burned (`0x...dEaD`)
-- **Reward handling on unstake**: paid to the user after PoSA activation; before activation it is forfeited to the ProtocolReserve
 
 ---
 
@@ -296,15 +295,7 @@ APR  =  blocksPerYear × perBlock × (1 − commissionRate)
 
 A validator's effective yield is the above APR plus their own commission and the rewards on their self-delegated stake.
 
-### 8.5 Reward Handling Before PoSA Activation
-
-Before `BreakpointTime` (i.e. PoSA inactive), the following rule applies:
-
-- When a user calls `unstake`, any accrued reward is **not paid to the user** — instead it is **forfeited to `ProtocolReserve.depositForfeiture`** (a `RewardForfeited` event is emitted).
-- Dust and undistributable rewards that never made it into the pool are also collected by `ProtocolReserve`.
-- At the first call after activation, `DelegationPool._updatePool` automatically closes out accumulation, so normal distribution begins from the first post-Breakpoint block.
-
-### 8.6 Base Fee Burn
+### 8.5 Base Fee Burn
 
 - The full amount of `baseFee × gasUsed` (EIP-1559) flows in as the `baseFee` portion of `RewardHub.distributeReward`'s `msg.value`, and is sent directly to `0x000000000000000000000000000000000000dEaD` to be burned.
 - If the burn transfer fails, the amount is classified as retained and a `RewardRetained(Burn, amount)` event is emitted.
