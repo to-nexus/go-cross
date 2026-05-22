@@ -160,8 +160,6 @@ The `signerProof` (Proof of Possession) submitted during validator registration 
 - **Council Period (`councilPeriod`, default 24 h)**:
   On the first block where `OnNewCouncilPeriod` is true, the council (the 21 block-producing validators) is rotated based on the stake ranking snapshot from `StakeHub`.
 
-> Header verification and snapshot management live in `consensus/istanbul/backend/snapshot.go`, which serializes / deserializes deterministically according to the sort policy (`Policy`).
-
 ---
 
 ## 6. System Contracts
