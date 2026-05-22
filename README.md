@@ -247,7 +247,7 @@ earned(account)
         │   msg.value = baseFee + tip (the portion of gas the node collected)
         ▼
    ┌──────────────────────────────────────────────────────────────────┐
-   │ 1) Entire baseFee  →  burned to 0x...dEaD (EIP-1559 burn)         │
+   │ 1) Entire baseFee  →  burned to 0x...dEaD (EIP-1559 burn)        │
    │ 2) Inflation reward = emission table[block N]                    │
    │ 3) commission = reward * 5%  +  tip                              │
    │ 4) RewardHub → DelegationPool.distributeReward()                 │
@@ -466,7 +466,7 @@ By default, keys are stored as encrypted keystore files under `<DATADIR>/bls-key
 | `geth bls update <pubkey>` | Reset the password |
 | `geth bls import <hex-file>` | Import a plaintext hex private key and store it encrypted |
 | `geth bls decrypt <pubkey>` | Decrypt a key (for backup) |
-| `geth bls generate-proof <pubkey> --chain-id <id>` | Produce the 96-byte PoP required by `applyValidator` |
+| `geth bls generate-proof <operator-address> <pubkey> --chain-id <id>` | Produce the 96-byte PoP required by `applyValidator` |
 
 > **Backup is essential**: keep the entire keystore directory in a safe place. If you lose the password, recovery is impossible.
 
