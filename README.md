@@ -137,11 +137,10 @@ Whereas the previous QBFT was a permissioned scheme in which “N pre-whiteliste
 | Max Request Timeout | 60 s | same |
 | Proposer Policy | RoundRobin (0) | same |
 | Epoch Length | 86,400 blocks | same |
-| Council Period | 86,400 s (24 h) | `IstanbulParam` / PoSA Admin |
-| Validator Epoch Length | 300 blocks | same |
-| Elasticity Multiplier | 3 | EIP-1559 |
-| Base Fee Change Denom. | 8 | EIP-1559 |
-| Max / Min Base Fee | 1 CROSS / 1 Gwei | EIP-1559 (Cross extension) |
+| Council Period | 86,400 s (24 h) | `IstanbulParam` / PoSA Config |
+| Elasticity Multiplier | 3 | same |
+| Base Fee Change Denom. | 8 | same |
+| Max / Min Base Fee | 1 CROSS / 1 Gwei | same |
 
 ### 5.3 Round Flow
 
@@ -158,8 +157,6 @@ The `signerProof` (Proof of Possession) submitted during validator registration 
 
 ### 5.4 Validator-Set Refresh Cycles
 
-- **Validator Epoch (`validatorEpochLength`, default 300 blocks)**:
-  At each epoch boundary, the node emits a `ValidatorSet.updateValidators` system transaction that records the current active validator list (address + BLS public key) on-chain.
 - **Council Period (`councilPeriod`, default 24 h)**:
   On the first block where `OnNewCouncilPeriod` is true, the council (the 21 block-producing validators) is rotated based on the stake ranking snapshot from `StakeHub`.
 
@@ -572,7 +569,7 @@ Key differences vs. the previous QBFT-based release:
 | Number of validators | Fixed N | **21-member council** + unlimited candidates |
 | Block rewards | None / external distribution | **On-chain distribution (RewardHub)**, automatic 5 % commission |
 | Slashing | None | Offline slashing (threshold 50, 10,000 CROSS, 2-day jail) |
-| Validator refresh | Governance / off-chain coordination | Auto-refresh every **Validator Epoch (300 blocks)**; council rotates **every 24 hours** |
+| Validator refresh | Governance / off-chain coordination | Council rotates **every 24 hours** based on the latest stake ranking |
 | Delegators (stakers) | None | Anyone with 5 CROSS or more; 14-day unbonding |
 | Base-fee handling | (N/A) | Entire EIP-1559 base fee burned (`0x...dEaD`) |
 | EL base version | go-ethereum 1.13 | **go-ethereum 1.15** |
