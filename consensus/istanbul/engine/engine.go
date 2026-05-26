@@ -733,6 +733,10 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		return consensus.ErrUnknownAncestor
 	}
 
+	// set header's timestamp
+	header.Time = parent.Time + e.cfg.GetConfig(header.Number).BlockPeriod
+	header.Time = max(header.Time, uint64(time.Now().Unix()))
+
 	// make mixdigest
 	randomRevealData := makeRandomRevealData(header.Number, chain.Config().ChainID)
 
@@ -762,10 +766,6 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 
 	// use the same difficulty for all blocks
 	header.Difficulty = istanbul.DefaultDifficulty
-
-	// set header's timestamp
-	header.Time = parent.Time + e.cfg.GetConfig(header.Number).BlockPeriod
-	header.Time = max(header.Time, uint64(time.Now().Unix()))
 
 	applies := []ApplyExtra{
 		WriteRandomReveal(chain, header, randomReveal),
@@ -1101,13 +1101,19 @@ func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSe
 	}
 
 	bs := bitset.From(extra.SignersBitset)
+	validatorList := validators.List()
+	// Check if there are any signers bitset out of range
+	if _, found := bs.NextSet(uint(len(validatorList))); found {
+		return nil, nil, istanbul.ErrInvalidSignersBitset
+	}
+
 	if bs.Count() == 0 {
 		return nil, nil, istanbul.ErrEmptySigners
 	}
 
 	addrs := make([]common.Address, 0, bs.Count())
 	pubkeys := make([]types.BLSPublicKey, 0, bs.Count())
-	for index, validator := range validators.List() {
+	for index, validator := range validatorList {
 		if !bs.Test(uint(index)) {
 			continue
 		}
