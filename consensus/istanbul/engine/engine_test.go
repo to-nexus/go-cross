@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -210,6 +211,34 @@ func TestWriteSigners(t *testing.T) {
 	istExtra, err := getExtra(h)
 	require.NoError(t, err)
 	assert.Equal(t, expectedIstExtra, istExtra)
+}
+
+func TestBLSSignersOutOfRangeSignersBitset(t *testing.T) {
+	signers := []types.BLSPublicKey{
+		types.BytesToBLSPublicKey(signer1),
+		types.BytesToBLSPublicKey(signer2),
+		types.BytesToBLSPublicKey(signer3),
+		types.BytesToBLSPublicKey(signer4),
+	}
+	h := &types.Header{
+		Extra:  []byte{},
+		Number: big.NewInt(10),
+		Time:   1000,
+	}
+	err := ApplyHeaderIstanbulExtra(
+		h,
+		WriteValidators(validators),
+		WriteSigners(signers),
+		func(extra *types.IstanbulExtra) error {
+			extra.SignersBitset = []uint64{1 << uint(len(validators))}
+			return nil
+		},
+	)
+	require.NoError(t, err)
+
+	valSet := validator.NewSet(validators, signers, istanbul.NewRoundRobinProposerPolicy())
+	_, _, err = (Engine{}).BLSSigners(h, valSet)
+	assert.ErrorIs(t, err, istanbul.ErrInvalidSignersBitset)
 }
 
 // ##
