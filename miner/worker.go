@@ -1396,7 +1396,11 @@ func copyReceipts(receipts []*types.Receipt) []*types.Receipt {
 func totalFees(block *types.Block, receipts []*types.Receipt) *big.Int {
 	feesWei := new(big.Int)
 	for i, tx := range block.Transactions() {
-		minerFee, _ := tx.EffectiveGasTip(block.BaseFee())
+		minerFee, err := tx.EffectiveGasTip(block.BaseFee())
+		if err == types.ErrGasFeeCapTooLow {
+			// Ignore transactions with low gas fee. (maybe system transactions)
+			continue
+		}
 		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), minerFee))
 	}
 	return feesWei

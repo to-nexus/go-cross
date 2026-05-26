@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -83,9 +84,8 @@ type chainMock struct {
 	config *params.ChainConfig
 }
 
-func (c *chainMock) Config() *params.ChainConfig {
-	return c.config
-}
+func (c *chainMock) Engine() consensus.Engine                                { return nil }
+func (c *chainMock) Config() *params.ChainConfig                             { return c.config }
 func (c *chainMock) CurrentHeader() *types.Header                            { return nil }
 func (c *chainMock) GetHeader(hash common.Hash, number uint64) *types.Header { return nil }
 func (c *chainMock) GetHeaderByNumber(number uint64) *types.Header           { return nil }

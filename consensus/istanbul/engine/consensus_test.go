@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math/big"
@@ -13,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -25,26 +25,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-var _ core.ChainContext = (*mockChainContext)(nil)
-
-type mockIstanbul struct {
-	consensus.Engine
-	validators []common.Address
-}
-
-func (m *mockIstanbul) IsSystemTransaction(*types.Transaction, *types.Header) (bool, error) {
-	return false, nil
-}
-func (m *mockIstanbul) IsSystemContract(*common.Address) bool {
-	return false
-}
-func (m *mockIstanbul) EstimateGasForSystemTxs(consensus.ChainHeaderReader, *types.Header) uint64 {
-	return 0
-}
-func (m *mockIstanbul) ValidatorsAt(consensus.ChainHeaderReader, *types.Header) []common.Address {
-	return m.validators
-}
 
 var (
 	addr1 = common.HexToAddress("0x1111111111111111111111111111111111111111")
@@ -323,32 +303,6 @@ func TestVerifyValidators(t *testing.T) {
 	}
 }
 
-func createHeaderWithValidatorsAndSigners(t *testing.T, number uint64, validators []common.Address, signers []types.BLSPublicKey) *types.Header {
-	t.Helper()
-
-	extra := &types.IstanbulExtra{
-		VanityData:    make([]byte, types.IstanbulExtraVanity),
-		Validators:    validators,
-		Vote:          nil,
-		Round:         0,
-		CommittedSeal: [][]byte{},
-		RandomReveal:  []byte{},
-		Signers:       signers,
-	}
-
-	extraBytes, err := rlp.EncodeToBytes(extra)
-	require.NoError(t, err)
-
-	return &types.Header{
-		Number:     big.NewInt(int64(number)),
-		ParentHash: common.Hash{},
-		Extra:      extraBytes,
-		BaseFee:    big.NewInt(0),
-		GasLimit:   10000000,
-		Difficulty: big.NewInt(0),
-	}
-}
-
 func packActiveValidatorsResponse(t *testing.T, validators []common.Address, signers [][]byte) []byte {
 	t.Helper()
 
@@ -362,33 +316,6 @@ func packActiveValidatorsResponse(t *testing.T, validators []common.Address, sig
 	require.NoError(t, err)
 
 	return retPacked
-}
-
-// mockChainContext implements core.ChainContext and consensus.ChainHeaderReader for testing
-type mockChainContext struct {
-	config *params.ChainConfig
-}
-
-func (m *mockChainContext) Engine() consensus.Engine {
-	return nil
-}
-func (m *mockChainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
-	return nil
-}
-func (m *mockChainContext) Config() *params.ChainConfig {
-	return m.config
-}
-func (m *mockChainContext) CurrentHeader() *types.Header {
-	return nil
-}
-func (m *mockChainContext) GetHeaderByNumber(number uint64) *types.Header {
-	return nil
-}
-func (m *mockChainContext) GetHeaderByHash(hash common.Hash) *types.Header {
-	return nil
-}
-func (m *mockChainContext) GetTd(hash common.Hash, number uint64) *big.Int {
-	return nil
 }
 
 func TestUpdateValidatorSet(t *testing.T) {
@@ -434,7 +361,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 					methodMaxCouncil: {packMaxCouncilResponse(t, 2)},
 				},
 			},
-			expectedErr: nil,
+			expectedErr: errors.New("empty staked validators"),
 		},
 		{
 			name:      "zero threshold",
@@ -488,7 +415,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 			}
 
 			chainConfig := params.TestChainConfig
-			cx := &mockChainContext{config: chainConfig}
+			cx := &chainMock{config: chainConfig}
 
 			var txs []*types.Transaction
 			var receipts []*types.Receipt
@@ -652,7 +579,7 @@ func TestSlashValidators(t *testing.T) {
 			engine := &Engine{
 				cfg:            cfg,
 				signer:         validators[0],
-				consensus:      &mockIstanbul{validators: validators},
+				consensus:      &mockIstanbulEngine{validators: validators},
 				validatorSlash: breakpoint.NewValidatorSlash(),
 				signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 					return tx, nil
@@ -694,7 +621,7 @@ func TestOfflineProposers(t *testing.T) {
 		cfg: &istanbul.Config{
 			ProposerPolicy: istanbul.NewRoundRobinProposerPolicy(),
 		},
-		consensus: &mockIstanbul{validators: validators},
+		consensus: &mockIstanbulEngine{validators: validators},
 	}
 
 	proposers, err := engine.offlineProposers(mockChain, h1)
@@ -733,6 +660,27 @@ func (m *mockChainHeaderReader) GetTd(hash common.Hash, number uint64) *big.Int 
 	return nil
 }
 
+type mockIstanbulEngine struct {
+	consensus.Engine
+	validators []common.Address
+}
+
+var _ consensus.Engine = (*mockIstanbulEngine)(nil)
+var _ consensus.IstanbulEngine = (*mockIstanbulEngine)(nil)
+
+func (m *mockIstanbulEngine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+	return false, nil
+}
+func (m *mockIstanbulEngine) IsSystemContract(to *common.Address) bool {
+	return false
+}
+func (m *mockIstanbulEngine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+	return 0
+}
+func (m *mockIstanbulEngine) ValidatorsAt(chain consensus.ChainHeaderReader, header *types.Header) []common.Address {
+	return append([]common.Address(nil), m.validators...)
+}
+
 // createHeaderWithIstanbulExtra creates a header with Istanbul extra data
 func createHeaderWithIstanbulExtra(t *testing.T, number uint64, parentHash common.Hash, coinbase common.Address, validators []common.Address, round uint32) *types.Header {
 	t.Helper()
@@ -758,6 +706,77 @@ func createHeaderWithIstanbulExtra(t *testing.T, number uint64, parentHash commo
 		GasLimit:   10000000,
 		Difficulty: big.NewInt(0),
 	}
+}
+
+func createHeaderWithValidatorsAndSigners(t *testing.T, number uint64, validators []common.Address, signers []types.BLSPublicKey) *types.Header {
+	t.Helper()
+
+	extra := &types.IstanbulExtra{
+		VanityData:    make([]byte, types.IstanbulExtraVanity),
+		Validators:    validators,
+		Vote:          nil,
+		Round:         0,
+		CommittedSeal: [][]byte{},
+		RandomReveal:  []byte{},
+		Signers:       signers,
+	}
+
+	extraBytes, err := rlp.EncodeToBytes(extra)
+	require.NoError(t, err)
+
+	return &types.Header{
+		Number:     big.NewInt(int64(number)),
+		ParentHash: common.Hash{},
+		Extra:      extraBytes,
+		BaseFee:    big.NewInt(0),
+		GasLimit:   10000000,
+		Difficulty: big.NewInt(0),
+	}
+}
+
+func TestSlashValidatorsRevert(t *testing.T) {
+	validators := []common.Address{addr1, addr2, addr3}
+	headers := make(map[common.Hash]*types.Header)
+	h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+	h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[2], validators, 1)
+	h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[0], validators, 0)
+	headers[h0.Hash()] = h0
+	headers[h1.Hash()] = h1
+	headers[h2.Hash()] = h2
+
+	memdb := rawdb.NewMemoryDatabase()
+	triedb := triedb.NewDatabase(memdb, nil)
+	sdb := state.NewDatabase(triedb, nil)
+	statedb, _ := state.New(types.EmptyRootHash, sdb)
+	statedb.SetCode(contracts.ValidatorSlashAddr, revertCode)
+
+	mockChain := &mockChainHeaderReader{
+		headers: headers,
+		config:  params.TestChainConfig,
+	}
+	cx := &chainContext{Chain: mockChain}
+	engine := &Engine{
+		cfg: &istanbul.Config{
+			ProposerPolicy: istanbul.NewRoundRobinProposerPolicy(),
+		},
+		signer:         validators[0],
+		consensus:      &mockIstanbulEngine{validators: validators},
+		validatorSlash: breakpoint.NewValidatorSlash(),
+		signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+			return tx, nil
+		},
+	}
+
+	var txs []*types.Transaction
+	var receipts []*types.Receipt
+	var usedGas uint64
+
+	err := engine.slashValidators(h2, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
+
+	require.ErrorContains(t, err, "execution reverted")
+	assert.Empty(t, txs)
+	assert.Empty(t, receipts)
+	assert.Zero(t, usedGas)
 }
 
 // ##
@@ -891,7 +910,7 @@ func TestDistributeRewards(t *testing.T) {
 			triedb := triedb.NewDatabase(memdb, nil)
 			sdb := state.NewDatabase(triedb, nil)
 			statedb, _ := state.New(types.EmptyRootHash, sdb)
-			cx := &mockChainContext{config: params.TestChainConfig}
+			cx := &chainMock{config: params.TestChainConfig}
 
 			txs := make([]*types.Transaction, len(tt.txs))
 			copy(txs, tt.txs)
@@ -930,6 +949,507 @@ func TestDistributeRewards(t *testing.T) {
 
 func ptrAddr(addr common.Address) *common.Address {
 	return &addr
+}
+
+// ##
+
+func TestSelectActiveCouncil(t *testing.T) {
+	pubFor := func(b byte) types.BLSPublicKey {
+		bs := make([]byte, types.BLSPublicKeyLength)
+		for i := range bs {
+			bs[i] = b
+		}
+		return types.BytesToBLSPublicKey(bs)
+	}
+	mkInfo := func(addr common.Address, sig byte, power uint64) ValidatorInfo {
+		return ValidatorInfo{address: addr, signer: pubFor(sig), power: uint256.NewInt(power)}
+	}
+
+	tests := []struct {
+		name      string
+		infos     []ValidatorInfo
+		threshold uint64
+		expected  []common.Address
+	}{
+		{
+			name: "power sort and address asc",
+			infos: []ValidatorInfo{
+				mkInfo(addr1, 0xaa, 1000),
+				mkInfo(addr2, 0xbb, 3000),
+				mkInfo(addr3, 0xcc, 2000),
+			},
+			threshold: 5,
+			// All three retained (threshold>count), final order by address asc.
+			expected: []common.Address{addr1, addr2, addr3},
+		},
+		{
+			name: "threshold cut keeps top N",
+			infos: []ValidatorInfo{
+				mkInfo(addr1, 0xaa, 1000),
+				mkInfo(addr2, 0xbb, 3000),
+				mkInfo(addr3, 0xcc, 2000),
+			},
+			threshold: 2,
+			// Top 2 by power: addr2(3000) and addr3(2000); then address asc.
+			expected: []common.Address{addr2, addr3},
+		},
+		{
+			name: "zero power dropped",
+			infos: []ValidatorInfo{
+				mkInfo(addr1, 0xaa, 5000),
+				mkInfo(addr2, 0xbb, 0),
+				mkInfo(addr3, 0xcc, 1000),
+			},
+			threshold: 5,
+			// addr2 dropped (zero power)
+			expected: []common.Address{addr1, addr3},
+		},
+		{
+			name: "stable sort preserves registration order on tie",
+			infos: []ValidatorInfo{
+				mkInfo(addr2, 0xbb, 1000),
+				mkInfo(addr1, 0xaa, 1000),
+				mkInfo(addr3, 0xcc, 1000),
+			},
+			threshold: 2,
+			// All three have equal power -> stable sort keeps input order: addr2, addr1, addr3.
+			// Top 2 = addr2, addr1; final address-asc sort = addr1, addr2.
+			expected: []common.Address{addr1, addr2},
+		},
+		{
+			name:      "empty input",
+			infos:     nil,
+			threshold: 3,
+			expected:  []common.Address{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectActiveCouncil(tt.infos, tt.threshold)
+			addrs := make([]common.Address, 0, len(got))
+			for _, v := range got {
+				addrs = append(addrs, v.address)
+			}
+			if tt.expected == nil {
+				tt.expected = []common.Address{}
+			}
+			assert.Equal(t, tt.expected, addrs)
+		})
+	}
+}
+
+func TestComputeNextCouncil(t *testing.T) {
+	code := []byte{1, 2, 3}
+	methodGetValidators := string(breakpoint.NewStakeHub().PackGetValidators(big.NewInt(0), big.NewInt(0))[:4])
+	methodMaxCouncil := string(breakpoint.NewStakeHub().PackMaxCouncil()[:4])
+
+	type expected struct {
+		validators []common.Address
+		signers    []types.BLSPublicKey
+		errSubstr  string
+	}
+	tests := []struct {
+		name     string
+		backend  *mockContractBackend
+		expected expected
+	}{
+		{
+			name: "top-2 then address-asc",
+			backend: &mockContractBackend{
+				codeAtBytes: code,
+				callResponses: map[string][][]byte{
+					methodGetValidators: {packGetValidatorsResponse(t,
+						[]common.Address{addr1, addr2, addr3},
+						[][]byte{signer1, signer2, signer3},
+						[]*big.Int{big.NewInt(1000), big.NewInt(3000), big.NewInt(2000)},
+					)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 2)},
+				},
+			},
+			// Top-2 by power = addr2(3000), addr3(2000) -> address-asc -> addr2, addr3.
+			expected: expected{
+				validators: []common.Address{addr2, addr3},
+				signers:    []types.BLSPublicKey{types.BytesToBLSPublicKey(signer2), types.BytesToBLSPublicKey(signer3)},
+			},
+		},
+		{
+			name: "empty staked validators",
+			backend: &mockContractBackend{
+				codeAtBytes: code,
+				callResponses: map[string][][]byte{
+					methodGetValidators: {packGetValidatorsResponse(t,
+						[]common.Address{},
+						[][]byte{},
+						[]*big.Int{},
+					)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 2)},
+				},
+			},
+			expected: expected{errSubstr: "empty staked validators"},
+		},
+		{
+			name: "zero validator threshold",
+			backend: &mockContractBackend{
+				codeAtBytes: code,
+				callResponses: map[string][][]byte{
+					methodGetValidators: {packGetValidatorsResponse(t,
+						[]common.Address{addr1},
+						[][]byte{signer1},
+						[]*big.Int{big.NewInt(1000)},
+					)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 0)},
+				},
+			},
+			expected: expected{errSubstr: "zero validator threshold"},
+		},
+		{
+			name: "all zero-power filtered to empty",
+			backend: &mockContractBackend{
+				codeAtBytes: code,
+				callResponses: map[string][][]byte{
+					methodGetValidators: {packGetValidatorsResponse(t,
+						[]common.Address{addr1, addr2},
+						[][]byte{signer1, signer2},
+						[]*big.Int{big.NewInt(0), big.NewInt(0)},
+					)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 5)},
+				},
+			},
+			expected: expected{errSubstr: "empty filtered validators"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &Engine{
+				contractBackend: tt.backend,
+				stakeHub:        breakpoint.NewStakeHub(),
+			}
+			validators, signers, err := e.computeNextCouncil(100)
+			if tt.expected.errSubstr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expected.errSubstr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected.validators, validators)
+			assert.Equal(t, tt.expected.signers, signers)
+		})
+	}
+}
+
+func TestComputeNextCouncilMatchesUpdateValidatorSet(t *testing.T) {
+	code := []byte{1, 2, 3}
+	methodGetValidators := string(breakpoint.NewStakeHub().PackGetValidators(big.NewInt(0), big.NewInt(0))[:4])
+	methodMaxCouncil := string(breakpoint.NewStakeHub().PackMaxCouncil()[:4])
+
+	// Two-call backend: once for computeNextCouncil, once for updateValidatorSet.
+	backend := &mockContractBackend{
+		codeAtBytes: code,
+		callResponses: map[string][][]byte{
+			methodGetValidators: {
+				packGetValidatorsResponse(t,
+					[]common.Address{addr1, addr2, addr3},
+					[][]byte{signer1, signer2, signer3},
+					[]*big.Int{big.NewInt(1000), big.NewInt(3000), big.NewInt(2000)},
+				),
+				packGetValidatorsResponse(t,
+					[]common.Address{addr1, addr2, addr3},
+					[][]byte{signer1, signer2, signer3},
+					[]*big.Int{big.NewInt(1000), big.NewInt(3000), big.NewInt(2000)},
+				),
+			},
+			methodMaxCouncil: {
+				packMaxCouncilResponse(t, 2),
+				packMaxCouncilResponse(t, 2),
+			},
+		},
+	}
+
+	e := &Engine{
+		contractBackend: backend,
+		validatorSet:    breakpoint.NewValidatorSet(),
+		stakeHub:        breakpoint.NewStakeHub(),
+		signer:          addr1,
+		signTx: func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+			return tx, nil
+		},
+	}
+
+	previewValidators, previewSigners, err := e.computeNextCouncil(100)
+	require.NoError(t, err)
+
+	// Now run updateValidatorSet and decode the validators encoded into the system tx data.
+	memdb := rawdb.NewMemoryDatabase()
+	triedb := triedb.NewDatabase(memdb, nil)
+	sdb := state.NewDatabase(triedb, nil)
+	statedb, _ := state.New(types.EmptyRootHash, sdb)
+
+	header := &types.Header{
+		Number:     big.NewInt(101),
+		ParentHash: common.HexToHash("0xdeadbeef"),
+		Coinbase:   addr1,
+		BaseFee:    big.NewInt(0),
+		GasLimit:   10000000,
+		Difficulty: big.NewInt(0),
+		Time:       1000000000,
+	}
+	cx := &chainMock{config: params.TestChainConfig}
+	var (
+		txs      []*types.Transaction
+		receipts []*types.Receipt
+		usedGas  uint64
+	)
+	err = e.updateValidatorSet(header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
+	require.NoError(t, err)
+	require.Len(t, txs, 1, "updateValidatorSet must emit exactly one system tx")
+
+	// Decode the system tx data and compare to the preview.
+	tx := txs[0]
+	updateValidatorsSelector := e.validatorSet.PackUpdateValidators(nil, nil)[:4]
+	require.True(t, bytes.HasPrefix(tx.Data(), updateValidatorsSelector), "system tx is not an updateValidators call")
+
+	parsedABI, err := breakpoint.ValidatorSetMetaData.ParseABI()
+	require.NoError(t, err)
+	method := parsedABI.Methods["updateValidators"]
+	values, err := method.Inputs.Unpack(tx.Data()[4:])
+	require.NoError(t, err)
+	require.Len(t, values, 2)
+
+	gotValidators, ok := values[0].([]common.Address)
+	require.True(t, ok)
+	gotSignersBytes, ok := values[1].([][]byte)
+	require.True(t, ok)
+	gotSigners := make([]types.BLSPublicKey, 0, len(gotSignersBytes))
+	for _, b := range gotSignersBytes {
+		gotSigners = append(gotSigners, types.BytesToBLSPublicKey(b))
+	}
+
+	assert.Equal(t, previewValidators, gotValidators, "validators previewed in Prepare/verify must match the council written by Finalize")
+	assert.Equal(t, previewSigners, gotSigners, "signers previewed in Prepare/verify must match the council written by Finalize")
+}
+
+func TestVerifyValidatorsBoundaryCoincidence(t *testing.T) {
+	code := []byte{1, 2, 3}
+	methodGetActive := string(breakpoint.NewValidatorSet().PackGetActiveValidators()[:4])
+	methodGetValidators := string(breakpoint.NewStakeHub().PackGetValidators(big.NewInt(0), big.NewInt(0))[:4])
+	methodMaxCouncil := string(breakpoint.NewStakeHub().PackMaxCouncil()[:4])
+
+	// Boundary scenario:
+	//   - ValidatorEpochLength = 100, CouncilPeriod = 86400.
+	//   - Block 100: validator epoch boundary AND first block of a new council period
+	//     (parent.Time/86400 != header.Time/86400).
+	//
+	// OLD council (currently in ValidatorSet contract at parent): {addr1, addr2}
+	// NEW council to be installed in Finalize via updateValidatorSet -- top-2 of StakeHub:
+	//   StakeHub returns addr1(1000), addr2(0), addr3(2000) with maxCouncil=2.
+	//   Top-2 then address-asc -> NEW = {addr1, addr3}.
+	//
+	// Therefore header.Extra MUST carry NEW = {addr1, addr3}.
+
+	newCouncilValidators := []common.Address{addr1, addr3}
+	newCouncilSigners := []types.BLSPublicKey{types.BytesToBLSPublicKey(signer1), types.BytesToBLSPublicKey(signer3)}
+	oldCouncilValidators := []common.Address{addr1, addr2}
+	oldCouncilSigners := []types.BLSPublicKey{types.BytesToBLSPublicKey(signer1), types.BytesToBLSPublicKey(signer2)}
+
+	const (
+		councilPeriod = uint64(86400)
+		parentTime    = councilPeriod - 1 // last second of OLD council period
+		headerTime    = councilPeriod     // first second of NEW council period
+	)
+
+	// Parent header registered in chain so verifyValidators can detect the coincident boundary.
+	parentHeader := &types.Header{
+		Number: big.NewInt(99),
+		Time:   parentTime,
+	}
+	parentHash := parentHeader.Hash()
+
+	mkBackend := func() *mockContractBackend {
+		return &mockContractBackend{
+			codeAtBytes: code,
+			callResponses: map[string][][]byte{
+				// computeNextCouncil path: StakeHub.getValidators + maxCouncil.
+				methodGetValidators: {packGetValidatorsResponse(t,
+					[]common.Address{addr1, addr2, addr3},
+					[][]byte{signer1, signer2, signer3},
+					[]*big.Int{big.NewInt(1000), big.NewInt(0), big.NewInt(2000)},
+				)},
+				methodMaxCouncil: {packMaxCouncilResponse(t, 2)},
+				// If verifyValidators ever falls back to getCurrentValidators,
+				// it would see the OLD council and the header (which carries NEW) would be rejected with errValidatorSetMismatch.
+				methodGetActive: {packActiveValidatorsResponse(t, oldCouncilValidators, [][]byte{signer1, signer2})},
+			},
+		}
+	}
+
+	tests := []struct {
+		name             string
+		headerValidators []common.Address
+		headerSigners    []types.BLSPublicKey
+		registerParent   bool
+		expectedErr      error
+	}{
+		{
+			name:             "header carries NEW council -> accepted",
+			headerValidators: newCouncilValidators,
+			headerSigners:    newCouncilSigners,
+			registerParent:   true,
+		},
+		{
+			name:             "header carries OLD council (pre-fix output) -> rejected",
+			headerValidators: oldCouncilValidators,
+			headerSigners:    oldCouncilSigners,
+			registerParent:   true,
+			expectedErr:      errValidatorSetMismatch,
+		},
+		{
+			name:             "missing parent header: falls back to current contract state (OLD)",
+			headerValidators: oldCouncilValidators,
+			headerSigners:    oldCouncilSigners,
+			registerParent:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := mkBackend()
+			engine := &Engine{
+				cfg: &istanbul.Config{
+					ValidatorEpochLength: 100,
+					CouncilPeriod:        councilPeriod,
+				},
+				contractBackend: backend,
+				validatorSet:    breakpoint.NewValidatorSet(),
+				stakeHub:        breakpoint.NewStakeHub(),
+			}
+
+			header := createHeaderWithValidatorsAndSigners(t, 100, tt.headerValidators, tt.headerSigners)
+			header.ParentHash = parentHash
+			header.Time = headerTime
+
+			headers := map[common.Hash]*types.Header{}
+			if tt.registerParent {
+				headers[parentHash] = parentHeader
+			}
+			chain := &mockChainHeaderReader{headers: headers, config: params.TestChainConfig}
+
+			err := engine.verifyValidators(chain, header)
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestPrepareValidatorsBoundaryCoincidence(t *testing.T) {
+	code := []byte{1, 2, 3}
+	methodGetActive := string(breakpoint.NewValidatorSet().PackGetActiveValidators()[:4])
+	methodGetValidators := string(breakpoint.NewStakeHub().PackGetValidators(big.NewInt(0), big.NewInt(0))[:4])
+	methodMaxCouncil := string(breakpoint.NewStakeHub().PackMaxCouncil()[:4])
+
+	// Same scenario as TestVerifyValidatorsBoundaryCoincidence
+	const councilPeriod = uint64(86400)
+
+	// Set up a PoSA-active chain config
+	posaConfig := *params.TestChainConfig
+	breakpointTime := uint64(0)
+	posaConfig.BreakpointTime = &breakpointTime
+	posaConfig.Istanbul = &params.IstanbulConfig{
+		EpochLength: 100,
+		PoSA: &params.PoSAConfig{
+			CouncilPeriod:        councilPeriod,
+			ValidatorEpochLength: 100,
+		},
+	}
+
+	tests := []struct {
+		name               string
+		parentTime         uint64
+		headerTime         uint64
+		expectedValidators []common.Address
+	}{
+		{
+			// parent in council bucket 0 (Time<86400), header in bucket 1 (Time==86400)
+			// -> OnNewCouncilPeriod(parent, header) == true -> computeNextCouncil path.
+			name:       "header.Extra gets NEW council from StakeHub",
+			parentTime: councilPeriod - 1,
+			headerTime: councilPeriod,
+			// NEW council derived from StakeHub: top-2 then address-asc.
+			// StakeHub returns addr1(1000), addr2(0), addr3(2000) -> {addr1, addr3}.
+			expectedValidators: []common.Address{addr1, addr3},
+		},
+		{
+			// Both in the same council bucket -> OnNewCouncilPeriod returns false ->
+			// default path reads ValidatorSet.getActiveValidators -> {addr1, addr2}.
+			name:               "header.Extra gets OLD council from ValidatorSet contract",
+			parentTime:         100,
+			headerTime:         200,
+			expectedValidators: []common.Address{addr1, addr2},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parentHeader := &types.Header{
+				Number: big.NewInt(99),
+				Time:   tt.parentTime,
+			}
+			parentHash := parentHeader.Hash()
+
+			backend := &mockContractBackend{
+				codeAtBytes: code,
+				callResponses: map[string][][]byte{
+					methodGetValidators: {packGetValidatorsResponse(t,
+						[]common.Address{addr1, addr2, addr3},
+						[][]byte{signer1, signer2, signer3},
+						[]*big.Int{big.NewInt(1000), big.NewInt(0), big.NewInt(2000)},
+					)},
+					methodMaxCouncil: {packMaxCouncilResponse(t, 2)},
+					methodGetActive: {packActiveValidatorsResponse(t,
+						[]common.Address{addr1, addr2},
+						[][]byte{signer1, signer2},
+					)},
+				},
+			}
+
+			engine := &Engine{
+				cfg: &istanbul.Config{
+					ValidatorEpochLength: 100,
+					CouncilPeriod:        councilPeriod,
+				},
+				contractBackend: backend,
+				validatorSet:    breakpoint.NewValidatorSet(),
+				stakeHub:        breakpoint.NewStakeHub(),
+			}
+
+			header := &types.Header{
+				Number:     big.NewInt(100),
+				ParentHash: parentHash,
+				Time:       tt.headerTime,
+				BaseFee:    big.NewInt(0),
+				GasLimit:   10000000,
+				Difficulty: big.NewInt(0),
+			}
+			chain := &mockChainHeaderReader{
+				headers: map[common.Hash]*types.Header{parentHash: parentHeader},
+				config:  &posaConfig,
+			}
+
+			applies, err := engine.prepareValidators(chain, header, nil)
+			require.NoError(t, err)
+			require.NotEmpty(t, applies)
+
+			// Apply the ApplyExtra functions to a fresh IstanbulExtra to inspect what would be written.
+			extra := &types.IstanbulExtra{VanityData: make([]byte, types.IstanbulExtraVanity)}
+			for _, apply := range applies {
+				require.NoError(t, apply(extra))
+			}
+
+			assert.Equal(t, tt.expectedValidators, extra.Validators)
+		})
+	}
 }
 
 // ##
