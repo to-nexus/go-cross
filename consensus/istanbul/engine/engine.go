@@ -732,11 +732,35 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 		return nil, nil
 	}
 
-	// validator list is managed by the system contract
-	validatorList, signerList, err := e.getCurrentValidators(header.Number.Uint64() - 1)
-	if err != nil {
-		return nil, err
+	var (
+		validatorList []common.Address
+		signerList    []types.BLSPublicKey
+		err           error
+	)
+
+	// When a validator epoch block is also a council period rollover, the ValidatorSet contract is updated later in this block's Finalize.
+	// Reading the contract at parent here would return the pre-rollover council.
+	// We pre-compute the post-rollover council manually to match what updateValidatorSet will produce in Finalize.
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent != nil && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+		validatorList, signerList, err = e.computeNextCouncil(header.Number.Uint64() - 1)
+		log.Warn("New epoch + new council period: computing next council manually",
+			"number", header.Number.Uint64(),
+			"validatorList", validatorList,
+			"signerList", signerList)
+		if err != nil {
+			return nil, err
+		}
 	}
+
+	// Default path: validator list is managed by the system contract; read parent state.
+	if len(validatorList) == 0 {
+		validatorList, signerList, err = e.getCurrentValidators(header.Number.Uint64() - 1)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if len(validatorList) == 0 {
 		// if validator list is not updated, use the validators from snapshot
 		log.Warn("Prepare: empty validator list, using snapshot", "number", header.Number.Uint64(), "validators", validators.List())
@@ -750,6 +774,7 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 		}
 		// ##
 	}
+	log.Warn("prepareValidators: final validator list", "number", header.Number.Uint64(), "validatorList", validatorList, "signerList", signerList)
 	return []ApplyExtra{WriteValidators(validatorList), WriteSigners(signerList)}, nil
 	// ##
 }
