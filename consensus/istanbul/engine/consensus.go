@@ -143,9 +143,7 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		return err
 	}
 	if len(validatorInfos) == 0 {
-		// do not update validator set, it will use the legacy validators from the header
-		log.Warn("No validator info", "number", header.Number.Uint64())
-		return nil
+		return errors.New("empty staked validators")
 	}
 
 	threshold, err := e.getMaxCouncil(number)
@@ -157,7 +155,8 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 	}
 
 	// sort descending by their staking power
-	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
+	// in case of equal power, keep the original order, to prefer the earlier registered validators
+	slices.SortStableFunc(validatorInfos, func(a, b ValidatorInfo) int {
 		return b.power.Cmp(a.power)
 	})
 
@@ -167,6 +166,10 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 			validatorInfos = validatorInfos[:n]
 			break
 		}
+	}
+
+	if len(validatorInfos) == 0 {
+		return errors.New("empty staked validators")
 	}
 
 	// sort ascending by their address
