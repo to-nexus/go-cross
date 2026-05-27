@@ -19,7 +19,6 @@ import (
 
 type (
 	UpgradeConfig struct {
-		Deploy       bool
 		Name         string
 		Commit       string
 		ContractAddr common.Address
@@ -54,7 +53,6 @@ func init() {
 				Name:         "HistoryStorage",
 				ContractAddr: params.HistoryStorageAddress,
 				Code:         params.HistoryStorageCode,
-				Deploy:       true,
 			},
 		},
 	}
@@ -72,7 +70,6 @@ func init() {
 				Name:         "ValidatorSet",
 				ContractAddr: ValidatorSetAddr,
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
-				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
 					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
@@ -95,7 +92,6 @@ func init() {
 				Name:         "StakeHubImpl",
 				ContractAddr: StakeHubAddrImpl,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
-				Deploy:       true,
 				Storage: map[common.Hash]common.Hash{
 					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
 					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
@@ -105,7 +101,6 @@ func init() {
 				Name:         "StakeHubProxy",
 				ContractAddr: StakeHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
-				Deploy:       true,
 				Storage: map[common.Hash]common.Hash{
 					// ERC1967Proxy[IMPLEMENTATION] = StakeHubImpl
 					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(StakeHubAddrImpl.Bytes()),
@@ -142,7 +137,6 @@ func init() {
 				Name:         "RewardHubImpl",
 				ContractAddr: RewardHubAddrImpl,
 				Code:         breakpoint.RewardHubMetaData.BinRuntime,
-				Deploy:       true,
 				Storage: map[common.Hash]common.Hash{
 					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
 					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
@@ -152,7 +146,6 @@ func init() {
 				Name:         "RewardHubProxy",
 				ContractAddr: RewardHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
-				Deploy:       true,
 				Storage: map[common.Hash]common.Hash{
 					// ERC1967Proxy[IMPLEMENTATION] = RewardHubImpl
 					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(RewardHubAddrImpl.Bytes()),
@@ -179,7 +172,6 @@ func init() {
 				Name:         "ValidatorSlash",
 				ContractAddr: ValidatorSlashAddr,
 				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
-				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					return initialize, nil
 				},
@@ -236,37 +228,30 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 
 	log.Info("Upgrading built-in contracts", "name", upgrade.UpgradeName, "blockNumber", header.Number.Uint64())
 	for _, cfg := range upgrade.Configs {
-		if cfg.Deploy {
+		deploy := !statedb.Exist(cfg.ContractAddr)
+		if deploy {
 			log.Info("Deploy contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		} else {
 			log.Info("Upgrade contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		}
 
-		exists := statedb.Exist(cfg.ContractAddr)
-
 		// write code
-		code := getCode(cfg)
-		if len(code) == 0 {
-			panic(fmt.Errorf("%s: failed to parse code: %s", upgrade.UpgradeName, cfg.Name))
-		}
-
-		if len(code) > 0 {
-			if cfg.Deploy {
-				if prevCode := statedb.GetCode(cfg.ContractAddr); len(prevCode) > 0 {
-					log.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
-				} else {
-					// If it is the first deployment, set the nonce to 1
-					statedb.SetNonce(cfg.ContractAddr, 1, tracing.NonceChangeNewContract)
-				}
-			} else if !exists {
-				log.Warn("Writing code to non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
+		prevCode := statedb.GetCode(cfg.ContractAddr)
+		newCode := parseCode(cfg)
+		if len(newCode) > 0 {
+			if len(prevCode) > 0 {
+				log.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
-			statedb.SetCode(cfg.ContractAddr, code)
+			if deploy {
+				// If it is the first deployment, set the nonce to 1
+				statedb.SetNonce(cfg.ContractAddr, 1, tracing.NonceChangeNewContract)
+			}
+			statedb.SetCode(cfg.ContractAddr, newCode)
 		}
 
 		// write storage
 		if len(cfg.Storage) > 0 {
-			if !exists {
+			if !deploy {
 				log.Warn("Writing storage slots of non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
 			for k, v := range cfg.Storage {
@@ -276,7 +261,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 	}
 }
 
-func getCode(cfg *UpgradeConfig) (code []byte) {
+func parseCode(cfg *UpgradeConfig) (code []byte) {
 	switch v := cfg.Code.(type) {
 	case string:
 		code = common.FromHex(v)

@@ -961,8 +961,8 @@ func TestSelectActiveCouncil(t *testing.T) {
 		}
 		return types.BytesToBLSPublicKey(bs)
 	}
-	mkInfo := func(addr common.Address, sig byte, power uint64) ValidatorInfo {
-		return ValidatorInfo{address: addr, signer: pubFor(sig), power: uint256.NewInt(power)}
+	mkInfo := func(addr common.Address, sig byte, power uint64, createTime uint64) ValidatorInfo {
+		return ValidatorInfo{address: addr, signer: pubFor(sig), power: uint256.NewInt(power), createTime: createTime}
 	}
 
 	tests := []struct {
@@ -974,9 +974,9 @@ func TestSelectActiveCouncil(t *testing.T) {
 		{
 			name: "power sort and address asc",
 			infos: []ValidatorInfo{
-				mkInfo(addr1, 0xaa, 1000),
-				mkInfo(addr2, 0xbb, 3000),
-				mkInfo(addr3, 0xcc, 2000),
+				mkInfo(addr1, 0xaa, 1000, 1),
+				mkInfo(addr2, 0xbb, 3000, 2),
+				mkInfo(addr3, 0xcc, 2000, 3),
 			},
 			threshold: 5,
 			// All three retained (threshold>count), final order by address asc.
@@ -985,9 +985,9 @@ func TestSelectActiveCouncil(t *testing.T) {
 		{
 			name: "threshold cut keeps top N",
 			infos: []ValidatorInfo{
-				mkInfo(addr1, 0xaa, 1000),
-				mkInfo(addr2, 0xbb, 3000),
-				mkInfo(addr3, 0xcc, 2000),
+				mkInfo(addr1, 0xaa, 1000, 1),
+				mkInfo(addr2, 0xbb, 3000, 2),
+				mkInfo(addr3, 0xcc, 2000, 3),
 			},
 			threshold: 2,
 			// Top 2 by power: addr2(3000) and addr3(2000); then address asc.
@@ -996,25 +996,25 @@ func TestSelectActiveCouncil(t *testing.T) {
 		{
 			name: "zero power dropped",
 			infos: []ValidatorInfo{
-				mkInfo(addr1, 0xaa, 5000),
-				mkInfo(addr2, 0xbb, 0),
-				mkInfo(addr3, 0xcc, 1000),
+				mkInfo(addr1, 0xaa, 5000, 1),
+				mkInfo(addr2, 0xbb, 0, 2),
+				mkInfo(addr3, 0xcc, 1000, 3),
 			},
 			threshold: 5,
-			// addr2 dropped (zero power)
+			// addr2 is sorted after positive-power validators and then dropped.
 			expected: []common.Address{addr1, addr3},
 		},
 		{
-			name: "stable sort preserves registration order on tie",
+			name: "create time asc breaks power ties",
 			infos: []ValidatorInfo{
-				mkInfo(addr2, 0xbb, 1000),
-				mkInfo(addr1, 0xaa, 1000),
-				mkInfo(addr3, 0xcc, 1000),
+				mkInfo(addr2, 0xbb, 1000, 30),
+				mkInfo(addr1, 0xaa, 1000, 20),
+				mkInfo(addr3, 0xcc, 1000, 10),
 			},
 			threshold: 2,
-			// All three have equal power -> stable sort keeps input order: addr2, addr1, addr3.
-			// Top 2 = addr2, addr1; final address-asc sort = addr1, addr2.
-			expected: []common.Address{addr1, addr2},
+			// All three have equal power -> lower createTime wins: addr3, addr1, addr2.
+			// Top 2 = addr3, addr1; final address-asc sort = addr1, addr3.
+			expected: []common.Address{addr1, addr3},
 		},
 		{
 			name:      "empty input",
