@@ -18,7 +18,6 @@ import (
 
 type (
 	UpgradeConfig struct {
-		Deploy       bool
 		Name         string
 		Commit       string
 		ContractAddr common.Address
@@ -53,7 +52,6 @@ func init() {
 				Name:         "HistoryStorage",
 				ContractAddr: params.HistoryStorageAddress,
 				Code:         params.HistoryStorageCode,
-				Deploy:       true,
 			},
 		},
 	}
@@ -71,7 +69,6 @@ func init() {
 				Name:         "ValidatorSet",
 				ContractAddr: ValidatorSetAddr,
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
-				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
 					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
@@ -94,7 +91,6 @@ func init() {
 				Name:         "StakeHub",
 				ContractAddr: StakeHubAddr,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
-				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
 					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
@@ -127,7 +123,6 @@ func init() {
 				Name:         "RewardHub",
 				ContractAddr: RewardHubAddr,
 				Code:         breakpoint.RewardHubMetaData.BinRuntime,
-				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
 					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
@@ -150,7 +145,6 @@ func init() {
 				Name:         "ValidatorSlash",
 				ContractAddr: ValidatorSlashAddr,
 				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
-				Deploy:       true,
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					return initialize, nil
 				},
@@ -207,37 +201,30 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 
 	log.Info("Upgrading built-in contracts", "name", upgrade.UpgradeName, "blockNumber", header.Number.Uint64())
 	for _, cfg := range upgrade.Configs {
-		if cfg.Deploy {
+		deploy := !statedb.Exist(cfg.ContractAddr)
+		if deploy {
 			log.Info("Deploy contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		} else {
 			log.Info("Upgrade contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		}
 
-		exists := statedb.Exist(cfg.ContractAddr)
-
 		// write code
-		code := getCode(cfg)
-		if len(code) == 0 {
-			panic(fmt.Errorf("%s: failed to parse code: %s", upgrade.UpgradeName, cfg.Name))
-		}
-
-		if len(code) > 0 {
-			if cfg.Deploy {
-				if prevCode := statedb.GetCode(cfg.ContractAddr); len(prevCode) > 0 {
-					log.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
-				} else {
-					// If it is the first deployment, set the nonce to 1
-					statedb.SetNonce(cfg.ContractAddr, 1, tracing.NonceChangeNewContract)
-				}
-			} else if !exists {
-				log.Warn("Writing code to non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
+		prevCode := statedb.GetCode(cfg.ContractAddr)
+		newCode := parseCode(cfg)
+		if len(newCode) > 0 {
+			if len(prevCode) > 0 {
+				log.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
-			statedb.SetCode(cfg.ContractAddr, code)
+			if deploy {
+				// If it is the first deployment, set the nonce to 1
+				statedb.SetNonce(cfg.ContractAddr, 1, tracing.NonceChangeNewContract)
+			}
+			statedb.SetCode(cfg.ContractAddr, newCode)
 		}
 
 		// write storage
 		if len(cfg.Storage) > 0 {
-			if !exists {
+			if !deploy {
 				log.Warn("Writing storage slots of non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
 			for k, v := range cfg.Storage {
@@ -247,7 +234,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 	}
 }
 
-func getCode(cfg *UpgradeConfig) (code []byte) {
+func parseCode(cfg *UpgradeConfig) (code []byte) {
 	switch v := cfg.Code.(type) {
 	case string:
 		code = common.FromHex(v)

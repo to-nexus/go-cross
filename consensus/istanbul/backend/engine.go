@@ -75,8 +75,8 @@ func (sb *Backend) Author(header *types.Header) (common.Address, error) {
 func (sb *Backend) Signers(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
 	// ##CROSS: bls seal
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		// Should combine signer bitset from the header and validator set from the snapshot
-		snap, err := sb.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+		// Should combine signer bitset from the header and validator set from the parent's snapshot
+		snap, err := sb.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
 		if err != nil {
 			return nil, err
 		}

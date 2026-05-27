@@ -16,7 +16,7 @@ type IstanbulConfig struct {
 	EpochLength              uint64           `json:"epochlength"`                       // Number of blocks that should pass before pending validator votes are reset
 	BlockPeriodSeconds       uint64           `json:"blockperiodseconds"`                // Minimum time between two consecutive QBFT blocks’ timestamps in seconds
 	EmptyBlockPeriodSeconds  uint64           `json:"emptyblockperiodseconds,omitempty"` // Minimum time between two consecutive QBFT a block and empty block’ timestamps in seconds
-	RequestTimeoutSeconds    uint64           `json:"requesttimeoutseconds"`             // Minimum request timeout for each QBFT round in milliseconds
+	RequestTimeoutSeconds    uint64           `json:"requesttimeoutseconds"`             // Minimum request timeout for each QBFT round in seconds
 	ProposerPolicy           uint64           `json:"policy"`                            // The policy for proposer selection
 	Validators               []common.Address `json:"validators"`                        // Validators list
 	MaxRequestTimeoutSeconds *uint64          `json:"maxRequestTimeoutSeconds"`          // The max round time
@@ -43,7 +43,7 @@ type Transition struct {
 	EpochLength             uint64   `json:"epochlength,omitempty"`             // Number of blocks that should pass before pending validator votes are reset
 	BlockPeriodSeconds      uint64   `json:"blockperiodseconds,omitempty"`      // Minimum time between two consecutive QBFT blocks’ timestamps in seconds
 	EmptyBlockPeriodSeconds *uint64  `json:"emptyblockperiodseconds,omitempty"` // Minimum time between two consecutive QBFT a block and empty block’ timestamps in seconds
-	RequestTimeoutSeconds   uint64   `json:"requesttimeoutseconds,omitempty"`   // Minimum request timeout for each QBFT round in milliseconds
+	RequestTimeoutSeconds   uint64   `json:"requesttimeoutseconds,omitempty"`   // Minimum request timeout for each QBFT round in seconds
 	//	Validators               []common.Address `json:"validators,omitempty"`               // List of validators
 	MaxRequestTimeoutSeconds *uint64 `json:"maxRequestTimeoutSeconds,omitempty"` // The max a timeout should be for a round change
 

@@ -148,9 +148,10 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.
 }
 
 type ValidatorInfo struct {
-	address common.Address
-	signer  types.BLSPublicKey
-	power   *uint256.Int
+	address    common.Address
+	signer     types.BLSPublicKey
+	power      *uint256.Int
+	createTime uint64
 }
 
 // computeNextCouncil computes the (validators, signers) that updateValidatorSet would write into the ValidatorSet contract.
@@ -191,7 +192,10 @@ func (e *Engine) computeNextCouncil(number uint64) ([]common.Address, []types.BL
 func selectActiveCouncil(validatorInfos []ValidatorInfo, threshold uint64) []ValidatorInfo {
 	// sort descending by power; stable sort preserves the earlier-registered ordering on ties
 	slices.SortStableFunc(validatorInfos, func(a, b ValidatorInfo) int {
-		return b.power.Cmp(a.power)
+		if cmp := b.power.Cmp(a.power); cmp != 0 {
+			return cmp
+		}
+		return int(a.createTime - b.createTime)
 	})
 
 	// cut top N and drop zero-power entries
@@ -260,9 +264,10 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 		powerU256, _ := uint256.FromBig(result.Powers[i])
 		signer := result.SignerAddrs[i]
 		validatorInfos[i] = ValidatorInfo{
-			address: validator,
-			signer:  types.BytesToBLSPublicKey(signer),
-			power:   powerU256,
+			address:    validator,
+			signer:     types.BytesToBLSPublicKey(signer),
+			power:      powerU256,
+			createTime: result.CreateTimes[i].Uint64(),
 		}
 	}
 
