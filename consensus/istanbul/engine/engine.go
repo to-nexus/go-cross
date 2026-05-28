@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
@@ -836,7 +837,6 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 		}
 		// ##
 	}
-	log.Warn("prepareValidators: final validator list", "number", header.Number.Uint64(), "validatorList", validatorList, "signerList", signerList)
 	return []ApplyExtra{WriteValidators(validatorList), WriteSigners(signerList)}, nil
 	// ##
 }
@@ -1094,6 +1094,7 @@ func (e *Engine) ExtractValidators(header *types.Header) ([]common.Address, []ty
 }
 
 // ##CROSS: bls seal
+// BLSSigners extracts the signers bitset from the header and builds the signer list using the given validator set.
 func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSet) ([]common.Address, []types.BLSPublicKey, error) {
 	extra, err := types.ExtractIstanbulExtra(header)
 	if err != nil {
@@ -1101,24 +1102,25 @@ func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSe
 	}
 
 	bs := bitset.From(extra.SignersBitset)
-	validatorList := validators.List()
-	// Check if there are any signers bitset out of range
-	if _, found := bs.NextSet(uint(len(validatorList))); found {
-		return nil, nil, istanbul.ErrInvalidSignersBitset
-	}
-
-	if bs.Count() == 0 {
+	signerCount := bs.Count()
+	if signerCount == 0 {
 		return nil, nil, istanbul.ErrEmptySigners
 	}
 
-	addrs := make([]common.Address, 0, bs.Count())
-	pubkeys := make([]types.BLSPublicKey, 0, bs.Count())
-	for index, validator := range validatorList {
+	expected := bitset.New(uint(signerCount)) // build expected signers bitset
+	addrs := make([]common.Address, 0, signerCount)
+	pubkeys := make([]types.BLSPublicKey, 0, signerCount)
+	for index, validator := range validators.List() {
 		if !bs.Test(uint(index)) {
 			continue
 		}
+		expected.Set(uint(index))
 		addrs = append(addrs, validator.Address())
 		pubkeys = append(pubkeys, validator.SignerAddress())
+	}
+	// compare expected signers bitset with actual signers bitset
+	if !slices.Equal(extra.SignersBitset, expected.Words()) {
+		return nil, nil, istanbul.ErrInvalidSignersBitset
 	}
 	if len(pubkeys) == 0 {
 		return nil, nil, istanbul.ErrEmptySigners

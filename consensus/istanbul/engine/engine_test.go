@@ -213,32 +213,88 @@ func TestWriteSigners(t *testing.T) {
 	assert.Equal(t, expectedIstExtra, istExtra)
 }
 
-func TestBLSSignersOutOfRangeSignersBitset(t *testing.T) {
-	signers := []types.BLSPublicKey{
-		types.BytesToBLSPublicKey(signer1),
-		types.BytesToBLSPublicKey(signer2),
-		types.BytesToBLSPublicKey(signer3),
-		types.BytesToBLSPublicKey(signer4),
-	}
-	h := &types.Header{
-		Extra:  []byte{},
-		Number: big.NewInt(10),
-		Time:   1000,
-	}
-	err := ApplyHeaderIstanbulExtra(
-		h,
-		WriteValidators(validators),
-		WriteSigners(signers),
-		func(extra *types.IstanbulExtra) error {
-			extra.SignersBitset = []uint64{1 << uint(len(validators))}
-			return nil
-		},
-	)
-	require.NoError(t, err)
+func TestBLSSigners(t *testing.T) {
+	t.Run("invalid signers bitset", func(t *testing.T) {
+		signers := []types.BLSPublicKey{
+			types.BytesToBLSPublicKey(signer1),
+			types.BytesToBLSPublicKey(signer2),
+			types.BytesToBLSPublicKey(signer3),
+			types.BytesToBLSPublicKey(signer4),
+		}
+		valSet := validator.NewSet(validators, signers, istanbul.NewRoundRobinProposerPolicy())
 
-	valSet := validator.NewSet(validators, signers, istanbul.NewRoundRobinProposerPolicy())
-	_, _, err = (Engine{}).BLSSigners(h, valSet)
-	assert.ErrorIs(t, err, istanbul.ErrInvalidSignersBitset)
+		tests := []struct {
+			name          string
+			signersBitset []uint64
+		}{
+			{
+				name:          "out of range set bit",
+				signersBitset: []uint64{1 << uint(len(validators))},
+			},
+			{
+				name:          "trailing zero word",
+				signersBitset: []uint64{1, 0},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				h := &types.Header{
+					Extra:  []byte{},
+					Number: big.NewInt(10),
+					Time:   1000,
+				}
+				err := ApplyHeaderIstanbulExtra(
+					h,
+					WriteValidators(validators),
+					WriteSigners(signers),
+					func(extra *types.IstanbulExtra) error {
+						extra.SignersBitset = tt.signersBitset
+						return nil
+					},
+				)
+				require.NoError(t, err)
+
+				_, _, err = (Engine{}).BLSSigners(h, valSet)
+				assert.ErrorIs(t, err, istanbul.ErrInvalidSignersBitset)
+			})
+		}
+	})
+
+	t.Run("sparse signers bitset", func(t *testing.T) {
+		addrs := make([]common.Address, 100)
+		signers := make([]types.BLSPublicKey, 100)
+		for i := range addrs {
+			addrs[i] = common.BytesToAddress([]byte{byte(i + 1)})
+			signers[i] = types.BytesToBLSPublicKey([]byte{byte(i + 1)})
+		}
+
+		h := &types.Header{
+			Extra:  []byte{},
+			Number: big.NewInt(10),
+			Time:   1000,
+		}
+		err := ApplyHeaderIstanbulExtra(
+			h,
+			WriteValidators(addrs),
+			WriteSigners(signers),
+			func(extra *types.IstanbulExtra) error {
+				extra.SignersBitset = []uint64{0, uint64(1) << 35}
+				return nil
+			},
+		)
+		require.NoError(t, err)
+
+		valSet := validator.NewSet(addrs, signers, istanbul.NewRoundRobinProposerPolicy())
+		expectedSigner := valSet.List()[99]
+
+		gotAddrs, gotPubkeys, err := (Engine{}).BLSSigners(h, valSet)
+		require.NoError(t, err)
+		require.Len(t, gotAddrs, 1)
+		require.Len(t, gotPubkeys, 1)
+		assert.Equal(t, expectedSigner.Address(), gotAddrs[0])
+		assert.Equal(t, expectedSigner.SignerAddress(), gotPubkeys[0])
+	})
 }
 
 // ##

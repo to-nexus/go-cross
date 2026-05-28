@@ -154,6 +154,10 @@ type ValidatorInfo struct {
 	createTime uint64
 }
 
+func (v ValidatorInfo) String() string {
+	return fmt.Sprintf("{address: %s, power: %s, createTime: %d}", v.address.Hex(), v.power.String(), v.createTime)
+}
+
 // computeNextCouncil computes the (validators, signers) that updateValidatorSet would write into the ValidatorSet contract.
 func (e *Engine) computeNextCouncil(number uint64) ([]common.Address, []types.BLSPublicKey, error) {
 	validatorInfos, err := e.getStakedValidatorInfo(number)
@@ -190,12 +194,17 @@ func (e *Engine) computeNextCouncil(number uint64) ([]common.Address, []types.BL
 //   - sort descending by power
 //   - cut top N and drop zero-power entries
 func selectActiveCouncil(validatorInfos []ValidatorInfo, threshold uint64) []ValidatorInfo {
-	// sort descending by power; stable sort preserves the earlier-registered ordering on ties
+	log.Debug("Selecting active council", "threshold", threshold, "candidates", validatorInfos)
+
+	// sort descending by power -> ascending by createTime -> ascending by address
 	slices.SortStableFunc(validatorInfos, func(a, b ValidatorInfo) int {
 		if cmp := b.power.Cmp(a.power); cmp != 0 {
 			return cmp
 		}
-		return int(a.createTime - b.createTime)
+		if a.createTime != b.createTime {
+			return int(a.createTime - b.createTime)
+		}
+		return bytes.Compare(a.address[:], b.address[:])
 	})
 
 	// cut top N and drop zero-power entries
