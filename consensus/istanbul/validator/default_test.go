@@ -17,9 +17,9 @@
 package validator
 
 import (
-	"bytes"
 	fmt "fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -62,11 +62,11 @@ func testNewValidatorSet(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Check validators sorting: should be in ascending byte order
+	// Check validators sorting: should be in ascending order
 	for i := 0; i < ValCnt-1; i++ {
 		val := valSet.GetByIndex(uint64(i))
 		nextVal := valSet.GetByIndex(uint64(i + 1))
-		if bytes.Compare(val.Address().Bytes(), nextVal.Address().Bytes()) >= 0 {
+		if strings.Compare(val.String(), nextVal.String()) >= 0 {
 			t.Errorf("validator set is not sorted in ascending order")
 		}
 	}
