@@ -1110,13 +1110,14 @@ func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSe
 	expected := bitset.New(uint(signerCount)) // build expected signers bitset
 	addrs := make([]common.Address, 0, signerCount)
 	pubkeys := make([]types.BLSPublicKey, 0, signerCount)
-	for index, validator := range validators.List() {
+	// SignersBitset is encoded against byte-sorted validators
+	for index, val := range validator.SortedValidators(validators.List()) {
 		if !bs.Test(uint(index)) {
 			continue
 		}
 		expected.Set(uint(index))
-		addrs = append(addrs, validator.Address())
-		pubkeys = append(pubkeys, validator.SignerAddress())
+		addrs = append(addrs, val.Address())
+		pubkeys = append(pubkeys, val.SignerAddress())
 	}
 	// compare expected signers bitset with actual signers bitset
 	if !slices.Equal(extra.SignersBitset, expected.Words()) {

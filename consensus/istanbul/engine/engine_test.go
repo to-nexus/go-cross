@@ -214,6 +214,47 @@ func TestWriteSigners(t *testing.T) {
 }
 
 func TestBLSSigners(t *testing.T) {
+	t.Run("uses byte sorted validator order", func(t *testing.T) {
+		addrs := []common.Address{
+			common.HexToAddress("0xc53f2189bf6d7bf56722731787127f90d319e112"),
+			common.HexToAddress("0xed2d479591fe2c5626ce09bca4ed2a62e00e5bc2"),
+			common.HexToAddress("0xc8417f834995aaeb35f342a67a4961e19cd4735c"),
+			common.HexToAddress("0x784ae51f5013b51c8360afdf91c6bc5a16f586ea"),
+			common.HexToAddress("0xecf0974e6f0630fd91ea4da8399cdb3f59e5220f"),
+			common.HexToAddress("0x411c4d11acd714b82a5242667e36de14b9e1d10b"),
+		}
+		signers := make([]types.BLSPublicKey, len(addrs))
+		for i := range signers {
+			signers[i] = types.BytesToBLSPublicKey([]byte{byte(i + 1)})
+		}
+
+		stringPolicy := istanbul.NewProposerPolicyByIdAndSortFunc(istanbul.RoundRobin, istanbul.ValidatorSortByString())
+		valSet := validator.NewSet(addrs, signers, stringPolicy)
+		require.Equal(t, addrs[1], valSet.List()[3].Address(), "test fixture must differ between string and byte order")
+		h := &types.Header{
+			Extra:  []byte{},
+			Number: big.NewInt(10),
+			Time:   1000,
+		}
+		err := ApplyHeaderIstanbulExtra(
+			h,
+			WriteValidators(addrs),
+			WriteSigners(signers),
+			func(extra *types.IstanbulExtra) error {
+				extra.SignersBitset = []uint64{1 << 3}
+				return nil
+			},
+		)
+		require.NoError(t, err)
+
+		gotAddrs, gotPubkeys, err := (Engine{}).BLSSigners(h, valSet)
+		require.NoError(t, err)
+		require.Len(t, gotAddrs, 1)
+		require.Len(t, gotPubkeys, 1)
+		assert.Equal(t, addrs[2], gotAddrs[0])
+		assert.Equal(t, signers[2], gotPubkeys[0])
+	})
+
 	t.Run("invalid signers bitset", func(t *testing.T) {
 		signers := []types.BLSPublicKey{
 			types.BytesToBLSPublicKey(signer1),

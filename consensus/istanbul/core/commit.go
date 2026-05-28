@@ -17,9 +17,11 @@
 package core
 
 import (
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
+	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -140,16 +142,17 @@ func (c *Core) commit() {
 		sealSize := c.backend.SealSize(proposal)
 
 		// Compute committed seals
+		indexes := sealIndexes(c.valSet)
 		committedSeals := make([]istanbul.SignedSeal, 0, c.current.Commits.Size())
 		for _, msg := range c.current.Commits.Values() {
-			idx, _ := c.valSet.GetByAddress(msg.Source())
-			if idx < 0 {
+			idx, ok := indexes[msg.Source()]
+			if !ok {
 				continue
 			}
 			commitMsg := msg.(*protocols.Commit)
 			committedSeal := make([]byte, sealSize)
 			copy(committedSeal, commitMsg.CommitSeal)
-			committedSeals = append(committedSeals, newSignedSeal(uint(idx), commitMsg.Source(), committedSeal))
+			committedSeals = append(committedSeals, newSignedSeal(idx, commitMsg.Source(), committedSeal))
 		}
 
 		// Commit proposal to database
@@ -159,4 +162,13 @@ func (c *Core) commit() {
 			return
 		}
 	}
+}
+
+func sealIndexes(valSet istanbul.ValidatorSet) map[common.Address]uint {
+	indexes := make(map[common.Address]uint, valSet.Size())
+	// SignersBitset is encoded against byte-sorted validators
+	for idx, val := range validator.SortedValidators(valSet.List()) {
+		indexes[val.Address()] = uint(idx)
+	}
+	return indexes
 }

@@ -53,6 +53,7 @@ func ValidExtraData(extraData []byte) bool {
 	return len(extraData)%common.AddressLength == 0
 }
 
+// SortedAddresses returns the sorted addresses of validators.
 func SortedAddresses(validators []istanbul.Validator) []common.Address {
 	addrs := make([]common.Address, len(validators))
 	for i, validator := range validators {
@@ -67,6 +68,7 @@ func SortedAddresses(validators []istanbul.Validator) []common.Address {
 }
 
 // ##CROSS: bls seal
+// SortedValidators returns the sorted validators by address.
 func SortedValidators(validators []istanbul.Validator) []istanbul.Validator {
 	sorted := make([]istanbul.Validator, len(validators))
 	copy(sorted, validators)
