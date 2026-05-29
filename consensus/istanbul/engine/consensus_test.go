@@ -457,8 +457,12 @@ func packGetValidatorsResponse(t *testing.T, validatorAddrs []common.Address, si
 	method, ok := parsedABI.Methods["getValidators"]
 	require.True(t, ok)
 
+	createTimes := make([]*big.Int, len(validatorAddrs))
+	for i := range createTimes {
+		createTimes[i] = big.NewInt(int64(i + 1))
+	}
 	totalLength := big.NewInt(int64(len(validatorAddrs)))
-	retPacked, err := method.Outputs.Pack(validatorAddrs, signerAddrs, amounts, totalLength)
+	retPacked, err := method.Outputs.Pack(validatorAddrs, signerAddrs, amounts, createTimes, totalLength)
 	require.NoError(t, err)
 
 	return retPacked
