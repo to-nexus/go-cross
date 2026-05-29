@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"math/big"
@@ -191,18 +192,18 @@ func (e *Engine) computeNextCouncil(number uint64) ([]common.Address, []types.BL
 }
 
 // selectActiveCouncil derives the active council from a list of staked validators by:
-//   - sort descending by power
+//   - sort by power descending, breaking ties by createTime ascending then address ascending
 //   - cut top N and drop zero-power entries
 func selectActiveCouncil(validatorInfos []ValidatorInfo, threshold uint64) []ValidatorInfo {
 	log.Debug("Selecting active council", "threshold", threshold, "candidates", validatorInfos)
 
 	// sort descending by power -> ascending by createTime -> ascending by address
 	slices.SortStableFunc(validatorInfos, func(a, b ValidatorInfo) int {
-		if cmp := b.power.Cmp(a.power); cmp != 0 {
-			return cmp
+		if c := b.power.Cmp(a.power); c != 0 {
+			return c
 		}
-		if a.createTime != b.createTime {
-			return int(a.createTime - b.createTime)
+		if c := cmp.Compare(a.createTime, b.createTime); c != 0 {
+			return c
 		}
 		return bytes.Compare(a.address[:], b.address[:])
 	})

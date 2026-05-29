@@ -295,10 +295,8 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 
 		// write storage
 		if len(cfg.Storage) > 0 {
-			if !deploy {
-				log.Warn("Writing storage slots of non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
-			}
 			for k, v := range cfg.Storage {
+				log.Info("Writing storage slot", "name", cfg.Name, "address", cfg.ContractAddr.String(), "slot", k.String(), "value", v.String())
 				statedb.SetState(cfg.ContractAddr, k, v)
 			}
 		}
