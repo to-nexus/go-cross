@@ -43,7 +43,11 @@ var (
 )
 
 func init() {
-	initialize := common.FromHex("8129fc1c")
+	// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
+	initializableSlot := common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00")
+	initializedData := common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff")
+	// ERC1967Proxy[IMPLEMENTATION] = <impl address>
+	implementationSlot := common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
 
 	upgrades[forks.Prague] = make(map[uint64]*Upgrade)
 	upgrades[forks.Prague][0] = &Upgrade{
@@ -62,18 +66,37 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				Name:         "CrossEx",
+				Commit:       "4220afc0d36775ff52177f501dd1c165444d7f4c",
 				ContractAddr: CrossExAddr,
 				Code:         breakpoint.CrossExCode,
 			},
 			// ##CROSS: consensus system contract
 			{
-				Name:         "ValidatorSet",
-				ContractAddr: ValidatorSetAddr,
+				Name:         "ValidatorSetImpl",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSetImplAddr,
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
+				Storage: map[common.Hash]common.Hash{
+					initializableSlot: initializedData,
+				},
+			},
+			{
+				Name:         "ValidatorSetProxy",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSetAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Storage: map[common.Hash]common.Hash{
+					implementationSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
+				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
 					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
 						return nil, fmt.Errorf("PoSA configuration is not set")
+					}
+
+					admin := config.Istanbul.PoSA.Admin
+					if admin == (common.Address{}) {
+						return nil, fmt.Errorf("PoSA admin is not set")
 					}
 
 					var (
@@ -82,28 +105,27 @@ func init() {
 					)
 					for _, validator := range config.Istanbul.PoSA.Validators {
 						validators = append(validators, validator.Validator)
-						// ##CROSS: bls seal
-						signers = append(signers, types.BytesToBLSPublicKey(validator.Signer).Bytes())
+						signers = append(signers, types.BytesToBLSPublicKey(validator.Signer).Bytes()) // ##CROSS: bls seal
 					}
-					return breakpoint.NewValidatorSet().PackUpdateValidators(validators, signers), nil
+					return breakpoint.NewValidatorSet().PackInitialize(admin, validators, signers), nil
 				},
 			},
 			{
 				Name:         "StakeHubImpl",
-				ContractAddr: StakeHubAddrImpl,
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: StakeHubImplAddr,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
-					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
+					initializableSlot: initializedData,
 				},
 			},
 			{
 				Name:         "StakeHubProxy",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
 				ContractAddr: StakeHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					// ERC1967Proxy[IMPLEMENTATION] = StakeHubImpl
-					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(StakeHubAddrImpl.Bytes()),
+					implementationSlot: common.BytesToHash(StakeHubImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -135,20 +157,20 @@ func init() {
 			},
 			{
 				Name:         "RewardHubImpl",
-				ContractAddr: RewardHubAddrImpl,
+				Commit:       "373dfdd9ec4b53f7f3efc0516a7b7cfaa7cab0f6",
+				ContractAddr: RewardHubImplAddr,
 				Code:         breakpoint.RewardHubMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
-					common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00"): common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff"),
+					initializableSlot: initializedData,
 				},
 			},
 			{
 				Name:         "RewardHubProxy",
+				Commit:       "373dfdd9ec4b53f7f3efc0516a7b7cfaa7cab0f6",
 				ContractAddr: RewardHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					// ERC1967Proxy[IMPLEMENTATION] = RewardHubImpl
-					common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"): common.BytesToHash(RewardHubAddrImpl.Bytes()),
+					implementationSlot: common.BytesToHash(RewardHubImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -169,11 +191,33 @@ func init() {
 				},
 			},
 			{
-				Name:         "ValidatorSlash",
-				ContractAddr: ValidatorSlashAddr,
+				Name:         "ValidatorSlashImpl",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSlashImplAddr,
 				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
+				Storage: map[common.Hash]common.Hash{
+					initializableSlot: initializedData,
+				},
+			},
+			{
+				Name:         "ValidatorSlashProxy",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSlashAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Storage: map[common.Hash]common.Hash{
+					implementationSlot: common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
+				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
-					return initialize, nil
+					// PoSA configuration must be set in the Istanbul config
+					if config.Istanbul == nil || config.Istanbul.PoSA == nil {
+						return nil, fmt.Errorf("PoSA configuration is not set")
+					}
+
+					admin := config.Istanbul.PoSA.Admin
+					if admin == (common.Address{}) {
+						return nil, fmt.Errorf("PoSA admin is not set")
+					}
+					return breakpoint.NewValidatorSlash().PackInitialize(admin), nil
 				},
 			},
 			// ##
