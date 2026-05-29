@@ -163,18 +163,18 @@ func getUpgrade(fork forks.Fork, chainID uint64) *Upgrade {
 }
 
 // TryUpdateSystemContract checks if the block is exactly on the fork and upgrades the system contracts if it is.
-func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, lastBlockTime uint64, statedb vm.StateDB) (upgraded bool) {
+func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, lastBlockTime uint64, statedb vm.StateDB, writeLog bool) (upgraded bool) {
 	if config == nil || header == nil || statedb == nil || reflect.ValueOf(statedb).IsNil() {
 		return
 	}
 
 	chainID := config.ChainID.Uint64()
 	if config.IsOnPrague(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(getUpgrade(forks.Prague, chainID), header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Prague, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
-		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb)
+		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
 	return
@@ -193,19 +193,26 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 	return
 }
 
-func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb vm.StateDB) {
+func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb vm.StateDB, writeLog bool) {
+	var logger log.Logger
+	if writeLog {
+		logger = log.Root()
+	} else {
+		logger = log.NewLogger(log.DiscardHandler())
+	}
+
 	if upgrade == nil {
-		log.Info("Empty upgrade config", "blockNumber", header.Number.Uint64())
+		logger.Info("Empty upgrade config", "blockNumber", header.Number.Uint64())
 		return
 	}
 
-	log.Info("Upgrading built-in contracts", "name", upgrade.UpgradeName, "blockNumber", header.Number.Uint64())
+	logger.Info("Upgrading built-in contracts", "name", upgrade.UpgradeName, "blockNumber", header.Number.Uint64())
 	for _, cfg := range upgrade.Configs {
 		deploy := !statedb.Exist(cfg.ContractAddr)
 		if deploy {
-			log.Info("Deploy contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
+			logger.Info("Deploy contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		} else {
-			log.Info("Upgrade contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
+			logger.Info("Upgrade contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		}
 
 		// write code
@@ -213,7 +220,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 		newCode := parseCode(cfg)
 		if len(newCode) > 0 {
 			if len(prevCode) > 0 {
-				log.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
+				logger.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
 			if deploy {
 				// If it is the first deployment, set the nonce to 1
@@ -228,6 +235,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 				log.Warn("Writing storage slots of non-existent account", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
 			for k, v := range cfg.Storage {
+				logger.Info("Writing storage slot", "name", cfg.Name, "address", cfg.ContractAddr.String(), "slot", k.String(), "value", v.String())
 				statedb.SetState(cfg.ContractAddr, k, v)
 			}
 		}

@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -188,6 +189,7 @@ type txTraceResult struct {
 // being traced.
 type blockTraceTask struct {
 	statedb *state.StateDB   // Intermediate state prepped for tracing
+	parent  *types.Block     // Parent block of the block to trace
 	block   *types.Block     // Block to trace the transactions from
 	release StateReleaseFunc // The function to release the held resource for this task
 	results []*txTraceResult // Trace results produced by the task
@@ -268,11 +270,19 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 			// Fetch and execute the block trace taskCh
 			for task := range taskCh {
 				var (
-					signer   = types.MakeSigner(api.backend.ChainConfig(), task.block.Number(), task.block.Time())
-					blockCtx = core.NewEVMBlockContext(task.block.Header(), api.chainContext(ctx), nil)
+					signer          = types.MakeSigner(api.backend.ChainConfig(), task.block.Number(), task.block.Time())
+					blockCtx        = core.NewEVMBlockContext(task.block.Header(), api.chainContext(ctx), nil)
+					checkedSystemTx bool
 				)
 				// Trace all the transactions contained within
 				for i, tx := range task.block.Transactions() {
+					// ##CROSS: contract upgrade
+					// Upgrade system contract before the first system transaction if the block is at upgrade point.
+					if !checkedSystemTx {
+						checkedSystemTx = api.tryUpdateSystemContract(tx, task.block.Header(), task.parent.Time(), task.statedb)
+					}
+					// ##
+
 					msg, _ := core.TransactionToMessage(tx, signer, task.block.BaseFee())
 					txctx := &Context{
 						BlockHash:   task.block.Hash(),
@@ -398,7 +408,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 			// Send the block over to the concurrent tracers (if not in the fast-forward phase)
 			txs := next.Transactions()
 			select {
-			case taskCh <- &blockTraceTask{statedb: statedb.Copy(), block: next, release: release, results: make([]*txTraceResult, len(txs))}:
+			case taskCh <- &blockTraceTask{statedb: statedb.Copy(), parent: block, block: next, release: release, results: make([]*txTraceResult, len(txs))}:
 			case <-closed:
 				tracker.releaseState(number, release)
 				return
@@ -537,6 +547,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 		chainConfig        = api.backend.ChainConfig()
 		vmctx              = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 		deleteEmptyObjects = chainConfig.IsEIP158(block.Number())
+		checkedSystemTx    bool
 	)
 	evm := vm.NewEVM(vmctx, statedb, chainConfig, vm.Config{})
 	if beaconRoot := block.BeaconRoot(); beaconRoot != nil {
@@ -549,6 +560,14 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+
+		// ##CROSS: contract upgrade
+		// Upgrade system contract before the first system transaction if the block is at upgrade point.
+		if !checkedSystemTx {
+			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
+		}
+		// ##
+
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		statedb.SetTxContext(tx.Hash(), i)
 		if _, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit)); err != nil {
@@ -620,12 +639,20 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	}
 	// Native tracers have low overhead
 	var (
-		txs       = block.Transactions()
-		blockHash = block.Hash()
-		signer    = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		results   = make([]*txTraceResult, len(txs))
+		txs             = block.Transactions()
+		blockHash       = block.Hash()
+		signer          = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		results         = make([]*txTraceResult, len(txs))
+		checkedSystemTx bool
 	)
 	for i, tx := range txs {
+		// ##CROSS: contract upgrade
+		// Upgrade system contract before the first system transaction if the block is at upgrade point.
+		if !checkedSystemTx {
+			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
+		}
+		// ##
+
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		txctx := &Context{
@@ -688,13 +715,28 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 		}()
 	}
 
+	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
+	if err != nil {
+		return nil, err
+	}
+
 	// Feed the transactions into the tracers and return
-	var failed error
+	var (
+		failed          error
+		checkedSystemTx bool
+	)
 	blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 	evm := vm.NewEVM(blockCtx, statedb, api.backend.ChainConfig(), vm.Config{})
 
 txloop:
 	for i, tx := range txs {
+		// ##CROSS: contract upgrade
+		// Upgrade system contract before the first system transaction if the block is at upgrade point.
+		if !checkedSystemTx {
+			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
+		}
+		// ##
+
 		// Send the trace task over for execution
 		task := &txTraceTask{statedb: statedb.Copy(), index: i}
 		select {
@@ -765,11 +807,12 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 
 	// Execute transaction, either tracing all or just the requested one
 	var (
-		dumps       []string
-		signer      = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
-		chainConfig = api.backend.ChainConfig()
-		vmctx       = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-		canon       = true
+		dumps           []string
+		signer          = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+		chainConfig     = api.backend.ChainConfig()
+		vmctx           = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		canon           = true
+		checkedSystemTx bool
 	)
 	// Check if there are any overrides: the caller may wish to enable a future
 	// fork when executing this block. Note, such overrides are only applicable to the
@@ -789,6 +832,12 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		core.ProcessParentBlockHash(block.ParentHash(), evm)
 	}
 	for i, tx := range block.Transactions() {
+		// ##CROSS: contract upgrade
+		if !checkedSystemTx {
+			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
+		}
+		// ##
+
 		// Prepare the transaction for un-traced execution
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if txHash != (common.Hash{}) && tx.Hash() != txHash {
@@ -1113,3 +1162,16 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 
 	return copy, canon
 }
+
+// ##CROSS: contract upgrade
+func (api *API) tryUpdateSystemContract(tx *types.Transaction, header *types.Header, parentTime uint64, statedb *state.StateDB) bool {
+	if ie := consensus.ToIstanbulEngine(api.backend.Engine()); ie != nil {
+		if isSystemTx, _ := ie.IsSystemTransaction(tx, header); isSystemTx {
+			_ = contracts.TryUpdateSystemContract(api.backend.ChainConfig(), header, parentTime, statedb, false)
+			return true
+		}
+	}
+	return false
+}
+
+// ##

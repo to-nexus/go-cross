@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -249,8 +250,23 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		return nil, vm.BlockContext{}, statedb, release, nil
 	}
 	// Recompute transactions up to the target index.
-	signer := types.MakeSigner(eth.blockchain.Config(), block.Number(), block.Time())
+	var (
+		signer          = types.MakeSigner(eth.blockchain.Config(), block.Number(), block.Time())
+		checkedSystemTx bool
+	)
 	for idx, tx := range block.Transactions() {
+		// ##CROSS: contract upgrade
+		// Upgrade system contract before the first system transaction if the block is at upgrade point.
+		if !checkedSystemTx {
+			if eth.istanbul != nil {
+				if isSystemTx, _ := eth.istanbul.IsSystemTransaction(tx, block.Header()); isSystemTx {
+					_ = contracts.TryUpdateSystemContract(eth.blockchain.Config(), block.Header(), parent.Time(), statedb, false)
+					checkedSystemTx = true
+				}
+			}
+		}
+		// ##
+
 		if idx == txIndex {
 			return tx, context, statedb, release, nil
 		}

@@ -839,7 +839,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	// ##CROSS: contract upgrade
-	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state, true)
 	if upgraded {
 		// consume system transactions
 		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
@@ -931,7 +931,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if parent == nil {
 		return nil, nil, consensus.ErrUnknownAncestor
 	}
-	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state)
+	upgraded := contracts.TryUpdateSystemContract(chain.Config(), header, parent.Time, state, true)
 	if upgraded {
 		// init upgraded contracts
 		initData := contracts.InitSystemContract(chain.Config(), header, parent.Time)
