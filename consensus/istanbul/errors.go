@@ -94,6 +94,9 @@ var (
 	// ErrEmptySigners is returned if the signers list is empty.
 	ErrEmptySigners = errors.New("empty signers")
 
+	// ErrInvalidSignersBitset is returned if the signers bitset is invalid.
+	ErrInvalidSignersBitset = errors.New("invalid signers bitset")
+
 	// ErrDuplicatedSigner is returned if the seal signer is duplicated.
 	ErrDuplicatedSigner = errors.New("duplicated signer")
 	// ##

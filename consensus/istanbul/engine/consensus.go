@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"math/big"
@@ -49,10 +50,36 @@ func (e *Engine) verifyValidators(chain consensus.ChainHeaderReader, header *typ
 		return err
 	}
 
-	validatorList, signerList, err := e.getCurrentValidators(header.Number.Uint64() - 1)
-	if err != nil {
-		return err
+	var (
+		validatorList []common.Address
+		signerList    []types.BLSPublicKey
+	)
+
+	// When a validator epoch block is also a council period rollover, the ValidatorSet contract is updated later in this block's Finalize.
+	// Reading the contract at parent here would return the pre-rollover council.
+	// We pre-compute the post-rollover council manually to match what updateValidatorSet will produce in Finalize.
+	if chain != nil {
+		parent := chain.GetHeaderByHash(header.ParentHash)
+		if parent != nil && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+			validatorList, signerList, err = e.computeNextCouncil(header.Number.Uint64() - 1)
+			log.Warn("New epoch + new council period: computing next council manually",
+				"number", header.Number.Uint64(),
+				"validatorList", validatorList,
+				"signerList", signerList)
+			if err != nil {
+				return err
+			}
+		}
 	}
+
+	// Default path: read the current contract state at parent.
+	if len(validatorList) == 0 {
+		validatorList, signerList, err = e.getCurrentValidators(header.Number.Uint64() - 1)
+		if err != nil {
+			return err
+		}
+	}
+
 	if len(validatorList) == 0 {
 		// Fallback: when the contract has not been initialized yet, the header keeps carrying the current snapshot validators
 		log.Warn("verifyValidators: fallback to snapshot validators", "number", header.Number.Uint64())
@@ -122,46 +149,66 @@ func (e *Engine) getCurrentValidators(number uint64) ([]common.Address, []types.
 }
 
 type ValidatorInfo struct {
-	address common.Address
-	signer  types.BLSPublicKey
-	power   *uint256.Int
+	address    common.Address
+	signer     types.BLSPublicKey
+	power      *uint256.Int
+	createTime uint64
 }
 
-// updateValidatorSet creates a new validator set and updates the ValidatorSet contract.
-// It reads all staked validators from the StakeHub contract and sorts them by their staking amount,
-// then it selects the top N validators as the active validators.
-// Finally, it creates a system transaction and applies it to the given state.
-func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
-	if header.Number.Uint64() == 0 {
-		return nil
-	}
-	number := header.Number.Uint64() - 1 // read from parent block
+func (v ValidatorInfo) String() string {
+	return fmt.Sprintf("{address: %s, power: %s, createTime: %d}", v.address.Hex(), v.power.String(), v.createTime)
+}
 
-	// read active validators from StakeHub
+// computeNextCouncil computes the (validators, signers) that updateValidatorSet would write into the ValidatorSet contract.
+func (e *Engine) computeNextCouncil(number uint64) ([]common.Address, []types.BLSPublicKey, error) {
 	validatorInfos, err := e.getStakedValidatorInfo(number)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if len(validatorInfos) == 0 {
-		// do not update validator set, it will use the legacy validators from the header
-		log.Warn("No validator info", "number", header.Number.Uint64())
-		return nil
+		return nil, nil, errors.New("empty staked validators")
 	}
 
 	threshold, err := e.getMaxCouncil(number)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if threshold == 0 {
-		return errors.New("zero validator threshold")
+		return nil, nil, errors.New("zero validator threshold")
 	}
 
-	// sort descending by their staking power
-	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
-		return b.power.Cmp(a.power)
+	selected := selectActiveCouncil(validatorInfos, threshold)
+	if len(selected) == 0 {
+		return nil, nil, errors.New("empty filtered validators")
+	}
+
+	validators := make([]common.Address, 0, len(selected))
+	signers := make([]types.BLSPublicKey, 0, len(selected))
+	for _, v := range selected {
+		validators = append(validators, v.address)
+		signers = append(signers, v.signer)
+	}
+	return validators, signers, nil
+}
+
+// selectActiveCouncil derives the active council from a list of staked validators by:
+//   - sort by power descending, breaking ties by createTime ascending then address ascending
+//   - cut top N and drop zero-power entries
+func selectActiveCouncil(validatorInfos []ValidatorInfo, threshold uint64) []ValidatorInfo {
+	log.Debug("Selecting active council", "threshold", threshold, "candidates", validatorInfos)
+
+	// sort descending by power -> ascending by createTime -> ascending by address
+	slices.SortStableFunc(validatorInfos, func(a, b ValidatorInfo) int {
+		if c := b.power.Cmp(a.power); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.createTime, b.createTime); c != 0 {
+			return c
+		}
+		return bytes.Compare(a.address[:], b.address[:])
 	})
 
-	// cut top N validators by their staking power and remove validators with zero power
+	// cut top N and drop zero-power entries
 	for n := range validatorInfos {
 		if n >= int(threshold) || validatorInfos[n].power.IsZero() {
 			validatorInfos = validatorInfos[:n]
@@ -169,22 +216,30 @@ func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx c
 		}
 	}
 
-	// sort ascending by their address
+	// sort ascending by address for stable on-chain layout
 	slices.SortFunc(validatorInfos, func(a, b ValidatorInfo) int {
 		return bytes.Compare(a.address[:], b.address[:])
 	})
+	return validatorInfos
+}
 
-	validators := make([]common.Address, 0, threshold)
-	// ##CROSS: bls seal
-	signersBytes := make([][]byte, 0, threshold)
-	signers := make([]types.BLSPublicKey, 0, threshold)
-	// ##
-	for _, validator := range validatorInfos {
-		validators = append(validators, validator.address)
-		// ##CROSS: bls seal
-		signersBytes = append(signersBytes, validator.signer.Bytes())
-		signers = append(signers, validator.signer)
-		// ##
+// updateValidatorSet creates a new validator set and updates the ValidatorSet contract.
+// It reads all staked validators from the StakeHub contract at parent block and organizes active council from them.
+// Finally, it creates a system transaction and applies it to the given state.
+func (e *Engine) updateValidatorSet(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	if header.Number.Uint64() == 0 {
+		return nil
+	}
+	number := header.Number.Uint64() - 1 // read from parent block
+
+	validators, signers, err := e.computeNextCouncil(number)
+	if err != nil {
+		return err
+	}
+
+	signersBytes := make([][]byte, 0, len(signers))
+	for _, s := range signers {
+		signersBytes = append(signersBytes, s.Bytes())
 	}
 
 	data := e.validatorSet.PackUpdateValidators(validators, signersBytes)
@@ -219,9 +274,10 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 		powerU256, _ := uint256.FromBig(result.Powers[i])
 		signer := result.SignerAddrs[i]
 		validatorInfos[i] = ValidatorInfo{
-			address: validator,
-			signer:  types.BytesToBLSPublicKey(signer),
-			power:   powerU256,
+			address:    validator,
+			signer:     types.BytesToBLSPublicKey(signer),
+			power:      powerU256,
+			createTime: result.CreateTimes[i].Uint64(),
 		}
 	}
 

@@ -75,8 +75,8 @@ func (sb *Backend) Author(header *types.Header) (common.Address, error) {
 func (sb *Backend) Signers(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
 	// ##CROSS: bls seal
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		// Should combine signer bitset from the header and validator set from the snapshot
-		snap, err := sb.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+		// Should combine signer bitset from the header and validator set from the parent's snapshot
+		snap, err := sb.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -507,8 +507,12 @@ func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, chain cons
 	// Iterate through the headers and create a new snapshot
 	snapCpy := snap.copy()
 
-	for _, header := range headers {
-		err := sb.snapApplyHeader(snapCpy, header, chain)
+	for i, header := range headers {
+		var parent *types.Header
+		if i > 0 {
+			parent = headers[i-1]
+		}
+		err := sb.snapApplyHeader(snapCpy, header, parent, chain)
 		if err != nil {
 			return nil, err
 		}
@@ -519,17 +523,12 @@ func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, chain cons
 	return snapCpy, nil
 }
 
-func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain consensus.ChainHeaderReader) error {
+func (sb *Backend) snapApplyHeader(snap *Snapshot, header, parent *types.Header, chain consensus.ChainHeaderReader) error {
 	logger := sb.snapLogger(snap).New("header.number", header.Number.Uint64(), "header.hash", header.Hash().String())
 
 	logger.Trace("Istanbul: apply header to voting snapshot")
 
-	// Remove any votes on checkpoint blocks
 	number := header.Number.Uint64()
-	if number%snap.Epoch == 0 {
-		snap.Votes = nil
-		snap.Tally = make(map[common.Address]Tally)
-	}
 
 	// Resolve the authorization key and check against validators
 	author, err := sb.Engine().Author(header)
@@ -545,7 +544,9 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		return istanbul.ErrUnauthorized
 	}
 
-	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent == nil {
+		parent = chain.GetHeader(header.ParentHash, number-1)
+	}
 	if parent != nil && chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
 		// ##CROSS: istanbul posa
 		// Inject validators and signers defined in the config to the snapshot on the beginning of Breakpoint hardfork
@@ -562,12 +563,16 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 				signers = append(signers, validator.SignerAddress())
 			}
 		}
-		log.Info("Istanbul: overwrite validators and signers on Breakpoint", "number", header.Number.Uint64(), "validators", validators, "signers", signers)
+		log.Info("Istanbul: overwrite validators and signers on Breakpoint", "number", number, "validators", validators, "signers", signers)
 		snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)
+
+		// Votes and tally are not used anymore after Breakpoint
+		snap.Votes = nil
+		snap.Tally = make(map[common.Address]Tally)
 	} else if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
 		// ##CROSS: istanbul posa
 		// Validators are managed by the system contract, we don't check the votes anymore
-		if sb.config.GetConfig(header.Number).OnNewValidatorEpoch(header.Number.Uint64()) {
+		if sb.config.OnNewValidatorEpoch(number) {
 			// Only update validator set at epoch boundaries
 			// Otherwise, keep the existing validator set from the snapshot
 			validators, signers, err := sb.Engine().ExtractValidators(header)
@@ -580,6 +585,13 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header *types.Header, chain c
 		}
 		// ##
 	} else {
+		// Remove any votes on checkpoint blocks
+		snap.Epoch = sb.config.GetConfig(header.Number).Epoch
+		if snap.Epoch > 0 && number%snap.Epoch == 0 {
+			snap.Votes = nil
+			snap.Tally = make(map[common.Address]Tally)
+		}
+
 		// Read vote from header
 		candidate, authorize, err := sb.Engine().ReadVote(header)
 		if err != nil {

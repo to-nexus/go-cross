@@ -879,7 +879,9 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		// ##CROSS: consensus system contract
 		if w.istanbulBackend != nil {
 			if gasReserved := w.istanbulBackend.EstimateGasForSystemTxs(w.chain, env.header); gasReserved > 0 {
-				env.gasPool.SubGas(gasReserved)
+				if err := env.gasPool.SubGas(gasReserved); err != nil {
+					return fmt.Errorf("failed to reserve gas for system transactions: %w", err)
+				}
 				log.Debug("Reserved gas for system transactions",
 					"number", env.header.Number.Uint64(),
 					"time", env.header.Time,
@@ -1191,7 +1193,10 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
 	}
-	body := types.Body{Transactions: work.txs, Withdrawals: params.withdrawals}
+	body := types.Body{Transactions: work.txs}
+	if !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
+		body.Withdrawals = params.withdrawals
+	}
 	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
 	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
@@ -1396,7 +1401,11 @@ func copyReceipts(receipts []*types.Receipt) []*types.Receipt {
 func totalFees(block *types.Block, receipts []*types.Receipt) *big.Int {
 	feesWei := new(big.Int)
 	for i, tx := range block.Transactions() {
-		minerFee, _ := tx.EffectiveGasTip(block.BaseFee())
+		minerFee, err := tx.EffectiveGasTip(block.BaseFee())
+		if err == types.ErrGasFeeCapTooLow {
+			// Ignore transactions with low gas fee. (maybe system transactions)
+			continue
+		}
 		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), minerFee))
 	}
 	return feesWei

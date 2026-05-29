@@ -341,7 +341,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 		// genesis will be used as default and the initialization will always fail.
 		if genesis == nil {
 			log.Info("Writing default main-net genesis block")
-			genesis = DefaultGenesisBlock()
+			genesis = DefaultCrossGenesisBlock()
 		} else {
 			log.Info("Writing custom genesis block")
 		}

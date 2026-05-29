@@ -43,7 +43,7 @@ func TestTryUpdateSystemContract(t *testing.T) {
 	})
 
 	t.Run("Breakpoint upgrade", func(t *testing.T) {
-		code := statedb.GetCode(ValidatorSetAddr)
+		code := statedb.GetCode(ValidatorSetImplAddr)
 		assert.Equal(t, common.FromHex(breakpoint.ValidatorSetMetaData.BinRuntime), code)
 		nonce := statedb.GetNonce(ValidatorSetAddr)
 		assert.Equal(t, uint64(1), nonce)
@@ -103,8 +103,6 @@ func TestInitSystemContract(t *testing.T) {
 		})
 	}
 
-	initialize := common.FromHex("8129fc1c")
-
 	tests := []struct {
 		name     string
 		fork     forks.Fork
@@ -123,7 +121,7 @@ func TestInitSystemContract(t *testing.T) {
 			expected: []ContractInitData{
 				{
 					To:   ValidatorSetAddr,
-					Data: breakpoint.NewValidatorSet().PackUpdateValidators(extra.Validators, signers),
+					Data: breakpoint.NewValidatorSet().PackInitialize(admin, extra.Validators, signers),
 				},
 				{
 					To:   StakeHubAddr,
@@ -135,7 +133,7 @@ func TestInitSystemContract(t *testing.T) {
 				},
 				{
 					To:   ValidatorSlashAddr,
-					Data: initialize,
+					Data: breakpoint.NewValidatorSlash().PackInitialize(admin),
 				},
 			},
 		},
