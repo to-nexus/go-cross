@@ -265,32 +265,33 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 }
 
 func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb vm.StateDB, writeLog bool) {
+	var logger log.Logger
+	if writeLog {
+		logger = log.Root()
+	} else {
+		logger = log.NewLogger(log.DiscardHandler())
+	}
+
 	if upgrade == nil {
-		if writeLog {
-			log.Info("Empty upgrade config", "blockNumber", header.Number.Uint64())
-		}
+		logger.Info("Empty upgrade config", "blockNumber", header.Number.Uint64())
 		return
 	}
 
-	if writeLog {
-		log.Info("Upgrading built-in contracts", "name", upgrade.UpgradeName, "blockNumber", header.Number.Uint64())
-	}
+	logger.Info("Upgrading built-in contracts", "name", upgrade.UpgradeName, "blockNumber", header.Number.Uint64())
 	for _, cfg := range upgrade.Configs {
 		deploy := !statedb.Exist(cfg.ContractAddr)
-		if writeLog {
-			if deploy {
-				log.Info("Deploy contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
-			} else {
-				log.Info("Upgrade contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
-			}
+		if deploy {
+			logger.Info("Deploy contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
+		} else {
+			logger.Info("Upgrade contract", "name", cfg.Name, "address", cfg.ContractAddr.String(), "commit", cfg.Commit)
 		}
 
 		// write code
 		prevCode := statedb.GetCode(cfg.ContractAddr)
 		newCode := parseCode(cfg)
 		if len(newCode) > 0 {
-			if writeLog && len(prevCode) > 0 {
-				log.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
+			if len(prevCode) > 0 {
+				logger.Warn("Overwriting existing code", "name", cfg.Name, "address", cfg.ContractAddr.String())
 			}
 			if deploy {
 				// If it is the first deployment, set the nonce to 1
@@ -302,9 +303,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 		// write storage
 		if len(cfg.Storage) > 0 {
 			for k, v := range cfg.Storage {
-				if writeLog {
-					log.Info("Writing storage slot", "name", cfg.Name, "address", cfg.ContractAddr.String(), "slot", k.String(), "value", v.String())
-				}
+				logger.Info("Writing storage slot", "name", cfg.Name, "address", cfg.ContractAddr.String(), "slot", k.String(), "value", v.String())
 				statedb.SetState(cfg.ContractAddr, k, v)
 			}
 		}
