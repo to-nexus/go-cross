@@ -32,7 +32,7 @@ func TestTryUpdateSystemContract(t *testing.T) {
 		Time:   forkTime + 1,
 	}
 
-	upgraded := TryUpdateSystemContract(config, header, forkTime-1, statedb)
+	upgraded := TryUpdateSystemContract(config, header, forkTime-1, statedb, false)
 	require.True(t, upgraded)
 
 	t.Run("Prague upgrade", func(t *testing.T) {
