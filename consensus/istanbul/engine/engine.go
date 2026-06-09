@@ -1401,8 +1401,8 @@ func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header
 		rules := evm.ChainConfig().Rules(evm.Context.BlockNumber, evm.Context.Random != nil, evm.Context.Time)
 		state.Prepare(rules, msg.From, evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
 	}
-	// Increment the nonce for the next transaction
-	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
+
+	nonce := state.GetNonce(msg.From)
 
 	ret, returnGas, err := evm.Call(
 		msg.From,
@@ -1421,6 +1421,10 @@ func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header
 			"value", msg.Value.String(),
 		)
 	}
+
+	// Increment the nonce only after the system call succeeds
+	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
+
 	return msg.GasLimit - returnGas, err
 }
 
