@@ -1301,11 +1301,14 @@ func (e *Engine) applySystemTransaction(
 		}
 	}
 
+	nonce := state.GetNonce(msg.From)
 	gasUsed, err := applySystemMessage(msg, evm, state, header)
 	if err != nil {
 		return err
 	}
 	*txs = append(*txs, tx)
+	// Increment the nonce only after the system call succeeds
+	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
 
 	// Update the state with pending changes.
 	var root []byte
@@ -1339,8 +1342,6 @@ func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header
 		state.Prepare(rules, msg.From, evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
 	}
 
-	nonce := state.GetNonce(msg.From)
-
 	ret, returnGas, err := evm.Call(
 		msg.From,
 		*msg.To,
@@ -1358,9 +1359,6 @@ func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header
 			"value", msg.Value.String(),
 		)
 	}
-
-	// Increment the nonce only after the system call succeeds
-	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
 
 	return msg.GasLimit - returnGas, err
 }
