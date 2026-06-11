@@ -1194,7 +1194,11 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 		}
 	}
 	body := types.Body{Transactions: work.txs}
-	if !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
+	if w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
+		if w.chainConfig.IsCancun(work.header.Number, work.header.Time) {
+			body.Withdrawals = types.Withdrawals{}
+		}
+	} else {
 		body.Withdrawals = params.withdrawals
 	}
 	// Collect consensus-layer requests if Prague is enabled.
