@@ -255,21 +255,32 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		checkedSystemTx bool
 	)
 	for idx, tx := range block.Transactions() {
-		// ##CROSS: contract upgrade
+		// ##CROSS: consensus system tx
+		var isSystemTx bool
+		if eth.istanbul != nil {
+			isSystemTx, _ = eth.istanbul.IsSystemTransaction(tx, block.Header())
+		}
 		// Upgrade system contract before the first system transaction if the block is at upgrade point.
-		if !checkedSystemTx {
-			if eth.istanbul != nil {
-				if isSystemTx, _ := eth.istanbul.IsSystemTransaction(tx, block.Header()); isSystemTx {
-					_ = contracts.TryUpdateSystemContract(eth.blockchain.Config(), block.Header(), parent.Time(), statedb, false)
-					checkedSystemTx = true
-				}
-			}
+		if isSystemTx && !checkedSystemTx {
+			_ = contracts.TryUpdateSystemContract(eth.blockchain.Config(), block.Header(), parent.Time(), statedb, false)
+			checkedSystemTx = true
 		}
 		// ##
 
 		if idx == txIndex {
 			return tx, context, statedb, release, nil
 		}
+
+		// ##CROSS: consensus system tx
+		// System transactions are replayed through the consensus execution path.
+		if isSystemTx {
+			if err := eth.istanbul.ApplySystemTransaction(evm, block.Header(), tx, idx); err != nil {
+				return nil, vm.BlockContext{}, nil, nil, fmt.Errorf("system transaction %#x failed: %v", tx.Hash(), err)
+			}
+			continue
+		}
+		// ##
+
 		// Assemble the transaction call message and return if the requested offset
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 
