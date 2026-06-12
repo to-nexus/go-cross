@@ -376,6 +376,10 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 	if policy == nil || policy.Id != istanbul.RoundRobin {
 		return nil, nil
 	}
+	// ##CROSS: validator sort policy
+	// Validators are sorted by byte
+	policy = istanbul.NewProposerPolicyByIdAndSortFunc(policy.Id, istanbul.ValidatorSortByByte())
+	// ##
 
 	extra, err := types.ExtractIstanbulExtra(header)
 	if err != nil {

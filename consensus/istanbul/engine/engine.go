@@ -1314,6 +1314,9 @@ func (e *Engine) applyReceivedSystemTransaction(
 
 	actualTx := (*systemTxs)[0]
 	if !bytes.Equal(signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
+		expectedJson, _ := expectedTx.MarshalJSON()
+		actualJson, _ := actualTx.MarshalJSON()
+		log.Error("system tx mismatch", "expected", string(expectedJson), "actual", string(actualJson))
 		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
 			expectedHash.String(),
 			actualTx.Hash().String(),
