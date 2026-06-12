@@ -1345,16 +1345,53 @@ func (e *Engine) applySystemTransaction(
 	receipts *[]*types.Receipt,
 	usedGas *uint64,
 	tracer *tracing.Hooks,
-) (err error) {
-	state.SetTxContext(tx.Hash(), len(*txs))
-
+) error {
 	context := core.NewEVMBlockContext(header, chainContext, &author)
 	evm := vm.NewEVM(context, state, chainContext.Config(), vm.Config{Tracer: tracer})
-	evm.SetTxContext(core.NewEVMTxContext(msg))
-	evm.StateDB.AddAddressToAccessList(*msg.To)
 
-	var receipt *types.Receipt
-	if tracer != nil {
+	receipt, err := executeSystemTransaction(evm, msg, tx, header, len(*txs), usedGas)
+	if err != nil {
+		return err
+	}
+	*txs = append(*txs, tx)
+	*receipts = append(*receipts, receipt)
+	return nil
+}
+
+// ApplySystemTransaction re-applies a system transaction on the given EVM using consensus execution semantics.
+// It is intended for historical state reconstruction and tracing; callers must check IsSystemTransaction beforehand.
+func (e *Engine) ApplySystemTransaction(evm *vm.EVM, header *types.Header, tx *types.Transaction, txIndex int) error {
+	from, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	if err != nil {
+		return err
+	}
+	// The transaction was validated against the expected message at import time,
+	// so the message can be reconstructed from the transaction fields directly.
+	msg := &core.Message{
+		From:     from,
+		To:       tx.To(),
+		GasLimit: tx.Gas(),
+		GasPrice: tx.GasPrice(),
+		Value:    tx.Value(),
+		Data:     tx.Data(),
+	}
+	// Used gas of the block is not tracked during replay.
+	// The receipt built for tracer hooks reports only the gas used by this call.
+	var usedGas uint64
+	_, err = executeSystemTransaction(evm, msg, tx, header, txIndex, &usedGas)
+	return err
+}
+
+// executeSystemTransaction executes a system transaction message on the given EVM with consensus execution semantics.
+// The gas used is added to usedGas and a receipt built from it is returned.
+// This is the single execution path shared by block finalization and historical replay/tracing.
+func executeSystemTransaction(evm *vm.EVM, msg *core.Message, tx *types.Transaction, header *types.Header, txIndex int, usedGas *uint64) (receipt *types.Receipt, err error) {
+	state := evm.StateDB
+	state.SetTxContext(tx.Hash(), txIndex)
+	evm.SetTxContext(core.NewEVMTxContext(msg))
+	state.AddAddressToAccessList(*msg.To)
+
+	if tracer := evm.Config.Tracer; tracer != nil {
 		onSystemCallStart(tracer, evm.GetVMContext())
 		if tracer.OnTxStart != nil {
 			tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
@@ -1370,10 +1407,9 @@ func (e *Engine) applySystemTransaction(
 	nonce := state.GetNonce(msg.From)
 	gasUsed, err := applySystemMessage(msg, evm, state, header)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	*txs = append(*txs, tx)
-	// Increment the nonce only after the system call succeeds
+	// Increment the nonce only after the system call succeeds.
 	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
 
 	// Update the state with pending changes.
@@ -1397,8 +1433,7 @@ func (e *Engine) applySystemTransaction(
 	receipt.BlockHash = header.Hash()
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(state.TxIndex())
-	*receipts = append(*receipts, receipt)
-	return
+	return receipt, nil
 }
 
 func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header *types.Header) (uint64, error) {
