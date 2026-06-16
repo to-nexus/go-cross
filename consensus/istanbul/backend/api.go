@@ -46,9 +46,14 @@ type Status struct {
 	NumBlocks     uint64                 `json:"numBlocks"`
 }
 
-// NodeAddress returns the public address that is used to sign block headers in IBFT
+// NodeAddress returns the public address that is used to sign block headers before Breakpoint hardfork.
 func (api *API) NodeAddress() common.Address {
 	return api.backend.Address()
+}
+
+// SignerAddress returns the BLS public key that is used to sign block headers after Breakpoint hardfork.
+func (api *API) SignerAddress() types.BLSPublicKey {
+	return api.backend.SignerAddress()
 }
 
 // GetSignersFromBlock returns the signers and minter for a given block number, or the

@@ -129,6 +129,11 @@ func (sb *Backend) Address() common.Address {
 	return sb.Engine().Address()
 }
 
+// SignerAddress returns BLS public key.
+func (sb *Backend) SignerAddress() types.BLSPublicKey {
+	return types.BytesToBLSPublicKey(sb.blsSecretKey.PublicKey().Marshal())
+}
+
 // Validators implements istanbul.Backend.Validators
 func (sb *Backend) Validators(proposal istanbul.Proposal) istanbul.ValidatorSet {
 	return sb.getValidators(proposal.Number().Uint64(), proposal.Hash())

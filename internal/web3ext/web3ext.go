@@ -851,6 +851,10 @@ web3._extend({
 			name: 'nodeAddress',
 			getter: 'istanbul_nodeAddress'
 		}),
+		new web3._extend.Property({
+			name: 'signerAddress',
+			getter: 'istanbul_signerAddress'
+		}),
 	]
 });
 `
