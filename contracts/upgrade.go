@@ -227,7 +227,7 @@ func init() {
 	// Contract patches for testnet
 	upgrades[forks.BreakpointAlpha] = make(map[uint64]*Upgrade)
 	upgrades[forks.BreakpointAlpha][params.ZoneZeroChainConfig.ChainID.Uint64()] = &Upgrade{
-		UpgradeName: forks.Breakpoint.String(),
+		UpgradeName: forks.BreakpointAlpha.String(),
 		Configs: []*UpgradeConfig{
 			// ##CROSS: consensus system contract
 			{
