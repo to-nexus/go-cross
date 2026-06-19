@@ -48,16 +48,25 @@ var _ consensus.Engine = (*Backend)(nil)
 // ##CROSS: consensus system contract
 var _ consensus.IstanbulEngine = (*Backend)(nil)
 
+// IsSystemTransaction checks if the transaction is a system transaction,
+// which is a legacy transaction to a system contract with gas price 0 and sender is the block proposer.
 func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
 	return sb.Engine().IsSystemTransaction(tx, header)
 }
 
+// IsSystemContract checks if the address is a system contract.
 func (sb *Backend) IsSystemContract(to *common.Address) bool {
 	return sb.Engine().IsSystemContract(to)
 }
 
+// EstimateGasForSystemTxs estimates the gas cost for system transactions in the given block.
 func (sb *Backend) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
 	return sb.Engine().EstimateGasForSystemTxs(chain, header)
+}
+
+// ApplySystemTransaction re-applies a system transaction using consensus execution semantics.
+func (sb *Backend) ApplySystemTransaction(evm *vm.EVM, header *types.Header, tx *types.Transaction, txIndex int) error {
+	return sb.Engine().ApplySystemTransaction(evm, header, tx, txIndex)
 }
 
 // ##

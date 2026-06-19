@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"math"
 	"math/big"
 	"testing"
 
@@ -11,9 +12,16 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +75,83 @@ func TestIsSystemTransaction(t *testing.T) {
 	isSystemTx, err = IsSystemTransaction(dynamicFeeTx, header)
 	require.NoError(t, err)
 	assert.False(t, isSystemTx)
+}
+
+// newTestStateDB creates an empty in-memory state database for testing.
+func newTestStateDB(t *testing.T) *state.StateDB {
+	t.Helper()
+	memdb := rawdb.NewMemoryDatabase()
+	tdb := triedb.NewDatabase(memdb, nil)
+	sdb := state.NewDatabase(tdb, nil)
+	statedb, err := state.New(types.EmptyRootHash, sdb)
+	require.NoError(t, err)
+	return statedb
+}
+
+// TestApplySystemTransaction verifies that replaying a system transaction keeps
+// consensus execution semantics and results in the same state as the consensus path.
+func TestApplySystemTransaction(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	var (
+		sender      = crypto.PubkeyToAddress(key.PublicKey)
+		to          = contracts.ValidatorSetAddr
+		value       = big.NewInt(100)
+		data        = []byte("system call data")
+		chainConfig = params.TestChainConfig
+		signer      = types.LatestSignerForChainID(chainConfig.ChainID)
+		funds       = uint256.NewInt(1_000_000)
+	)
+	header := &types.Header{
+		Number:     big.NewInt(100),
+		Coinbase:   sender,
+		BaseFee:    big.NewInt(1_000_000_000), // non-zero to prove no fee is charged
+		GasLimit:   10_000_000,
+		Difficulty: big.NewInt(0),
+		Time:       1_000_000_000,
+	}
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(0),
+		Gas:      math.MaxUint64 / 2,
+		To:       &to,
+		Value:    value,
+		Data:     data,
+	})
+	isSystemTx, err := IsSystemTransaction(tx, header)
+	require.NoError(t, err)
+	require.True(t, isSystemTx)
+
+	// Replay the transaction with consensus execution semantics
+	replayDB := newTestStateDB(t)
+	replayDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
+	blockCtx := core.NewEVMBlockContext(header, &chainMock{config: chainConfig}, &header.Coinbase)
+	evm := vm.NewEVM(blockCtx, replayDB, chainConfig, vm.Config{})
+
+	engine := &Engine{}
+	require.NoError(t, engine.ApplySystemTransaction(evm, header, tx, 0))
+
+	// No intrinsic gas or fee is charged; only the value is transferred
+	assert.Equal(t, uint64(1), replayDB.GetNonce(sender))
+	assert.Equal(t, uint256.NewInt(100), replayDB.GetBalance(to))
+	assert.Equal(t, new(uint256.Int).Sub(funds, uint256.NewInt(100)), replayDB.GetBalance(sender))
+
+	// Apply the same transaction through the consensus path and compare the state
+	consensusDB := newTestStateDB(t)
+	consensusDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
+	var (
+		txs      []*types.Transaction
+		receipts []*types.Receipt
+		usedGas  uint64
+	)
+	msg := newSystemMessage(sender, to, data, value)
+	err = engine.applySystemTransaction(msg, tx, consensusDB, header, &chainMock{config: chainConfig}, header.Coinbase, &txs, &receipts, &usedGas, nil)
+	require.NoError(t, err)
+
+	// Both state should be equal
+	deleteEmptyObjects := chainConfig.IsEIP158(header.Number)
+	assert.Equal(t, consensusDB.IntermediateRoot(deleteEmptyObjects), replayDB.IntermediateRoot(deleteEmptyObjects))
 }
 
 // ##

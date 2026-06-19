@@ -276,11 +276,9 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				)
 				// Trace all the transactions contained within
 				for i, tx := range task.block.Transactions() {
-					// ##CROSS: contract upgrade
-					// Upgrade system contract before the first system transaction if the block is at upgrade point.
-					if !checkedSystemTx {
-						checkedSystemTx = api.tryUpdateSystemContract(tx, task.block.Header(), task.parent.Time(), task.statedb)
-					}
+					// ##CROSS: consensus system tx
+					// Upgrade system contracts on the first system transaction if the block is at upgrade point.
+					api.checkSystemTransaction(tx, task.block.Header(), task.parent.Time(), task.statedb, &checkedSystemTx)
 					// ##
 
 					msg, _ := core.TransactionToMessage(tx, signer, task.block.BaseFee())
@@ -290,7 +288,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 						TxIndex:     i,
 						TxHash:      tx.Hash(),
 					}
-					res, err := api.traceTx(ctx, tx, msg, txctx, blockCtx, task.statedb, config, nil)
+					res, err := api.traceTx(ctx, tx, msg, txctx, blockCtx, task.block.Header(), task.statedb, config, nil)
 					if err != nil {
 						task.results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
 						log.Warn("Tracing failed", "hash", tx.Hash(), "block", task.block.NumberU64(), "err", err)
@@ -561,10 +559,14 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 			return nil, err
 		}
 
-		// ##CROSS: contract upgrade
-		// Upgrade system contract before the first system transaction if the block is at upgrade point.
-		if !checkedSystemTx {
-			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
+		// ##CROSS: consensus system tx
+		if api.checkSystemTransaction(tx, block.Header(), parent.Time(), statedb, &checkedSystemTx) {
+			if err := api.applySystemTransaction(evm, block.Header(), tx, i); err != nil {
+				log.Warn("Tracing intermediate roots did not complete", "txindex", i, "txhash", tx.Hash(), "err", err)
+				return roots, nil
+			}
+			roots = append(roots, statedb.IntermediateRoot(deleteEmptyObjects))
+			continue
 		}
 		// ##
 
@@ -646,11 +648,9 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 		checkedSystemTx bool
 	)
 	for i, tx := range txs {
-		// ##CROSS: contract upgrade
-		// Upgrade system contract before the first system transaction if the block is at upgrade point.
-		if !checkedSystemTx {
-			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
-		}
+		// ##CROSS: consensus system tx
+		// Upgrade system contracts on the first system transaction if the block is at upgrade point.
+		api.checkSystemTransaction(tx, block.Header(), parent.Time(), statedb, &checkedSystemTx)
 		// ##
 
 		// Generate the next state snapshot fast without tracing
@@ -661,7 +661,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 			TxIndex:     i,
 			TxHash:      tx.Hash(),
 		}
-		res, err := api.traceTx(ctx, tx, msg, txctx, blockCtx, statedb, config, nil)
+		res, err := api.traceTx(ctx, tx, msg, txctx, blockCtx, block.Header(), statedb, config, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -705,7 +705,7 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 				// concurrent use.
 				// See: https://github.com/ethereum/go-ethereum/issues/29114
 				blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-				res, err := api.traceTx(ctx, txs[task.index], msg, txctx, blockCtx, task.statedb, config, nil)
+				res, err := api.traceTx(ctx, txs[task.index], msg, txctx, blockCtx, block.Header(), task.statedb, config, nil)
 				if err != nil {
 					results[task.index] = &txTraceResult{TxHash: txs[task.index].Hash(), Error: err.Error()}
 					continue
@@ -730,11 +730,9 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 
 txloop:
 	for i, tx := range txs {
-		// ##CROSS: contract upgrade
-		// Upgrade system contract before the first system transaction if the block is at upgrade point.
-		if !checkedSystemTx {
-			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
-		}
+		// ##CROSS: consensus system tx
+		// Detect system transactions and upgrade system contracts on the first one if the block is at upgrade point.
+		isSystemTx := api.checkSystemTransaction(tx, block.Header(), parent.Time(), statedb, &checkedSystemTx)
 		// ##
 
 		// Send the trace task over for execution
@@ -745,6 +743,16 @@ txloop:
 			break txloop
 		case jobs <- task:
 		}
+
+		// ##CROSS: consensus system tx
+		if isSystemTx {
+			if err := api.applySystemTransaction(evm, block.Header(), tx, i); err != nil {
+				failed = err
+				break txloop
+			}
+			continue
+		}
+		// ##
 
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
@@ -832,15 +840,23 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		core.ProcessParentBlockHash(block.ParentHash(), evm)
 	}
 	for i, tx := range block.Transactions() {
-		// ##CROSS: contract upgrade
-		if !checkedSystemTx {
-			checkedSystemTx = api.tryUpdateSystemContract(tx, block.Header(), parent.Time(), statedb)
-		}
+		// ##CROSS: consensus system tx
+		// Detect system transactions and upgrade system contracts on the first one if the block is at upgrade point.
+		isSystemTx := api.checkSystemTransaction(tx, block.Header(), parent.Time(), statedb, &checkedSystemTx)
 		// ##
 
 		// Prepare the transaction for un-traced execution
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if txHash != (common.Hash{}) && tx.Hash() != txHash {
+			// ##CROSS: consensus system tx
+			if isSystemTx {
+				if err := api.applySystemTransaction(evm, block.Header(), tx, i); err != nil {
+					return dumps, err
+				}
+				continue
+			}
+			// ##
+
 			// Process the tx to update state, but don't trace it.
 			_, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
 			if err != nil {
@@ -874,10 +890,16 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		)
 		// Execute the transaction and flush any traces to disk
 		statedb.SetTxContext(tx.Hash(), i)
-		if tracer.OnTxStart != nil {
-			tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+		// ##CROSS: consensus system tx
+		if isSystemTx {
+			err = api.applySystemTransaction(evm, block.Header(), tx, i)
+		} else {
+			if tracer.OnTxStart != nil {
+				tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+			}
+			_, err = core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		}
-		_, err = core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
+		// ##
 		if writer != nil {
 			writer.Flush()
 		}
@@ -951,7 +973,7 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 		TxIndex:     int(index),
 		TxHash:      hash,
 	}
-	return api.traceTx(ctx, tx, msg, txctx, vmctx, statedb, config, nil)
+	return api.traceTx(ctx, tx, msg, txctx, vmctx, block.Header(), statedb, config, nil)
 }
 
 // TraceCall lets you trace a given eth_call. It collects the structured logs
@@ -1037,13 +1059,15 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	if config != nil {
 		traceConfig = &config.TraceConfig
 	}
-	return api.traceTx(ctx, tx, msg, new(Context), vmctx, statedb, traceConfig, precompiles)
+	// Don't pass the header; always traced as regular messages.
+	return api.traceTx(ctx, tx, msg, new(Context), vmctx, nil, statedb, traceConfig, precompiles)
 }
 
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
-func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *core.Message, txctx *Context, vmctx vm.BlockContext, statedb *state.StateDB, config *TraceConfig, precompiles vm.PrecompiledContracts) (interface{}, error) {
+// If header is given, it tries to handle the system transaction.
+func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *core.Message, txctx *Context, vmctx vm.BlockContext, header *types.Header, statedb *state.StateDB, config *TraceConfig, precompiles vm.PrecompiledContracts) (interface{}, error) {
 	var (
 		tracer  *Tracer
 		err     error
@@ -1089,6 +1113,20 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 		}
 	}()
 	defer cancel()
+
+	// ##CROSS: consensus system tx
+	// If it is the system transaction, execute through the consensus path.
+	if header != nil {
+		if ie := consensus.ToIstanbulEngine(api.backend.Engine()); ie != nil {
+			if isSystemTx, _ := ie.IsSystemTransaction(tx, header); isSystemTx {
+				if err := ie.ApplySystemTransaction(evm, header, tx, txctx.TxIndex); err != nil {
+					return nil, fmt.Errorf("tracing failed: %w", err)
+				}
+				return tracer.GetResult()
+			}
+		}
+	}
+	// ##
 
 	// Call Prepare to clear out the statedb access list
 	statedb.SetTxContext(txctx.TxHash, txctx.TxIndex)
@@ -1163,15 +1201,30 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 	return copy, canon
 }
 
-// ##CROSS: contract upgrade
-func (api *API) tryUpdateSystemContract(tx *types.Transaction, header *types.Header, parentTime uint64, statedb *state.StateDB) bool {
-	if ie := consensus.ToIstanbulEngine(api.backend.Engine()); ie != nil {
-		if isSystemTx, _ := ie.IsSystemTransaction(tx, header); isSystemTx {
-			_ = contracts.TryUpdateSystemContract(api.backend.ChainConfig(), header, parentTime, statedb, false)
-			return true
-		}
+// ##CROSS: consensus system tx
+
+// checkSystemTransaction reports whether tx is a system transaction.
+// On the first system transaction of a block, it also upgrades the system contracts if the block is at an upgrade point.
+func (api *API) checkSystemTransaction(tx *types.Transaction, header *types.Header, parentTime uint64, statedb *state.StateDB, checkedSystemTx *bool) bool {
+	ie := consensus.ToIstanbulEngine(api.backend.Engine())
+	if ie == nil {
+		return false
 	}
-	return false
+	isSystemTx, _ := ie.IsSystemTransaction(tx, header)
+	if isSystemTx && !*checkedSystemTx {
+		_ = contracts.TryUpdateSystemContract(api.backend.ChainConfig(), header, parentTime, statedb, false)
+		*checkedSystemTx = true
+	}
+	return isSystemTx
+}
+
+// applySystemTransaction re-applies a system transaction with consensus execution semantics.
+func (api *API) applySystemTransaction(evm *vm.EVM, header *types.Header, tx *types.Transaction, txIndex int) error {
+	ie := consensus.ToIstanbulEngine(api.backend.Engine())
+	if ie == nil {
+		return errors.New("system transaction replay requires an istanbul engine")
+	}
+	return ie.ApplySystemTransaction(evm, header, tx, txIndex)
 }
 
 // ##

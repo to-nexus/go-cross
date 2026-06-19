@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -223,6 +224,55 @@ func init() {
 			// ##
 		},
 	}
+	// Contract patches for testnet
+	upgrades[forks.BreakpointAlpha] = make(map[uint64]*Upgrade)
+	upgrades[forks.BreakpointAlpha][params.ZoneZeroChainConfig.ChainID.Uint64()] = &Upgrade{
+		UpgradeName: forks.BreakpointAlpha.String(),
+		Configs: []*UpgradeConfig{
+			// ##CROSS: consensus system contract
+			{
+				Name:         "ValidatorSetImpl",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSetImplAddr,
+				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
+				Storage: map[common.Hash]common.Hash{
+					initializableSlot: initializedData,
+				},
+			},
+			{
+				Name:         "ValidatorSetProxy",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSetAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Storage: map[common.Hash]common.Hash{
+					implementationSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
+					common.HexToHash("0x86f0e39a3c4d21deb4b9249c3b1ec8d10355c59608a22092a826f5aa57331300"): common.BytesToHash(params.ZoneZeroPoSAConfig.Admin.Bytes()),
+				},
+			},
+			{
+				Name:         "ValidatorSlashImpl",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSlashImplAddr,
+				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
+				Storage: map[common.Hash]common.Hash{
+					initializableSlot: initializedData,
+				},
+			},
+			{
+				Name:         "ValidatorSlashProxy",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSlashAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Storage: map[common.Hash]common.Hash{
+					implementationSlot:      common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
+					common.HexToHash("0x4"): common.BytesToHash(new(big.Int).SetUint64(4).Bytes()),
+					common.HexToHash("0x5"): common.BytesToHash(new(big.Int).SetUint64(50).Bytes()),
+					common.HexToHash("0x86f0e39a3c4d21deb4b9249c3b1ec8d10355c59608a22092a826f5aa57331300"): common.BytesToHash(params.ZoneZeroPoSAConfig.Admin.Bytes()),
+				},
+			},
+			// ##
+		},
+	}
 }
 
 func getUpgrade(fork forks.Fork, chainID uint64) *Upgrade {
@@ -246,6 +296,10 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
 		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb, writeLog)
+		upgraded = true
+	}
+	if config.IsOnBreakpointAlpha(header.Number, lastBlockTime, header.Time) {
+		applySystemContractUpgrade(getUpgrade(forks.BreakpointAlpha, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
 	return

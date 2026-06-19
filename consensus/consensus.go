@@ -167,6 +167,10 @@ type IstanbulEngine interface {
 	// EstimateGasForSystemTxs estimates the gas cost for system transactions in the given block.
 	EstimateGasForSystemTxs(ChainHeaderReader, *types.Header) uint64
 
+	// ApplySystemTransaction re-applies a system transaction on the given EVM using consensus execution semantics.
+	// It is intended for historical state reconstruction and tracing; callers must check IsSystemTransaction beforehand.
+	ApplySystemTransaction(evm *vm.EVM, header *types.Header, tx *types.Transaction, txIndex int) error
+
 	// ValidatorsAt returns the validator addresses at the given block number.
 	ValidatorsAt(ChainHeaderReader, *types.Header) []common.Address // ##CROSS: istanbul posa
 	// ##

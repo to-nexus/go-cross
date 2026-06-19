@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -262,13 +261,11 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	// verify the header of proposed block
 	err := e.VerifyHeader(chain, block.Header(), nil, validators)
-	if err == nil || err == istanbul.ErrEmptyCommittedSeals { // ignore errEmptyCommittedSeals error because we don't have the committed seals yet
-		// ##CROSS: bad block mitigation
-		// Verify the transactions in the proposed block
-		if err := e.verifyProposalTransactions(chain, block); err != nil {
-			return 0, err
-		}
-		// ##
+	if err == nil || err == istanbul.ErrEmptyCommittedSeals {
+		// ignore errEmptyCommittedSeals error because we don't have the committed seals yet
+		// TODO e.verifyBlockProposalTransactions() should implemented again.
+		// Old verification was too strict and caused liveness problem,
+		// so it was removed for safety temporarily.
 		return 0, nil
 	} else if err == consensus.ErrFutureBlock {
 		return time.Until(time.Unix(int64(block.Header().Time), 0)), consensus.ErrFutureBlock
@@ -285,55 +282,6 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	return 0, err
 }
-
-// ##CROSS: bad block mitigation
-// verifyProposalTransactions carries out the basic validation of the transactions in the proposed block.
-func (e *Engine) verifyProposalTransactions(chain consensus.ChainHeaderReader, block *types.Block) error {
-	header := block.Header()
-	signer := types.MakeSigner(chain.Config(), header.Number, header.Time)
-	opts := &txpool.ValidationOptions{
-		Config: chain.Config(),
-		Accept: 0 |
-			1<<types.LegacyTxType |
-			1<<types.AccessListTxType |
-			1<<types.DynamicFeeTxType |
-			1<<types.FeeDelegatedDynamicFeeTxType |
-			1<<types.SetCodeTxType,
-		MaxSize: math.MaxUint64,
-		MinTip:  common.Big0,
-	}
-
-	var (
-		usedGas      uint64
-		seenSystemTx bool
-	)
-	for i, tx := range block.Transactions() {
-		isSystemTx, err := e.IsSystemTransaction(tx, header)
-		if err != nil {
-			return fmt.Errorf("invalid system transaction %d [%v]: %w", i, tx.Hash(), err)
-		}
-		if isSystemTx {
-			seenSystemTx = true
-			continue
-		}
-		if seenSystemTx {
-			return fmt.Errorf("normal tx %d [%v] after system transaction", i, tx.Hash())
-		}
-		if err := txpool.ValidateTransaction(tx, header, signer, opts); err != nil {
-			return fmt.Errorf("invalid transaction %d [%v]: %w", i, tx.Hash(), err)
-		}
-		if header.BaseFee != nil && chain.Config().IsLondon(header.Number) && tx.GasFeeCapIntCmp(header.BaseFee) < 0 {
-			return fmt.Errorf("invalid transaction %d [%v]: %w: maxFeePerGas %s, baseFee %s", i, tx.Hash(), core.ErrFeeCapTooLow, tx.GasFeeCap(), header.BaseFee)
-		}
-		if tx.Gas() > header.GasLimit-usedGas {
-			return fmt.Errorf("transactions gas exceeds block gas limit at tx %d [%v]: used %d, tx gas %d, limit %d", i, tx.Hash(), usedGas, tx.Gas(), header.GasLimit)
-		}
-		usedGas += tx.Gas()
-	}
-	return nil
-}
-
-// ##
 
 // VerifyHeader verifies the header of the block.
 func (e *Engine) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {
@@ -1345,16 +1293,53 @@ func (e *Engine) applySystemTransaction(
 	receipts *[]*types.Receipt,
 	usedGas *uint64,
 	tracer *tracing.Hooks,
-) (err error) {
-	state.SetTxContext(tx.Hash(), len(*txs))
-
+) error {
 	context := core.NewEVMBlockContext(header, chainContext, &author)
 	evm := vm.NewEVM(context, state, chainContext.Config(), vm.Config{Tracer: tracer})
-	evm.SetTxContext(core.NewEVMTxContext(msg))
-	evm.StateDB.AddAddressToAccessList(*msg.To)
 
-	var receipt *types.Receipt
-	if tracer != nil {
+	receipt, err := executeSystemTransaction(evm, msg, tx, header, len(*txs), usedGas)
+	if err != nil {
+		return err
+	}
+	*txs = append(*txs, tx)
+	*receipts = append(*receipts, receipt)
+	return nil
+}
+
+// ApplySystemTransaction re-applies a system transaction on the given EVM using consensus execution semantics.
+// It is intended for historical state reconstruction and tracing; callers must check IsSystemTransaction beforehand.
+func (e *Engine) ApplySystemTransaction(evm *vm.EVM, header *types.Header, tx *types.Transaction, txIndex int) error {
+	from, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	if err != nil {
+		return err
+	}
+	// The transaction was validated against the expected message at import time,
+	// so the message can be reconstructed from the transaction fields directly.
+	msg := &core.Message{
+		From:     from,
+		To:       tx.To(),
+		GasLimit: tx.Gas(),
+		GasPrice: tx.GasPrice(),
+		Value:    tx.Value(),
+		Data:     tx.Data(),
+	}
+	// Used gas of the block is not tracked during replay.
+	// The receipt built for tracer hooks reports only the gas used by this call.
+	var usedGas uint64
+	_, err = executeSystemTransaction(evm, msg, tx, header, txIndex, &usedGas)
+	return err
+}
+
+// executeSystemTransaction executes a system transaction message on the given EVM with consensus execution semantics.
+// The gas used is added to usedGas and a receipt built from it is returned.
+// This is the single execution path shared by block finalization and historical replay/tracing.
+func executeSystemTransaction(evm *vm.EVM, msg *core.Message, tx *types.Transaction, header *types.Header, txIndex int, usedGas *uint64) (receipt *types.Receipt, err error) {
+	state := evm.StateDB
+	state.SetTxContext(tx.Hash(), txIndex)
+	evm.SetTxContext(core.NewEVMTxContext(msg))
+	state.AddAddressToAccessList(*msg.To)
+
+	if tracer := evm.Config.Tracer; tracer != nil {
 		onSystemCallStart(tracer, evm.GetVMContext())
 		if tracer.OnTxStart != nil {
 			tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
@@ -1370,10 +1355,9 @@ func (e *Engine) applySystemTransaction(
 	nonce := state.GetNonce(msg.From)
 	gasUsed, err := applySystemMessage(msg, evm, state, header)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	*txs = append(*txs, tx)
-	// Increment the nonce only after the system call succeeds
+	// Increment the nonce only after the system call succeeds.
 	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
 
 	// Update the state with pending changes.
@@ -1397,8 +1381,7 @@ func (e *Engine) applySystemTransaction(
 	receipt.BlockHash = header.Hash()
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(state.TxIndex())
-	*receipts = append(*receipts, receipt)
-	return
+	return receipt, nil
 }
 
 func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header *types.Header) (uint64, error) {

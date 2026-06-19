@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -683,6 +684,9 @@ func (m *mockIstanbulEngine) EstimateGasForSystemTxs(chain consensus.ChainHeader
 }
 func (m *mockIstanbulEngine) ValidatorsAt(chain consensus.ChainHeaderReader, header *types.Header) []common.Address {
 	return append([]common.Address(nil), m.validators...)
+}
+func (m *mockIstanbulEngine) ApplySystemTransaction(evm *vm.EVM, header *types.Header, tx *types.Transaction, txIndex int) error {
+	return nil
 }
 
 // createHeaderWithIstanbulExtra creates a header with Istanbul extra data
