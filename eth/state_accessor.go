@@ -275,7 +275,7 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		// System transactions are replayed through the consensus execution path.
 		if isSystemTx {
 			if err := eth.istanbul.ApplySystemTransaction(evm, block.Header(), tx, idx); err != nil {
-				return nil, vm.BlockContext{}, nil, nil, fmt.Errorf("system transaction %#x failed: %v", tx.Hash(), err)
+				return nil, vm.BlockContext{}, nil, nil, fmt.Errorf("system transaction %#x failed: %w", tx.Hash(), err)
 			}
 			continue
 		}

@@ -263,6 +263,9 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 	err := e.VerifyHeader(chain, block.Header(), nil, validators)
 	if err == nil || err == istanbul.ErrEmptyCommittedSeals {
 		// ignore errEmptyCommittedSeals error because we don't have the committed seals yet
+		// TODO e.verifyBlockProposalTransactions() should implemented again.
+		// Old verification was too strict and caused liveness problem,
+		// so it was removed for safety temporarily.
 		return 0, nil
 	} else if err == consensus.ErrFutureBlock {
 		return time.Until(time.Unix(int64(block.Header().Time), 0)), consensus.ErrFutureBlock

@@ -131,6 +131,9 @@ func (sb *Backend) Address() common.Address {
 
 // SignerAddress returns BLS public key.
 func (sb *Backend) SignerAddress() types.BLSPublicKey {
+	if sb.blsSecretKey == nil {
+		return types.BLSPublicKey{}
+	}
 	return types.BytesToBLSPublicKey(sb.blsSecretKey.PublicKey().Marshal())
 }
 
