@@ -112,6 +112,7 @@ var (
 		CancunTime:              newUint64(1778814000), // 2026-05-15 03:00:00 UTC
 		PragueTime:              newUint64(1778814000),
 		BreakpointTime:          newUint64(1778814000), // ##CROSS: fork breakpoint
+		BreakpointAlphaTime:     newUint64(1781240400), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -611,13 +612,14 @@ type ChainConfig struct {
 
 	// Fork scheduling was switched from blocks to timestamps here
 
-	ShanghaiTime   *uint64 `json:"shanghaiTime,omitempty"`   // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	AdventureTime  *uint64 `json:"adventureTime,omitempty"`  // Adventure switch time (nil = no fork, 0 = already on adventure) ##CROSS: fork adventure
-	CancunTime     *uint64 `json:"cancunTime,omitempty"`     // Cancun switch time (nil = no fork, 0 = already on cancun)
-	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
-	BreakpointTime *uint64 `json:"breakpointTime,omitempty"` // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
-	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
-	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
+	ShanghaiTime        *uint64 `json:"shanghaiTime,omitempty"`        // Shanghai switch time (nil = no fork, 0 = already on shanghai)
+	AdventureTime       *uint64 `json:"adventureTime,omitempty"`       // Adventure switch time (nil = no fork, 0 = already on adventure) ##CROSS: fork adventure
+	CancunTime          *uint64 `json:"cancunTime,omitempty"`          // Cancun switch time (nil = no fork, 0 = already on cancun)
+	PragueTime          *uint64 `json:"pragueTime,omitempty"`          // Prague switch time (nil = no fork, 0 = already on prague)
+	BreakpointTime      *uint64 `json:"breakpointTime,omitempty"`      // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
+	BreakpointAlphaTime *uint64 `json:"breakpointAlphaTime,omitempty"` // BreakpointAlpha switch time (nil = no fork, 0 = already on breakpoint-alpha) ##CROSS: fork breakpoint
+	OsakaTime           *uint64 `json:"osakaTime,omitempty"`           // Osaka switch time (nil = no fork, 0 = already on osaka)
+	VerkleTime          *uint64 `json:"verkleTime,omitempty"`          // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
@@ -711,6 +713,9 @@ func (c *ChainConfig) Description() string {
 	// ##CROSS: fork breakpoint
 	if c.BreakpointTime != nil {
 		banner += printFork("Breakpoint", c.BreakpointTime)
+	}
+	if c.BreakpointAlphaTime != nil {
+		banner += printFork("BreakpointAlpha", c.BreakpointAlphaTime)
 	}
 	// ##
 	if c.OsakaTime != nil {
@@ -870,6 +875,20 @@ func (c *ChainConfig) IsOnBreakpoint(currentBlockNumber *big.Int, lastBlockTime 
 		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
 	}
 	return !c.IsBreakpoint(lastBlockNumber, lastBlockTime) && c.IsBreakpoint(currentBlockNumber, currentBlockTime)
+}
+
+// IsBreakpointAlpha returns whether time is either equal to the BreakpointAlpha fork time or greater.
+func (c *ChainConfig) IsBreakpointAlpha(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.BreakpointAlphaTime, time)
+}
+
+// IsOnBreakpointAlpha returns whether currentBlockTime is either equal to the BreakpointAlpha fork time or greater firstly.
+func (c *ChainConfig) IsOnBreakpointAlpha(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsBreakpointAlpha(lastBlockNumber, lastBlockTime) && c.IsBreakpointAlpha(currentBlockNumber, currentBlockTime)
 }
 
 // ##
@@ -1132,6 +1151,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	// ##CROSS: fork breakpoint
 	if isForkTimestampIncompatible(c.BreakpointTime, newcfg.BreakpointTime, headTimestamp) {
 		return newTimestampCompatError("Breakpoint fork timestamp", c.BreakpointTime, newcfg.BreakpointTime)
+	}
+	if isForkTimestampIncompatible(c.BreakpointAlphaTime, newcfg.BreakpointAlphaTime, headTimestamp) {
+		return newTimestampCompatError("BreakpointAlpha fork timestamp", c.BreakpointAlphaTime, newcfg.BreakpointAlphaTime)
 	}
 	// ##
 	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
