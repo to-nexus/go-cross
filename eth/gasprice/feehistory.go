@@ -131,10 +131,24 @@ func (oracle *Oracle) processBlock(bf *blockFees, percentiles []float64) {
 		return
 	}
 
-	sorter := make([]txGasAndReward, len(bf.block.Transactions()))
+	sorter := make([]txGasAndReward, 0, len(bf.block.Transactions()))
+	var actualGasUsed uint64
 	for i, tx := range bf.block.Transactions() {
-		reward, _ := tx.EffectiveGasTip(bf.block.BaseFee())
-		sorter[i] = txGasAndReward{gasUsed: bf.receipts[i].GasUsed, reward: reward}
+		reward, err := tx.EffectiveGasTip(bf.block.BaseFee())
+		// ##CROSS: consensus system contract
+		if err == types.ErrGasFeeCapTooLow {
+			// Skip negative gasTipCap - usually system transactions
+			continue
+		}
+		// ##
+		sorter = append(sorter, txGasAndReward{gasUsed: bf.receipts[i].GasUsed, reward: reward})
+		actualGasUsed += bf.receipts[i].GasUsed
+	}
+	if len(sorter) == 0 {
+		for i := range bf.results.reward {
+			bf.results.reward[i] = new(big.Int)
+		}
+		return
 	}
 	slices.SortStableFunc(sorter, func(a, b txGasAndReward) int {
 		return a.reward.Cmp(b.reward)
@@ -144,8 +158,8 @@ func (oracle *Oracle) processBlock(bf *blockFees, percentiles []float64) {
 	sumGasUsed := sorter[0].gasUsed
 
 	for i, p := range percentiles {
-		thresholdGasUsed := uint64(float64(bf.block.GasUsed()) * p / 100)
-		for sumGasUsed < thresholdGasUsed && txIndex < len(bf.block.Transactions())-1 {
+		thresholdGasUsed := uint64(float64(actualGasUsed) * p / 100)
+		for sumGasUsed < thresholdGasUsed && txIndex < len(sorter)-1 {
 			txIndex++
 			sumGasUsed += sorter[txIndex].gasUsed
 		}
