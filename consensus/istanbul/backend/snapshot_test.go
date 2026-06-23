@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/engine"
+	istanbulEngine "github.com/ethereum/go-ethereum/consensus/istanbul/engine"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/testutils"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -468,3 +469,90 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Errorf("validator set mismatch: have %v, want %v", snap1.ValSet, snap.ValSet)
 	}
 }
+
+// ##CROSS: validator sort policy
+func TestSnapshotLoadValidatorsByteSorted(t *testing.T) {
+	// These two addresses are byte-ordered as 0x...0b < 0x...0c, but their
+	// EIP-55 string forms sort in the opposite order because "C" < "b".
+	addrA := common.HexToAddress("0x000000000000000000000000000000000000000b")
+	addrB := common.HexToAddress("0x000000000000000000000000000000000000000c")
+	signerA := types.BytesToBLSPublicKey(bytes.Repeat([]byte{0x11}, types.BLSPublicKeyLength))
+	signerB := types.BytesToBLSPublicKey(bytes.Repeat([]byte{0x22}, types.BLSPublicKeyLength))
+
+	// Using string policy, it should be string-ordered
+	stringPolicy := istanbul.NewRoundRobinProposerPolicy()
+	stringPolicy.Use(istanbul.ValidatorSortByString())
+	stringSet := validator.NewSet(
+		[]common.Address{addrA, addrB},
+		[]types.BLSPublicKey{signerA, signerB},
+		stringPolicy,
+	)
+	stringList := stringSet.List()
+	if stringList[0].Address() != addrB || stringList[1].Address() != addrA {
+		t.Fatalf("test fixture must differ between string and byte order, got %v then %v", stringList[0].Address(), stringList[1].Address())
+	}
+
+	// Using byte policy, it should be byte-ordered
+	bytePolicy := istanbul.NewRoundRobinProposerPolicy()
+	bytePolicy.Use(istanbul.ValidatorSortByByte())
+
+	liveSet := validator.NewSet(
+		[]common.Address{addrA, addrB},
+		[]types.BLSPublicKey{signerA, signerB},
+		bytePolicy,
+	)
+	liveList := liveSet.List()
+	if liveList[0].Address() != addrA || liveList[1].Address() != addrB {
+		t.Fatalf("expected live validator set to stay byte-ordered, got %v then %v", liveList[0].Address(), liveList[1].Address())
+	}
+
+	// Restore from DB, it should be byte-ordered
+	db := rawdb.NewMemoryDatabase()
+	snap := &Snapshot{
+		Epoch:  10,
+		Number: 1,
+		Hash:   common.HexToHash("0x01"),
+		ValSet: liveSet,
+	}
+	if err := snap.store(db); err != nil {
+		t.Fatalf("store snapshot: %v", err)
+	}
+	restored, err := loadSnapshot(10, db, snap.Hash)
+	if err != nil {
+		t.Fatalf("load snapshot: %v", err)
+	}
+
+	restoredList := restored.ValSet.List()
+	if restoredList[0].Address() != addrA || restoredList[1].Address() != addrB {
+		t.Fatalf("expected restored validator set to stay byte-ordered, got %v then %v", restoredList[0].Address(), restoredList[1].Address())
+	}
+
+	// Restore signers from the header, they should be byte-ordered
+	header := &types.Header{}
+	if err := istanbulEngine.ApplyHeaderIstanbulExtra(header, func(extra *types.IstanbulExtra) error {
+		extra.SignersBitset = []uint64{1} // Select byte-sorted validator index 0.
+		return nil
+	}); err != nil {
+		t.Fatalf("set signers bitset: %v", err)
+	}
+
+	var e istanbulEngine.Engine
+	liveAddrs, livePubs, err := e.BLSSigners(header, liveSet)
+	if err != nil {
+		t.Fatalf("decode signers with live set: %v", err)
+	}
+
+	reloadedAddrs, reloadedPubs, err := e.BLSSigners(header, restored.ValSet)
+	if err != nil {
+		t.Fatalf("decode signers with restored set: %v", err)
+	}
+
+	if len(liveAddrs) != 1 || len(livePubs) != 1 || liveAddrs[0] != addrA || livePubs[0] != signerA {
+		t.Fatalf("expected live decode to resolve bit 0 to %v/%v, got %v/%v", addrA, signerA, liveAddrs, livePubs)
+	}
+	if len(reloadedAddrs) != 1 || len(reloadedPubs) != 1 || reloadedAddrs[0] != addrA || reloadedPubs[0] != signerA {
+		t.Fatalf("expected restored decode to resolve bit 0 to %v/%v, got %v/%v", addrA, signerA, reloadedAddrs, reloadedPubs)
+	}
+}
+
+// ##

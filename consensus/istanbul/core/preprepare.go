@@ -112,7 +112,25 @@ func (c *Core) sendPreprepareMsg(request *Request) {
 // - validates PRE-PREPARE message justification
 // - validates PRE-PREPARE message block proposal
 func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
+	if preprepare == nil || preprepare.Proposal == nil || preprepare.Sequence == nil || preprepare.Round == nil {
+		return errInvalidMessage
+	}
+	if c.current == nil {
+		return errCurrentIsNil
+	}
+
 	logger := c.currentLogger(true, preprepare)
+
+	// ##CROSS: istanbul validation
+	if err := validateProposalSequence(preprepare.Proposal, preprepare.Sequence); err != nil {
+		logger.Warn("Istanbul: invalid PRE-PREPARE proposal sequence", "err", err)
+		return errInvalidMessage
+	}
+	if err := validateProposalSequence(preprepare.Proposal, c.current.Sequence()); err != nil {
+		logger.Warn("Istanbul: invalid PRE-PREPARE proposal for current sequence", "err", err)
+		return errInvalidMessage
+	}
+	// ##
 
 	logger = logger.New("proposal.number", preprepare.Proposal.Number().Uint64(), "proposal.hash", preprepare.Proposal.Hash().String())
 	logger.Debug("Istanbul: handle PRE-PREPARE message")
@@ -125,6 +143,28 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 
 	// Validates PRE-PREPARE message justification
 	if preprepare.Round.Uint64() > 0 {
+		// ##CROSS: istanbul validation
+		// Check round changes
+		if err := validateMessageSequence(preprepare.JustificationRoundChanges, preprepare.Sequence); err != nil {
+			logger.Warn("Istanbul: invalid PRE-PREPARE ROUND-CHANGE sequence", "err", err)
+			return errInvalidPreparedBlock
+		}
+		if err := validateMessageJustification(preprepare.JustificationRoundChanges, c.valSet, c.valSet.QuorumSize()); err != nil {
+			logger.Warn("Istanbul: invalid PRE-PREPARE ROUND-CHANGE justification", "err", err, "quorum", c.valSet.QuorumSize())
+			return errInvalidPreparedBlock
+		}
+		// Check prepares
+		if len(preprepare.JustificationPrepares) != 0 {
+			if err := validateMessageSequence(preprepare.JustificationPrepares, preprepare.Sequence); err != nil {
+				logger.Warn("Istanbul: invalid PRE-PREPARE PREPARE sequence", "err", err)
+				return errInvalidPreparedBlock
+			}
+			if err := validateMessageJustification(preprepare.JustificationPrepares, c.valSet, c.valSet.QuorumSize()); err != nil {
+				logger.Warn("Istanbul: invalid PRE-PREPARE PREPARE justification", "err", err, "quorum", c.valSet.QuorumSize())
+				return errInvalidPreparedBlock
+			}
+		}
+		// ##
 		if err := isJustified(preprepare.Proposal, preprepare.JustificationRoundChanges, preprepare.JustificationPrepares, c.valSet.QuorumSize(), c.hasBadProposal); err != nil {
 			logger.Warn("Istanbul: invalid PRE-PREPARE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return errInvalidPreparedBlock

@@ -119,3 +119,71 @@ func hasMatchingRoundChangeAndPrepares(
 	}
 	return nil
 }
+
+// ##CROSS: istanbul validation
+// validateProposalSequence checks that a proposal belongs to the given consensus sequence.
+func validateProposalSequence(proposal istanbul.Proposal, sequence *big.Int) error {
+	if proposal == nil || proposal.Number() == nil || sequence == nil {
+		return errors.New("proposal sequence is invalid")
+	}
+	if proposal.Number().Cmp(sequence) != 0 {
+		return errors.New("proposal number does not match sequence")
+	}
+	return nil
+}
+
+type protocolMessage interface {
+	protocols.Message
+	comparable
+}
+
+// validatePrepareSequence checks that the message matches the outer sequence.
+func validateMessageSequence[T protocolMessage](messages []T, sequence *big.Int) error {
+	if sequence == nil {
+		return errors.New("sequence is invalid")
+	}
+	var zero T
+	for _, msg := range messages {
+		if msg == zero {
+			return errors.New("message is invalid")
+		}
+		view := msg.View()
+		if view.Sequence == nil || view.Round == nil {
+			return errors.New("message view is invalid")
+		}
+		if view.Sequence.Cmp(sequence) != 0 {
+			return errors.New("message sequence does not match")
+		}
+	}
+	return nil
+}
+
+// validateMessageJustification checks that all source of the given messages are member of validator set and distinct.
+func validateMessageJustification[T protocolMessage](messages []T, valSet istanbul.ValidatorSet, quorumSize int) error {
+	if len(messages) < quorumSize {
+		return errors.New("number of messages is less than required quorum")
+	}
+	var zero T
+	seen := make(map[common.Address]struct{})
+	for _, msg := range messages {
+		if msg == zero {
+			return errors.New("message is invalid")
+		}
+		source := msg.Source()
+		if source == (common.Address{}) {
+			return errors.New("message source is empty")
+		}
+		if valSet != nil {
+			if _, validator := valSet.GetByAddress(source); validator == nil {
+				return errors.New("message source is not a validator")
+			}
+		}
+		if _, ok := seen[source]; ok {
+			return errors.New("duplicate message source")
+		}
+		seen[source] = struct{}{}
+	}
+	return nil
+}
+
+// ##
