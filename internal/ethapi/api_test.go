@@ -56,6 +56,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/blocktest"
+	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
@@ -648,6 +649,9 @@ func (b testBackend) CurrentView() *filtermaps.ChainView {
 func (b testBackend) NewMatcherBackend() filtermaps.MatcherBackend {
 	panic("implement me")
 }
+
+// GasAbs returns no gas abstraction client for this test backend.
+func (b testBackend) GasAbs() *gasabs.Client { return nil }
 
 func (b testBackend) HistoryPruningCutoff() uint64 {
 	bn, _ := b.chain.HistoryPruningCutoff()
@@ -2591,7 +2595,7 @@ func TestSignTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, "")
+	api := NewTransactionAPI(b, nil)
 	res, err := api.FillTransaction(context.Background(), TransactionArgs{
 		From:  &b.acc.Address,
 		To:    &to,
@@ -2629,7 +2633,7 @@ func TestSignBlobTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, "")
+	api := NewTransactionAPI(b, nil)
 	res, err := api.FillTransaction(context.Background(), TransactionArgs{
 		From:       &b.acc.Address,
 		To:         &to,
@@ -2660,7 +2664,7 @@ func TestSendBlobTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, "")
+	api := NewTransactionAPI(b, nil)
 	res, err := api.FillTransaction(context.Background(), TransactionArgs{
 		From:       &b.acc.Address,
 		To:         &to,
@@ -2698,7 +2702,7 @@ func TestFillBlobTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, "")
+	api := NewTransactionAPI(b, nil)
 	type result struct {
 		Hashes  []common.Hash
 		Sidecar *types.BlobTxSidecar
@@ -3527,7 +3531,7 @@ func TestRPCGetTransactionReceipt(t *testing.T) {
 
 	var (
 		backend, txHashes = setupReceiptBackend(t, 6)
-		api               = NewTransactionAPI(backend, new(AddrLocker), "")
+		api               = NewTransactionAPI(backend, new(AddrLocker))
 	)
 
 	var testSuite = []struct {

@@ -580,3 +580,19 @@ func (args *TransactionArgs) ToTransaction(defaultType int) *types.Transaction {
 func (args *TransactionArgs) IsEIP4844() bool {
 	return args.BlobHashes != nil || args.BlobFeeCap != nil
 }
+
+// UsedType guesses the type of the transaction.
+func (args *TransactionArgs) UsedType() int {
+	usedType := types.LegacyTxType
+	switch {
+	case args.AuthorizationList != nil:
+		usedType = types.SetCodeTxType
+	case args.BlobHashes != nil:
+		usedType = types.BlobTxType
+	case args.MaxFeePerGas != nil:
+		usedType = types.DynamicFeeTxType
+	case args.AccessList != nil:
+		usedType = types.AccessListTxType
+	}
+	return usedType
+}

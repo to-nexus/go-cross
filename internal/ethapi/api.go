@@ -37,12 +37,12 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/gasestimator"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
-	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -50,6 +50,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/holiman/uint256"
 )
 
 // estimateGasErrorRatio is the amount of overestimation eth_estimateGas is
@@ -864,6 +865,18 @@ func (api *BlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, blockNrO
 	return sim.execute(ctx, opts.BlockStateCalls)
 }
 
+// ##CROSS: gas abstraction
+// estimateGasFeePayer picks a virtual payer that is not sender or recipient.
+func estimateGasFeePayer(from common.Address, to *common.Address) common.Address {
+	candidate := common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	for candidate == from || (to != nil && candidate == *to) {
+		candidate = common.BigToAddress(new(big.Int).Add(candidate.Big(), big.NewInt(1)))
+	}
+	return candidate
+}
+
+// ##
+
 // DoEstimateGas returns the lowest possible gas limit that allows the transaction to run
 // successfully at block `blockNrOrHash`. It returns error if the transaction would revert, or if
 // there are unexpected failures. The gas limit is capped by both `args.Gas` (if non-nil &
@@ -895,6 +908,22 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		return 0, err
 	}
 	call := args.ToMessage(header.BaseFee, true, true)
+
+	// ##CROSS: gas abstraction
+	// If gasAbs approved the tx, set a virtual fee payer and fund it;
+	// so the sender only covers transfer value and tx fee is omitted.
+	if args.UsedType() == types.DynamicFeeTxType {
+		if gasAbs := b.GasAbs(); gasAbs != nil {
+			approved, _, _, err := gasAbs.CanDelegateCall(call)
+			if err == nil && approved {
+				feePayer := estimateGasFeePayer(call.From, call.To)
+				call.FeePayer = &feePayer
+				// Fund only the simulated payer.
+				state.SetBalance(feePayer, new(uint256.Int).SetAllOne(), tracing.BalanceChangeUnspecified)
+			}
+		}
+	}
+	// ##
 
 	// Run the gas estimation and wrap any revertals into a custom return
 	estimate, revert, err := gasestimator.Estimate(ctx, call, opts, gasCap)
@@ -1338,24 +1367,17 @@ type TransactionAPI struct {
 	b         Backend
 	nonceLock *AddrLocker
 	signer    types.Signer
-	gasAbs    *gasabs.Client // ##CROSS: gas abstraction
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
-func NewTransactionAPI(b Backend, nonceLock *AddrLocker, gasAbsURL string) *TransactionAPI {
+func NewTransactionAPI(b Backend, nonceLock *AddrLocker) *TransactionAPI {
 	var (
 		// The signer used by the API should always be the 'latest' known one because we expect
 		// signers to be backwards-compatible with old transactions.
 		signer = types.LatestSigner(b.ChainConfig())
-		gasAbs *gasabs.Client
 	)
 
-	// ##CROSS: gas abstraction
-	if gasAbsURL != "" {
-		gasAbs, _ = gasabs.DialContext(context.Background(), gasAbsURL)
-	}
-
-	return &TransactionAPI{b, nonceLock, signer, gasAbs}
+	return &TransactionAPI{b, nonceLock, signer}
 }
 
 // GetBlockTransactionCountByNumber returns the number of transactions in the block with the given block number.
@@ -1705,45 +1727,28 @@ func (api *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil
 	}
 
 	// ##CROSS: gas abstraction
-	if api.gasAbs != nil {
-		to := common.Address{}
-		if tx.To() != nil {
-			to = *tx.To()
-		}
-
-		from, err := api.signer.Sender(tx)
+	gasAbs := api.b.GasAbs()
+	if gasAbs != nil {
+		approved, from, to, err := gasAbs.CanDelegateTx(tx)
 		if err != nil {
-			return common.Hash{}, err
-		}
-
-		if api.gasAbs.IsBlacklistedFrom(ctx, from) {
-			log.Root().Warn("Transaction rejected: from address is blacklisted", "from", from, "tx", tx.Hash().Hex())
-			return common.Hash{}, errors.New("not allowed")
-		} else if api.gasAbs.IsBlacklistedTo(ctx, to) {
-			log.Root().Warn("Transaction rejected: to address is blacklisted", "to", to, "tx", tx.Hash().Hex())
+			log.Warn(fmt.Sprintf("Transaction rejected: %s", err.Error()),
+				"from", from, "to", to, "tx", tx.Hash().Hex())
 			return common.Hash{}, errors.New("not allowed")
 		}
 
-		if tx.Type() == types.DynamicFeeTxType {
-			approved := api.gasAbs.IsApprovedTo(ctx, to)
-			if !approved {
-				approved = api.gasAbs.IsApprovedFrom(ctx, from)
-			}
-
-			if approved {
-				logger := log.New("to", to, "tx", tx.Hash().Hex())
-				logger.Info("Request GasAbstraction")
-				var err error
-				if tx, err = api.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
-					errlog := logger.Warn
-					if errors.Is(err, syscall.ECONNREFUSED) {
-						errlog = logger.Error
-					}
-					errlog("Failed to request GasAbstraction", "error", err)
-					return tx.Hash(), err
+		if approved {
+			logger := log.New("from", from, "to", to, "tx", tx.Hash().Hex())
+			logger.Info("Request GasAbstraction")
+			var err error
+			if tx, err = gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+				errlog := logger.Warn
+				if errors.Is(err, syscall.ECONNREFUSED) {
+					errlog = logger.Error
 				}
-				logger.Info("Successfully requested GasAbstraction")
+				errlog("Failed to request GasAbstraction", "error", err)
+				return tx.Hash(), err
 			}
+			logger.Info("Successfully requested GasAbstraction")
 		}
 	}
 
