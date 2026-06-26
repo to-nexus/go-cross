@@ -246,6 +246,14 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
+	// ##CROSS: fee delegation
+	// feePayerCost is a pool-level index mapping each fee payer to the cumulative
+	// FeePayerCost of all fee-delegated transactions it sponsors across every
+	// pending list. It is maintained by the pending lists (see list.feePayerCost)
+	// and lets validation reject fee payers that would be over-committed across
+	// multiple pooled transactions in O(1).
+	feePayerCost map[common.Address]*uint256.Int
+
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
 	queueTxEventCh  chan *types.Transaction
@@ -276,6 +284,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		pending:         make(map[common.Address]*list),
 		queue:           make(map[common.Address]*list),
 		beats:           make(map[common.Address]time.Time),
+		feePayerCost:    make(map[common.Address]*uint256.Int), // ##CROSS: fee delegation
 		all:             newLookup(),
 		reqResetCh:      make(chan *txpoolResetRequest),
 		reqPromoteCh:    make(chan *accountSet),
@@ -617,6 +626,24 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction) error {
 			}
 			return nil
 		},
+		// Return the cumulative fee-payer cost already committed by feePayer across
+		// every pending fee-delegated tx, via the O(1) pool-level index, excluding
+		// the tx currently occupying the (addr, nonce) slot the incoming tx would
+		// replace (its cost is already counted in the index).
+		ExistingFeePayerExpenditure: func(feePayer common.Address, addr common.Address, nonce uint64) *big.Int { // ##CROSS: fee delegation
+			total := new(big.Int)
+			if sum := pool.feePayerCost[feePayer]; sum != nil {
+				total = sum.ToBig()
+			}
+			if list := pool.pending[addr]; list != nil {
+				if old := list.txs.Get(nonce); old != nil &&
+					old.Type() == types.FeeDelegatedDynamicFeeTxType &&
+					old.FeePayer() != nil && *old.FeePayer() == feePayer {
+					total.Sub(total, old.FeePayerCost())
+				}
+			}
+			return total
+		},
 	}
 	if err := txpool.ValidateTransactionWithState(tx, pool.signer, opts); err != nil {
 		return err
@@ -897,6 +924,7 @@ func (pool *LegacyPool) promoteTx(addr common.Address, hash common.Hash, tx *typ
 	// Try to insert the transaction into the pending queue
 	if pool.pending[addr] == nil {
 		pool.pending[addr] = newList(true)
+		pool.pending[addr].feePayerCost = pool.feePayerCost // ##CROSS: fee delegation - wire shared fee-payer index
 	}
 	list := pool.pending[addr]
 

@@ -342,8 +342,7 @@ func (tx *Transaction) To() *common.Address {
 
 // Cost returns (gas * gasPrice) + (blobGas * blobGasPrice) + value.
 func (tx *Transaction) Cost() *big.Int {
-	// ##CROSS: fee delegation
-	if tx.Type() == FeeDelegatedDynamicFeeTxType {
+	if tx.Type() == FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil { // ##CROSS: fee delegation
 		from, _ := Sender(LatestSignerForChainID(tx.ChainId()), tx)
 		if *tx.FeePayer() != from {
 			return tx.Value()
@@ -364,6 +363,9 @@ func (tx *Transaction) Cost() *big.Int {
 // they cover the full cost (gas cost plus value), while a separate fee payer only pays for gas.
 func (tx *Transaction) FeePayerCost() *big.Int {
 	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
+	if tx.FeePayer() == nil {
+		return total
+	}
 	from, _ := Sender(LatestSignerForChainID(tx.ChainId()), tx)
 	if *tx.FeePayer() == from {
 		total.Add(total, tx.Value())

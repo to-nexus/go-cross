@@ -276,6 +276,15 @@ type list struct {
 	costcap   *uint256.Int // Price of the highest costing transaction (reset only if exceeds balance)
 	gascap    uint64       // Gas limit of the highest spending transaction (reset only if exceeds block limit)
 	totalcost *uint256.Int // Total cost of all transactions in the list
+
+	// ##CROSS: fee delegation
+	// feePayerCost, when non-nil, is a shared pool-level index mapping each fee
+	// payer to the cumulative FeePayerCost of all fee-delegated transactions it
+	// sponsors across the whole pool. Only pending lists are wired to this shared
+	// map (queue lists leave it nil), so the pool can look up a fee payer's total
+	// obligation in O(1) instead of scanning every pooled transaction. It is kept
+	// up to date through the same Add/subTotalCost chokepoints as totalcost.
+	feePayerCost map[common.Address]*uint256.Int
 }
 
 // newList creates a new transaction list for maintaining nonce-indexable fast,
@@ -332,6 +341,7 @@ func (l *list) Add(tx *types.Transaction, priceBump uint64) (bool, *types.Transa
 		return false, nil
 	}
 	l.totalcost.Add(l.totalcost, cost)
+	l.addFeePayerCost(tx) // ##CROSS: fee delegation
 
 	// Otherwise overwrite the old transaction with the current one
 	l.txs.Put(tx)
@@ -467,6 +477,51 @@ func (l *list) subTotalCost(txs []*types.Transaction) {
 		if underflow {
 			panic("totalcost underflow")
 		}
+		l.subFeePayerCost(tx) // ##CROSS: fee delegation
+	}
+}
+
+// ##CROSS: fee delegation
+// addFeePayerCost adds the transaction's fee-payer cost to the shared pool-level
+// fee-payer index. It is a no-op unless this list is wired to the shared map and
+// the transaction is fee-delegated with a fee payer set.
+func (l *list) addFeePayerCost(tx *types.Transaction) {
+	if l.feePayerCost == nil || tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
+		return
+	}
+	cost, overflow := uint256.FromBig(tx.FeePayerCost())
+	if overflow {
+		return
+	}
+	payer := *tx.FeePayer()
+	sum := l.feePayerCost[payer]
+	if sum == nil {
+		sum = new(uint256.Int)
+		l.feePayerCost[payer] = sum
+	}
+	sum.Add(sum, cost)
+}
+
+// subFeePayerCost removes the transaction's fee-payer cost from the shared
+// pool-level fee-payer index, mirroring addFeePayerCost.
+func (l *list) subFeePayerCost(tx *types.Transaction) {
+	if l.feePayerCost == nil || tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
+		return
+	}
+	payer := *tx.FeePayer()
+	sum := l.feePayerCost[payer]
+	if sum == nil {
+		return
+	}
+	cost, overflow := uint256.FromBig(tx.FeePayerCost())
+	if overflow {
+		return
+	}
+	if _, underflow := sum.SubOverflow(sum, cost); underflow {
+		panic("feePayerCost underflow")
+	}
+	if sum.IsZero() {
+		delete(l.feePayerCost, payer)
 	}
 }
 
