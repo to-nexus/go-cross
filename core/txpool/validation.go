@@ -332,8 +332,12 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 			feePayerSpent := opts.ExistingFeePayerExpenditure(*tx.FeePayer(), from, tx.Nonce())
 			feePayerNeed := new(big.Int).Add(feePayerSpent, tx.FeePayerCost())
 			if feePayerBalance.Cmp(feePayerNeed) < 0 {
-				return fmt.Errorf("%w: feepayer balance %v, pooled feepayer cost %v, tx feepayer cost %v, overshot %v",
-					core.ErrFeePayerInsufficientFunds, feePayerBalance, feePayerSpent, tx.FeePayerCost(), new(big.Int).Sub(feePayerNeed, feePayerBalance))
+				return &core.FeePayerInsufficientFundsError{
+					FeePayer:   *tx.FeePayer(),
+					Balance:    feePayerBalance,
+					PooledCost: feePayerSpent,
+					TxCost:     tx.FeePayerCost(),
+				}
 			}
 		}
 	}

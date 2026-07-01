@@ -18,7 +18,10 @@ package core
 
 import (
 	"errors"
+	"fmt"
+	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -133,6 +136,33 @@ var (
 	// is higher than the balance of the feePayer's account.
 	ErrFeePayerInsufficientFunds = errors.New("insufficient feepayer's funds for gas * price")
 )
+
+// ##CROSS: fee delegation
+// FeePayerInsufficientFundsError is raised when a fee payer's balance cannot cover
+// the cumulative fee-payer cost it is committed to across every pooled fee-delegated
+// transaction it is sponsoring (the incoming tx plus everything already pooled). It
+// wraps ErrFeePayerInsufficientFunds so callers can still match with errors.Is.
+type FeePayerInsufficientFundsError struct {
+	FeePayer   common.Address // the sponsoring fee payer
+	Balance    *big.Int       // current fee payer balance
+	PooledCost *big.Int       // fee-payer cost already committed by pooled txs
+	TxCost     *big.Int       // this transaction's fee-payer cost
+}
+
+// Overshot reports by how much the required funds exceed the fee payer's balance.
+func (e *FeePayerInsufficientFundsError) Overshot() *big.Int {
+	need := new(big.Int).Add(e.PooledCost, e.TxCost)
+	return need.Sub(need, e.Balance)
+}
+
+func (e *FeePayerInsufficientFundsError) Error() string {
+	return fmt.Sprintf("%s: feepayer %v, feepayer balance %v, pooled feepayer cost %v, tx feepayer cost %v, overshot %v",
+		ErrFeePayerInsufficientFunds, e.FeePayer, e.Balance, e.PooledCost, e.TxCost, e.Overshot())
+}
+
+func (e *FeePayerInsufficientFundsError) Unwrap() error {
+	return ErrFeePayerInsufficientFunds
+}
 
 // EIP-7702 state transition errors.
 // Note these are just informational, and do not cause tx execution abort.
