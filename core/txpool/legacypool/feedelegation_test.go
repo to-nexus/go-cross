@@ -197,12 +197,12 @@ func TestFeeDelegationCumulativeOverdraftRejected(t *testing.T) {
 	sender2 := crypto.PubkeyToAddress(sender2Key.PublicKey)
 
 	// Each tx commits the payer to gasFee*gas = 2*100000 = 200000.
-	const perTxFeePayerCost = 200000
+	const perTxFeePayerCost = 200_000
 
 	testAddBalance(pool, sender1, new(big.Int).SetUint64(params.Ether))
 	testAddBalance(pool, sender2, new(big.Int).SetUint64(params.Ether))
 	// The payer can cover one tx (200000) but not two (400000).
-	testAddBalance(pool, payer, big.NewInt(300000))
+	testAddBalance(pool, payer, big.NewInt(300_000))
 
 	// First tx is accepted and promoted into the pending pool, recording its cost
 	// in the shared fee-payer index.
@@ -252,7 +252,7 @@ func TestFeeDelegationCumulativeWithinBalance(t *testing.T) {
 	testAddBalance(pool, sender1, new(big.Int).SetUint64(params.Ether))
 	testAddBalance(pool, sender2, new(big.Int).SetUint64(params.Ether))
 	// The payer can comfortably cover both txs (2 * 200000 = 400000).
-	testAddBalance(pool, payer, big.NewInt(500000))
+	testAddBalance(pool, payer, big.NewInt(500_000))
 
 	tx1 := feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), sender1Key, payerKey)
 	if err := pool.addRemoteSync(tx1); err != nil {
@@ -263,7 +263,7 @@ func TestFeeDelegationCumulativeWithinBalance(t *testing.T) {
 		t.Fatalf("second fee-delegated tx rejected: %v", err)
 	}
 
-	if got, want := payerCost(pool, payer), big.NewInt(400000); got.Cmp(want) != 0 {
+	if got, want := payerCost(pool, payer), big.NewInt(400_000); got.Cmp(want) != 0 {
 		t.Fatalf("payer index mismatch: have %v, want %v", got, want)
 	}
 	if pending, _ := pool.Stats(); pending != 2 {
@@ -293,14 +293,14 @@ func TestFeeDelegationReplacementNotDoubleCounted(t *testing.T) {
 	testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
 	// Enough for a single 300000 obligation, but not for 200000 + 300000 = 500000
 	// if the replaced tx were double counted.
-	testAddBalance(pool, payer, big.NewInt(300000))
+	testAddBalance(pool, payer, big.NewInt(300_000))
 
 	// Original tx: fee-payer cost = 2 * 100000 = 200000.
 	tx := feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)
 	if err := pool.addRemoteSync(tx); err != nil {
 		t.Fatalf("original fee-delegated tx rejected: %v", err)
 	}
-	if got, want := payerCost(pool, payer), big.NewInt(200000); got.Cmp(want) != 0 {
+	if got, want := payerCost(pool, payer), big.NewInt(200_000); got.Cmp(want) != 0 {
 		t.Fatalf("payer index mismatch after original: have %v, want %v", got, want)
 	}
 
@@ -313,7 +313,7 @@ func TestFeeDelegationReplacementNotDoubleCounted(t *testing.T) {
 	}
 
 	// Only the replacement remains, so the index reflects its cost alone.
-	if got, want := payerCost(pool, payer), big.NewInt(300000); got.Cmp(want) != 0 {
+	if got, want := payerCost(pool, payer), big.NewInt(300_000); got.Cmp(want) != 0 {
 		t.Fatalf("payer index mismatch after replacement: have %v, want %v", got, want)
 	}
 	if pending, _ := pool.Stats(); pending != 1 {
@@ -351,7 +351,7 @@ func TestFeeDelegationScenarioPayerExhausted(t *testing.T) {
 	// Each fee-delegated tx commits the payer to gasFee*gas = 2*100000 = 200000.
 	// The payer is funded for exactly 5 such transactions; the 6th overshoots.
 	const (
-		feePerTx   = 200000
+		feePerTx   = 200_000
 		affordable = 5
 		perSender  = 8 // each sender tries more than its fair share
 	)
@@ -415,13 +415,13 @@ func TestListFeePayerCostIndex(t *testing.T) {
 	if ok, _ := list.Add(tx0, DefaultConfig.PriceBump); !ok {
 		t.Fatal("failed to add tx0")
 	}
-	if got, want := shared[payer].ToBig(), big.NewInt(200000); got.Cmp(want) != 0 {
+	if got, want := shared[payer].ToBig(), big.NewInt(200_000); got.Cmp(want) != 0 {
 		t.Fatalf("index after tx0: have %v, want %v", got, want)
 	}
 	if ok, _ := list.Add(tx1, DefaultConfig.PriceBump); !ok {
 		t.Fatal("failed to add tx1")
 	}
-	if got, want := shared[payer].ToBig(), big.NewInt(400000); got.Cmp(want) != 0 {
+	if got, want := shared[payer].ToBig(), big.NewInt(400_000); got.Cmp(want) != 0 {
 		t.Fatalf("index after tx1: have %v, want %v", got, want)
 	}
 
@@ -430,7 +430,7 @@ func TestListFeePayerCostIndex(t *testing.T) {
 	if ok, _ := list.Remove(tx1); !ok {
 		t.Fatal("failed to remove tx1")
 	}
-	if got, want := shared[payer].ToBig(), big.NewInt(200000); got.Cmp(want) != 0 {
+	if got, want := shared[payer].ToBig(), big.NewInt(200_000); got.Cmp(want) != 0 {
 		t.Fatalf("index after removing tx1: have %v, want %v", got, want)
 	}
 
@@ -463,5 +463,63 @@ func TestListFeePayerCostUnwired(t *testing.T) {
 	// Removal must likewise be a no-op rather than panic.
 	if ok, _ := list.Remove(tx); !ok {
 		t.Fatal("failed to remove tx from unwired list")
+	}
+}
+
+// TestFeeDelegationPromoteRespectsCumulativeBudget reproduces the queue-accounting
+// gap: the shared fee-payer index only tracks pending transactions, so a
+// fee-delegated tx sitting in the queue (behind a nonce gap) is not counted at
+// admission time. When the gap is later filled and the queued tx becomes
+// promotable, promoting it together with the tx that filled the gap would push the
+// fee payer's committed cost past its balance. promoteExecutables must enforce the
+// cumulative fee-payer budget and drop the excess instead of over-committing.
+func TestFeeDelegationPromoteRespectsCumulativeBudget(t *testing.T) {
+	t.Parallel()
+
+	pool, _ := setupAdventurePool()
+	defer pool.Close()
+
+	payerKey, _ := crypto.GenerateKey()
+	payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+	senderKey, _ := crypto.GenerateKey()
+	sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+
+	testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+	// Each tx commits the payer to gasFee*gas = 2*100000 = 200000. Fund the payer
+	// for exactly two such transactions, not three.
+	const perTxFeePayerCost = 200_000
+	testAddBalance(pool, payer, big.NewInt(2*perTxFeePayerCost))
+
+	// nonce 0: no gap, promotes into pending and is counted in the index.
+	if err := pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)); err != nil {
+		t.Fatalf("nonce 0 rejected: %v", err)
+	}
+	// nonce 2: nonce gap (1 is missing) keeps it in the queue, where it is NOT
+	// counted in the pending fee-payer index. Admission sees only nonce 0's cost
+	// (200000) + this tx (200000) = 400000 <= balance, so it is accepted.
+	if err := pool.addRemoteSync(feeDelegatedDynamicFeeTx(2, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)); err != nil {
+		t.Fatalf("nonce 2 (queued) rejected: %v", err)
+	}
+	if pending, queued := pool.Stats(); pending != 1 || queued != 1 {
+		t.Fatalf("setup mismatch: pending %d queued %d, want pending 1 queued 1", pending, queued)
+	}
+
+	// nonce 1: fills the gap. Now nonce 1 and nonce 2 are both promotable, but
+	// promoting both would commit the payer to 3*200000 = 600000 > 400000. The
+	// promotion gate must keep only what fits (nonce 1) and drop nonce 2.
+	if err := pool.addRemoteSync(feeDelegatedDynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)); err != nil {
+		t.Fatalf("nonce 1 rejected: %v", err)
+	}
+
+	// The pending fee-payer commitment must never exceed the payer's balance.
+	if got, want := payerCost(pool, payer), big.NewInt(2*perTxFeePayerCost); got.Cmp(want) != 0 {
+		t.Fatalf("fee-payer index over-committed: have %v, want %v", got, want)
+	}
+	// nonce 0 and nonce 1 remain in pending; nonce 2 was dropped.
+	if pending, queued := pool.Stats(); pending != 2 || queued != 0 {
+		t.Fatalf("pool state mismatch: pending %d queued %d, want pending 2 queued 0", pending, queued)
+	}
+	if err := validatePoolInternals(pool); err != nil {
+		t.Fatalf("pool internal state corrupted: %v", err)
 	}
 }

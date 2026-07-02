@@ -328,14 +328,21 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		// fee-delegated transaction it is sponsoring, not just this one in
 		// isolation. Mirrors the sender overdraft check below so that a fee payer
 		// cannot be committed to more than its balance across multiple txs.
+		//
+		// The fee payer's balance is also drawn on by any transactions the fee
+		// payer itself has pending as a regular sender (tx.Cost() each): both the
+		// sponsored gas costs and its own outgoing costs come out of the same
+		// account, so both must be counted here.
 		if opts.ExistingFeePayerExpenditure != nil {
-			feePayerSpent := opts.ExistingFeePayerExpenditure(*tx.FeePayer(), from, tx.Nonce())
-			feePayerNeed := new(big.Int).Add(feePayerSpent, tx.FeePayerCost())
+			feePayerSponsored := opts.ExistingFeePayerExpenditure(*tx.FeePayer(), from, tx.Nonce())
+			feePayerOwn := opts.ExistingExpenditure(*tx.FeePayer())
+			feePayerPooled := new(big.Int).Add(feePayerSponsored, feePayerOwn)
+			feePayerNeed := new(big.Int).Add(feePayerPooled, tx.FeePayerCost())
 			if feePayerBalance.Cmp(feePayerNeed) < 0 {
 				return &core.FeePayerInsufficientFundsError{
 					FeePayer:   *tx.FeePayer(),
 					Balance:    feePayerBalance,
-					PooledCost: feePayerSpent,
+					PooledCost: feePayerPooled,
 					TxCost:     tx.FeePayerCost(),
 				}
 			}

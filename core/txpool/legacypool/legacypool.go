@@ -1481,6 +1481,13 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 
 	// Iterate over all accounts and promote any executable transactions
 	gasLimit := pool.currentHead.Load().GasLimit
+	// ##CROSS: fee delegation
+	// Running fee-payer commitment for this promotion pass, shared across every
+	// account processed here. Seeded lazily from the pool-level pending index
+	// (pool.feePayerCost) and grown as queued fee-delegated txs are kept, so a
+	// single fee payer sponsoring transactions across multiple senders is bounded
+	// by its balance in aggregate, not per sender.
+	feePayerCommitted := make(map[common.Address]*big.Int)
 	for _, addr := range accounts {
 		list := pool.queue[addr]
 		if list == nil {
@@ -1496,14 +1503,40 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		drops, _ := list.Filter(pool.currentState.GetBalance(addr), gasLimit)
 
 		// ##CROSS: fee delegation
+		// Drop queued fee-delegated txs the fee payer cannot cover. The check is
+		// cumulative: the pending index does not count queued txs, so start from
+		// what the fee payer already sponsors in pending (feePayerCommitted, seeded
+		// from pool.feePayerCost) and add each queued tx in nonce order. A tx that is
+		// affordable alone but pushes the fee payer's total commitment past its
+		// balance is dropped too, mirroring the admission check in
+		// ValidateTransactionWithState so promotion cannot over-commit a fee payer.
 		for _, tx := range list.Flatten() {
-			if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-				if tx.FeePayer() == nil || pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
-					list.Remove(tx)
-					drops = append(drops, tx)
-					log.Trace("Dropping fee-delegated tx due to insufficient fee payer balance", "method", "promote", "hash", tx.Hash().String())
+			if tx.Type() != types.FeeDelegatedDynamicFeeTxType {
+				continue
+			}
+			if tx.FeePayer() == nil {
+				list.Remove(tx)
+				drops = append(drops, tx)
+				log.Trace("Dropping fee-delegated tx: nil fee payer", "method", "promote", "hash", tx.Hash().String())
+				continue
+			}
+			payer := *tx.FeePayer()
+			running, ok := feePayerCommitted[payer]
+			if !ok {
+				running = new(big.Int)
+				if sum := pool.feePayerCost[payer]; sum != nil {
+					running = sum.ToBig()
 				}
 			}
+			need := new(big.Int).Add(running, tx.FeePayerCost())
+			if pool.currentState.GetBalance(payer).ToBig().Cmp(need) < 0 {
+				list.Remove(tx)
+				drops = append(drops, tx)
+				log.Trace("Dropping fee-delegated tx due to insufficient fee payer balance", "method", "promote", "hash", tx.Hash().String())
+				continue
+			}
+			// Kept: reserve this tx's cost against the fee payer's budget.
+			feePayerCommitted[payer] = need
 		}
 
 		for _, tx := range drops {
@@ -2008,6 +2041,7 @@ func (pool *LegacyPool) Clear() {
 	pool.pending = make(map[common.Address]*list)
 	pool.queue = make(map[common.Address]*list)
 	pool.pendingNonces = newNoncer(pool.currentState)
+	pool.feePayerCost = make(map[common.Address]*uint256.Int) // ##CROSS: fee delegation
 }
 
 // HasPendingAuth returns a flag indicating whether there are pending

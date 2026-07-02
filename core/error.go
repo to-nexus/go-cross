@@ -145,7 +145,7 @@ var (
 type FeePayerInsufficientFundsError struct {
 	FeePayer   common.Address // the sponsoring fee payer
 	Balance    *big.Int       // current fee payer balance
-	PooledCost *big.Int       // fee-payer cost already committed by pooled txs
+	PooledCost *big.Int       // already-committed cost drawing on the fee payer: sponsored fee-payer costs plus the fee payer's own pending sender-tx costs
 	TxCost     *big.Int       // this transaction's fee-payer cost
 }
 
