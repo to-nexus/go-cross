@@ -128,6 +128,15 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	// ##CROSS: fee delegation
 	// Make sure the fee payer is signed properly
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+		// Structural validity check that must run before anything dereferences the
+		// fee payer. FeePayer is an RLP-nilable pointer, so a malformed transaction
+		// (e.g. one relayed by a peer over the P2P path, which bypasses the RPC-side
+		// guard) can decode as a fee-delegated transaction with FeePayer == nil while
+		// still carrying fee-payer signature values. Reject it here, before the
+		// *tx.FeePayer() dereferences below would otherwise panic.
+		if tx.FeePayer() == nil {
+			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
+		}
 		recovered, err := types.FeePayer(signer, tx)
 		if err != nil {
 			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
@@ -247,6 +256,15 @@ type ValidationOptionsWithState struct {
 	// ExistingCost is a mandatory callback to retrieve an already pooled
 	// transaction's cost with the given nonce to check for overdrafts.
 	ExistingCost func(addr common.Address, nonce uint64) *big.Int
+
+	// ##CROSS: fee delegation
+	// ExistingFeePayerExpenditure is an optional callback to retrieve the cumulative
+	// fee-payer cost of all already pooled fee-delegated transactions that share the
+	// same fee payer, excluding the transaction currently occupying the (addr, nonce)
+	// slot that the incoming transaction would replace. It is used to prevent a fee
+	// payer from being committed to more than its balance across multiple pooled
+	// transactions (a single tx alone may be payable while the sum is not).
+	ExistingFeePayerExpenditure func(feePayer common.Address, addr common.Address, nonce uint64) *big.Int
 }
 
 // ValidateTransactionWithState is a helper method to check whether a transaction
@@ -272,6 +290,10 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 			return fmt.Errorf("%w: tx nonce %v, gapped nonce %v", core.ErrNonceTooHigh, tx.Nonce(), gap)
 		}
 	}
+
+	if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() == nil { // ##CROSS: fee delegation
+		return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
+	}
 	// Ensure the transactor has enough funds to cover the transaction costs
 	var (
 		balance = opts.State.GetBalance(from).ToBig()
@@ -292,13 +314,38 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		// Make sure the transaction is signed properly.
 		if tx.FeePayer() == nil {
 			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-		} else if feePayer, err := types.FeePayer(types.NewAdventureSigner(signer.ChainID()), tx); err != nil {
+		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(signer.ChainID()), tx); err != nil {
 			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
 		} else if *tx.FeePayer() != feePayer {
 			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), feePayer)
 		}
-		if opts.State.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
+		feePayerBalance := opts.State.GetBalance(*tx.FeePayer()).ToBig()
+		// Ensure this single transaction's fee payer cost is covered.
+		if feePayerBalance.Cmp(tx.FeePayerCost()) < 0 {
 			return core.ErrFeePayerInsufficientFunds
+		}
+		// Ensure the fee payer can cover the cumulative cost of every pooled
+		// fee-delegated transaction it is sponsoring, not just this one in
+		// isolation. Mirrors the sender overdraft check below so that a fee payer
+		// cannot be committed to more than its balance across multiple txs.
+		//
+		// The fee payer's balance is also drawn on by any transactions the fee
+		// payer itself has pending as a regular sender (tx.Cost() each): both the
+		// sponsored gas costs and its own outgoing costs come out of the same
+		// account, so both must be counted here.
+		if opts.ExistingFeePayerExpenditure != nil {
+			feePayerSponsored := opts.ExistingFeePayerExpenditure(*tx.FeePayer(), from, tx.Nonce())
+			feePayerOwn := opts.ExistingExpenditure(*tx.FeePayer())
+			feePayerPooled := new(big.Int).Add(feePayerSponsored, feePayerOwn)
+			feePayerNeed := new(big.Int).Add(feePayerPooled, tx.FeePayerCost())
+			if feePayerBalance.Cmp(feePayerNeed) < 0 {
+				return &core.FeePayerInsufficientFundsError{
+					FeePayer:   *tx.FeePayer(),
+					Balance:    feePayerBalance,
+					PooledCost: feePayerPooled,
+					TxCost:     tx.FeePayerCost(),
+				}
+			}
 		}
 	}
 
