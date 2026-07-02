@@ -506,7 +506,8 @@ func TestFeeDelegationPromoteRespectsCumulativeBudget(t *testing.T) {
 
 	// nonce 1: fills the gap. Now nonce 1 and nonce 2 are both promotable, but
 	// promoting both would commit the payer to 3*200000 = 600000 > 400000. The
-	// promotion gate must keep only what fits (nonce 1) and drop nonce 2.
+	// promotion gate must promote only what fits (nonce 1) and hold nonce 2 back in
+	// the queue for a later attempt.
 	if err := pool.addRemoteSync(feeDelegatedDynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)); err != nil {
 		t.Fatalf("nonce 1 rejected: %v", err)
 	}
@@ -515,9 +516,59 @@ func TestFeeDelegationPromoteRespectsCumulativeBudget(t *testing.T) {
 	if got, want := payerCost(pool, payer), big.NewInt(2*perTxFeePayerCost); got.Cmp(want) != 0 {
 		t.Fatalf("fee-payer index over-committed: have %v, want %v", got, want)
 	}
-	// nonce 0 and nonce 1 remain in pending; nonce 2 was dropped.
-	if pending, queued := pool.Stats(); pending != 2 || queued != 0 {
-		t.Fatalf("pool state mismatch: pending %d queued %d, want pending 2 queued 0", pending, queued)
+	// nonce 0 and nonce 1 promote into pending; nonce 2 is held back in the queue
+	// (not dropped) because the payer's budget is exhausted for now.
+	if pending, queued := pool.Stats(); pending != 2 || queued != 1 {
+		t.Fatalf("pool state mismatch: pending %d queued %d, want pending 2 queued 1", pending, queued)
+	}
+	if err := validatePoolInternals(pool); err != nil {
+		t.Fatalf("pool internal state corrupted: %v", err)
+	}
+}
+
+// TestFeeDelegationPromoteIgnoresGappedQueue verifies that the promotion-time
+// fee-payer budget check only considers the contiguous, promotable nonce run and
+// ignores transactions stranded behind a nonce gap. Such transactions cannot be
+// promoted this round, so they must neither be dropped by the budget check nor
+// reserve any of the fee payer's budget (which would wrongly penalize other
+// promotable transactions sharing the same fee payer).
+func TestFeeDelegationPromoteIgnoresGappedQueue(t *testing.T) {
+	t.Parallel()
+
+	pool, _ := setupAdventurePool()
+	defer pool.Close()
+
+	payerKey, _ := crypto.GenerateKey()
+	payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+	senderKey, _ := crypto.GenerateKey()
+	sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+
+	testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+	// Payer covers two txs (2 * 200000).
+	const perTxFeePayerCost = 200_000
+	testAddBalance(pool, payer, big.NewInt(2*perTxFeePayerCost))
+
+	// nonce 0 promotes; the payer now has 200000 committed in pending.
+	if err := pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)); err != nil {
+		t.Fatalf("nonce 0 rejected: %v", err)
+	}
+	// nonce 3 and nonce 4 sit behind a gap (1 and 2 are missing), so they can never
+	// be promoted this round. Each is individually within the payer's remaining
+	// budget at admission, so both are accepted into the queue.
+	if err := pool.addRemoteSync(feeDelegatedDynamicFeeTx(3, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)); err != nil {
+		t.Fatalf("nonce 3 rejected: %v", err)
+	}
+	if err := pool.addRemoteSync(feeDelegatedDynamicFeeTx(4, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)); err != nil {
+		t.Fatalf("nonce 4 rejected: %v", err)
+	}
+
+	// The gapped txs are not promotable, so the promotion budget check must leave
+	// them untouched: both remain queued and only nonce 0 is counted in the index.
+	if pending, queued := pool.Stats(); pending != 1 || queued != 2 {
+		t.Fatalf("pool state mismatch: pending %d queued %d, want pending 1 queued 2", pending, queued)
+	}
+	if got, want := payerCost(pool, payer), big.NewInt(perTxFeePayerCost); got.Cmp(want) != 0 {
+		t.Fatalf("fee-payer index mismatch: have %v, want %v", got, want)
 	}
 	if err := validatePoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
