@@ -2012,21 +2012,29 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 	}
 	// ##CROSS: istanbul posa
-	// --dev.noposa runs the chain in pre-PoSA mode by clearing the Istanbul PoSA
-	// config. This avoids the PoSA system-contract bootstrap (which cannot run on a
-	// fresh chain whose genesis predates the Breakpoint fork). The config is cloned
-	// so the shared package-level default is not mutated. Consensus-affecting: only
-	// for local dev/test chains, not for joining a live PoSA network.
+	// --dev.noposa runs a chain in pre-PoSA mode by clearing the Istanbul PoSA
+	// config, avoiding the PoSA system-contract bootstrap that cannot run on a fresh
+	// chain whose genesis predates the Breakpoint fork. It is a local dev/test
+	// convenience and must NEVER change consensus on an official or already-running
+	// chain, so it is honored ONLY for a fresh datadir on a non-official network. In
+	// every other case it is ignored and the node follows the genesis config. The
+	// config is cloned so the shared package-level default is not mutated.
 	if ctx.Bool(DeveloperNoPoSAFlag.Name) {
-		if cfg.Genesis != nil && cfg.Genesis.Config != nil && cfg.Genesis.Config.Istanbul != nil && cfg.Genesis.Config.Istanbul.PoSA != nil {
+		switch {
+		case cfg.Genesis == nil || cfg.Genesis.Config == nil || cfg.Genesis.Config.Istanbul == nil || cfg.Genesis.Config.Istanbul.PoSA == nil:
+			log.Warn("--dev.noposa ignored: chain has no Istanbul PoSA config to disable")
+		case cfg.Genesis.Config.ChainID.Cmp(params.CrossChainConfig.ChainID) == 0 || cfg.Genesis.Config.ChainID.Cmp(params.ZoneZeroChainConfig.ChainID) == 0:
+			// Never disable PoSA on the official Cross mainnet or ZoneZero testnet.
+			log.Warn("--dev.noposa ignored on an official network; following the genesis config", "chainid", cfg.Genesis.Config.ChainID)
+		case rawdb.PreexistingDatabase(stack.ResolvePath("chaindata")) != "":
+			log.Warn("--dev.noposa ignored: chaindata already initialized; following the stored genesis config")
+		default:
 			cfgCopy := *cfg.Genesis.Config
 			istCopy := *cfg.Genesis.Config.Istanbul
 			istCopy.PoSA = nil
 			cfgCopy.Istanbul = &istCopy
 			cfg.Genesis.Config = &cfgCopy
 			log.Warn("Istanbul PoSA disabled via --dev.noposa; running in pre-PoSA mode")
-		} else {
-			log.Warn("--dev.noposa set but Istanbul PoSA is not configured for this chain; nothing to disable")
 		}
 	}
 	// Set any dangling config values
