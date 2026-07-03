@@ -142,6 +142,7 @@ var (
 		utils.DeveloperFlag,
 		utils.DeveloperGasLimitFlag,
 		utils.DeveloperPeriodFlag,
+		utils.DeveloperNoPoSAFlag, // ##CROSS: istanbul posa
 		utils.VMEnableDebugFlag,
 		utils.VMTraceFlag,
 		utils.VMTraceJsonConfigFlag,

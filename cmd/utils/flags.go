@@ -198,6 +198,12 @@ var (
 		Value:    11500000,
 		Category: flags.DevCategory,
 	}
+	// ##CROSS: istanbul posa
+	DeveloperNoPoSAFlag = &cli.BoolFlag{
+		Name:     "dev.noposa",
+		Usage:    "Disable Istanbul PoSA (run the chain in pre-PoSA mode by clearing Istanbul.PoSA)",
+		Category: flags.DevCategory,
+	}
 
 	IdentityFlag = &cli.StringFlag{
 		Name:     "identity",
@@ -2003,6 +2009,24 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			SetDNSDiscoveryDefaults(cfg, params.CrossGenesisHash)
 		case 1:
 			SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
+		}
+	}
+	// ##CROSS: istanbul posa
+	// --dev.noposa runs the chain in pre-PoSA mode by clearing the Istanbul PoSA
+	// config. This avoids the PoSA system-contract bootstrap (which cannot run on a
+	// fresh chain whose genesis predates the Breakpoint fork). The config is cloned
+	// so the shared package-level default is not mutated. Consensus-affecting: only
+	// for local dev/test chains, not for joining a live PoSA network.
+	if ctx.Bool(DeveloperNoPoSAFlag.Name) {
+		if cfg.Genesis != nil && cfg.Genesis.Config != nil && cfg.Genesis.Config.Istanbul != nil && cfg.Genesis.Config.Istanbul.PoSA != nil {
+			cfgCopy := *cfg.Genesis.Config
+			istCopy := *cfg.Genesis.Config.Istanbul
+			istCopy.PoSA = nil
+			cfgCopy.Istanbul = &istCopy
+			cfg.Genesis.Config = &cfgCopy
+			log.Warn("Istanbul PoSA disabled via --dev.noposa; running in pre-PoSA mode")
+		} else {
+			log.Warn("--dev.noposa set but Istanbul PoSA is not configured for this chain; nothing to disable")
 		}
 	}
 	// Set any dangling config values

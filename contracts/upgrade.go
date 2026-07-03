@@ -294,7 +294,7 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 		applySystemContractUpgrade(getUpgrade(forks.Prague, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
-	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
+	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) && isPoSAConfigured(config) {
 		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
@@ -312,10 +312,17 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 	}
 
 	chainID := config.ChainID.Uint64()
-	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) {
+	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) && isPoSAConfigured(config) {
 		initData = append(initData, getSystemContractInitialization(getUpgrade(forks.Breakpoint, chainID), config, header)...)
 	}
 	return
+}
+
+// isPoSAConfigured reports whether the Istanbul PoSA config is present. When it is
+// not, the Breakpoint PoSA system-contract upgrade is skipped and the chain runs in
+// pre-PoSA mode. ##CROSS: istanbul posa
+func isPoSAConfigured(config *params.ChainConfig) bool {
+	return config.Istanbul != nil && config.Istanbul.PoSA != nil
 }
 
 func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb vm.StateDB, writeLog bool) {
