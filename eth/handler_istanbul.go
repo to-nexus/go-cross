@@ -87,13 +87,9 @@ func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, versio
 			select {
 			case <-p.EthPeerRegistered:
 				// the ethpeer should be registered, try to retrieve it and start the consensus handler.
-				p2pPeerId := fmt.Sprintf("%x", p.ID().Bytes()[:8])
+				// The peerset is keyed by the full node id (eth.Peer.ID() == p.ID().String()).
+				p2pPeerId := p.ID().String()
 				ethPeer := h.peers.peer(p2pPeerId)
-				if ethPeer == nil {
-					p2pPeerId = fmt.Sprintf("%x", p.ID().Bytes()) //TODO:BBO
-					ethPeer = h.peers.peer(p2pPeerId)
-					log.Warn("full p2p peer", "id", p2pPeerId, "ethPeer", ethPeer)
-				}
 				if ethPeer != nil {
 					p.Log().Debug("consensus subprotocol retrieved eth peer from peerset", "ethPeer.id", p2pPeerId, "ProtoName", protoName)
 					// add the rw protocol for the quorum subprotocol to the eth peer.
