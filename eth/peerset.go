@@ -207,6 +207,18 @@ func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer { // ##CROSS: 
 	return list
 }
 
+// allPeers returns a snapshot of all connected `eth` peers.
+func (ps *peerSet) allPeers() []*ethPeer { // ##CROSS: peer permission
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	list := make([]*ethPeer, 0, len(ps.peers))
+	for _, p := range ps.peers {
+		list = append(list, p)
+	}
+	return list
+}
+
 // peersWithoutTransaction retrieves a list of peers that do not have a given
 // transaction in their set of known hashes.
 func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {

@@ -476,7 +476,6 @@ func (sb *Backend) stop() error {
 	return nil
 }
 
-// ##CROSS: istanbul posa
 // ValidatorsAt returns validators from the snapshot at the given block number.
 func (sb *Backend) ValidatorsAt(chain consensus.ChainHeaderReader, header *types.Header) []common.Address {
 	if chain == nil || header == nil {
@@ -489,4 +488,21 @@ func (sb *Backend) ValidatorsAt(chain consensus.ChainHeaderReader, header *types
 	return snap.validators()
 }
 
-// ##
+// IsValidatorAt reports whether addr is a validator at the given header.
+//   - When PoSA is active, it queries the StakeHub registry (registered validators,
+//     i.e. validatorToOperator(addr) != 0) — this is broader than the active set.
+//   - Otherwise, it falls back to the snapshot validator set.
+func (sb *Backend) IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, addr common.Address) bool {
+	if chain == nil || header == nil {
+		return false
+	}
+	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		return sb.engine.IsEligibleValidator(addr, header.Number.Uint64())
+	}
+	for _, v := range sb.ValidatorsAt(chain, header) {
+		if v == addr {
+			return true
+		}
+	}
+	return false
+}
