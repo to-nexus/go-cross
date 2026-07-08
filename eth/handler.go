@@ -107,7 +107,8 @@ type handlerConfig struct {
 	EventMux       *event.TypeMux         // Legacy event mux, deprecate for `feed`
 	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
 
-	Engine consensus.Engine // ##CROSS: istanbul
+	Engine         consensus.Engine // ##CROSS: istanbul
+	BootstrapNodes []*enode.Node    // ##CROSS: peer permission — rejected quietly (no warn) by permissioning
 }
 
 type handler struct {
@@ -187,12 +188,15 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	// ##
 
-	// Enable permissioning only for the Istanbul consensus engine. Validator status is
-	// queried from the consensus engine (StakeHub when PoSA is active, otherwise snapshot).
-	// The last 20 bytes of the enode.ID are the nodekey address (both are the keccak256 of the same nodekey public key).
-	if checker := eth.NewIstanbulValidatorChecker(h.engine, h.chain); checker != nil { // ##CROSS: peer permission
-		self := common.BytesToAddress(config.NodeID[12:])
-		h.permission = eth.NewPermissionPeers(self, checker)
+	// ##CROSS: peer permission
+	// Enable permissioning only for the Istanbul consensus engine.
+	if checker := eth.NewIstanbulValidatorChecker(h.engine, h.chain); checker != nil {
+		// bootnodes are rejected quietly (no warn), not allowed.
+		bootnodes := make(map[enode.ID]struct{}, len(config.BootstrapNodes))
+		for _, n := range config.BootstrapNodes {
+			bootnodes[n.ID()] = struct{}{}
+		}
+		h.permission = eth.NewPermissionPeers(config.NodeID, checker, bootnodes)
 	}
 	// ##
 
@@ -535,9 +539,8 @@ func (h *handler) unregisterPeer(id string) {
 // drops any that are no longer permitted (validator no longer eligible, trust revoked, ...).
 const permissionSweepInterval = 30 * time.Second
 
-// permissionSweepConcurrency bounds how many peers are checked in parallel during a sweep.
-// A cold eligibility cache makes each check hit StakeHub, so the checks are fanned out;
-// the limit caps the burst of concurrent contract lookups.
+// permissionSweepConcurrency bounds how many peers are checked in parallel during a sweep
+// (caps the burst of StakeHub lookups on a cold cache).
 const permissionSweepConcurrency = 8
 
 // permissionSweepLoop periodically re-validates connected peers against the current
@@ -563,32 +566,21 @@ func (h *handler) permissionSweepLoop() {
 	}
 }
 
-// sweepPermissionedPeers disconnects any connected peer that, under the current validator
-// set, is no longer permitted (this node is a validator and the peer is neither an eligible
-// validator nor trusted/static). When this node is not a validator, no peer is dropped.
-// Handles the case where a peer's eligibility/trust changes after the connection was made.
-//
-// Peers are checked concurrently with a bounded worker count: PeerAllowed only reads
-// immutable state and may hit StakeHub on a cold cache, so fanning out shortens the sweep
-// while the limit caps the burst of concurrent contract lookups.
+// sweepPermissionedPeers disconnects connected peers that are no longer permitted, catching
+// eligibility/trust changes after connect. Peers are checked with bounded concurrency.
 func (h *handler) sweepPermissionedPeers() {
 	eachPeerBounded(h.peers.allPeers(), permissionSweepConcurrency, func(p *ethPeer) {
-		pub := p.Node().Pubkey()
-		if pub == nil {
+		id := p.Node().ID()
+		if h.permission.PeerAllowed(id, p.Trusted(), p.StaticDialed()) {
 			return
 		}
-		addr := crypto.PubkeyToAddress(*pub)
-		if h.permission.PeerAllowed(addr, p.Trusted(), p.StaticDialed()) {
-			return
-		}
-		p.Log().Warn("Disconnecting peer no longer permitted by consensus permissioning", "addr", addr)
+		p.Log().Warn("Disconnecting peer no longer permitted by consensus permissioning", "id", id)
 		p.Peer.Disconnect(p2p.DiscUselessPeer)
 	})
 }
 
-// eachPeerBounded runs fn for each peer concurrently, with at most limit invocations
-// in flight at any time. It returns only after every fn has completed. limit must be
-// positive (callers pass a positive constant); a non-positive limit would deadlock.
+// eachPeerBounded runs fn for each peer concurrently, at most limit at a time, returning
+// once all complete. limit must be positive.
 func eachPeerBounded(peers []*ethPeer, limit int, fn func(*ethPeer)) {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, limit)
