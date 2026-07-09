@@ -305,15 +305,10 @@ const (
 // minStake is cached separately for minStakeCacheTTL (a global value that changes rarely).
 func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) bool {
 	c := e.validatorCache
-	if c == nil {
-		return e.queryEligibleValidator(addr, number)
-	}
-
 	// eligible is an lru.Cache, so it is self-synchronized (no extra lock needed). The capacity cap also prevents unbounded growth.
 	if ent, ok := c.eligible.Get(addr); ok && time.Now().Before(ent.exp) {
 		return ent.ok
 	}
-
 	result := e.queryEligibleValidator(addr, number)
 	c.eligible.Add(addr, eligibilityEntry{ok: result, exp: time.Now().Add(eligibilityCacheTTL)})
 	return result
@@ -345,21 +340,21 @@ func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool
 		return false
 	}
 
-	// 3) the operator's staked amount. (stake is keyed by operator address, not validator address)
+	// 3) operator 의 staked 수량. (stake 는 validator 가 아니라 operator 주소로 keyed 됨)
 	staked, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackGetStakedAmount(operator), e.stakeHub.UnpackGetStakedAmount)
 	if err != nil {
 		log.Warn("Failed to call getStakedAmount", "operator", operator, "number", number, "err", err)
 		return false
 	}
 
-	// 4) minimum validator stake (cached with a separate TTL).
+	// 4) 최소 validator stake (별도 TTL 캐싱).
 	minStake, err := e.minValidatorStakeCached(number)
 	if err != nil {
 		log.Warn("Failed to get minValidatorStake", "number", number, "err", err)
 		return false
 	}
 
-	// A validator is considered valid only if staked >= minValidatorStake.
+	// staked >= minValidatorStake 여야 유효한 validator 로 인정한다.
 	return staked.Cmp(minStake) >= 0
 }
 
@@ -367,29 +362,30 @@ func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool
 // global value that changes only via admin action, so a coarse TTL is fine.
 func (e *Engine) minValidatorStakeCached(number uint64) (*big.Int, error) {
 	c := e.validatorCache
-	if c != nil {
+	if m := func() *big.Int {
 		c.mu.Lock()
+		defer c.mu.Unlock()
 		if c.minStake != nil && time.Now().Before(c.minStakeExp) {
-			v := c.minStake
-			c.mu.Unlock()
-			return v, nil
+			return c.minStake
 		}
-		c.mu.Unlock()
+		return nil
+	}(); m != nil {
+		return m, nil
 	}
 
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
-	minStake, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackMinValidatorStake(), e.stakeHub.UnpackMinValidatorStake)
-	if err != nil {
+	if minStake, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackMinValidatorStake(), e.stakeHub.UnpackMinValidatorStake); err != nil {
 		return nil, err
+	} else {
+		func() {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			c.minStake = minStake
+			c.minStakeExp = time.Now().Add(minStakeCacheTTL)
+		}()
+		return minStake, nil
 	}
-	if c != nil {
-		c.mu.Lock()
-		c.minStake = minStake
-		c.minStakeExp = time.Now().Add(minStakeCacheTTL)
-		c.mu.Unlock()
-	}
-	return minStake, nil
 }
 
 // getMaxCouncil reads the max number of council from the StakeHub contract.
