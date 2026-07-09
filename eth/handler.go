@@ -551,8 +551,10 @@ func (h *handler) permissionSweepLoop() {
 	defer h.wg.Done()
 
 	if h.permission == nil {
-		return // permissioning disabled; nothing to enforce
+		return
 	}
+	h.permission.LogSelfStatus()
+
 	ticker := time.NewTicker(permissionSweepInterval)
 	defer ticker.Stop()
 
@@ -564,6 +566,7 @@ func (h *handler) permissionSweepLoop() {
 			return
 		}
 	}
+
 }
 
 // sweepPermissionedPeers disconnects connected peers that are no longer permitted, catching

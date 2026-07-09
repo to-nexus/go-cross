@@ -492,15 +492,15 @@ func (sb *Backend) ValidatorsAt(chain consensus.ChainHeaderReader, header *types
 //   - When PoSA is active, it queries the StakeHub registry (registered validators,
 //     i.e. validatorToOperator(addr) != 0) — this is broader than the active set.
 //   - Otherwise, it falls back to the snapshot validator set.
-func (sb *Backend) IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, addr common.Address) bool {
+func (sb *Backend) IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, validator common.Address) bool {
 	if chain == nil || header == nil {
 		return false
 	}
 	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		return sb.engine.IsEligibleValidator(addr, header.Number.Uint64())
+		return sb.engine.IsEligibleValidator(validator, header.Number.Uint64())
 	}
 	for _, v := range sb.ValidatorsAt(chain, header) {
-		if v == addr {
+		if v == validator {
 			return true
 		}
 	}

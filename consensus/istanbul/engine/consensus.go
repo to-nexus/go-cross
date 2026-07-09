@@ -340,21 +340,21 @@ func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool
 		return false
 	}
 
-	// 3) operator 의 staked 수량. (stake 는 validator 가 아니라 operator 주소로 keyed 됨)
+	// 3) the operator's staked amount. (stake is keyed by operator address, not validator address)
 	staked, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackGetStakedAmount(operator), e.stakeHub.UnpackGetStakedAmount)
 	if err != nil {
 		log.Warn("Failed to call getStakedAmount", "operator", operator, "number", number, "err", err)
 		return false
 	}
 
-	// 4) 최소 validator stake (별도 TTL 캐싱).
+	// 4) minimum validator stake (cached with a separate TTL).
 	minStake, err := e.minValidatorStakeCached(number)
 	if err != nil {
 		log.Warn("Failed to get minValidatorStake", "number", number, "err", err)
 		return false
 	}
 
-	// staked >= minValidatorStake 여야 유효한 validator 로 인정한다.
+	// A validator is valid only if staked >= minValidatorStake.
 	return staked.Cmp(minStake) >= 0
 }
 

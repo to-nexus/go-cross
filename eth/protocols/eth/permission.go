@@ -73,7 +73,7 @@ func NewPermissionPeers(self enode.ID, checker ValidatorChecker, bootnodes map[e
 		quit:       make(chan struct{}),
 	}
 	go pp.loop()
-	log.Info("Consensus permissioning enabled", "self", self, "isValidator", pp.selfIsValidatorNode(), "bootnodes", len(bootnodes))
+	log.Info("Consensus permissioning enabled", "self", self, "bootnodes", len(bootnodes))
 	return pp
 }
 
@@ -100,6 +100,14 @@ func (pp *PermissionPeers) isValidatorNode(id enode.ID) bool {
 // selfIsValidatorNode returns whether this node itself is an eligible validator.
 func (pp *PermissionPeers) selfIsValidatorNode() bool {
 	return pp.isValidatorNode(pp.self)
+}
+
+// LogSelfStatus logs this node's own validator status. Call only after the node is started
+func (pp *PermissionPeers) LogSelfStatus() {
+	if pp == nil {
+		return
+	}
+	log.Warn("Consensus permissioning self status", "self", pp.self.String(), "isValidator", pp.selfIsValidatorNode())
 }
 
 // loop is the channel handler that processes verification requests serially.
