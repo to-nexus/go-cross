@@ -316,6 +316,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		EventMux:       eth.eventMux,
 		RequiredBlocks: config.RequiredBlocks,
 		Engine:         eth.engine,
+		BootstrapNodes: eth.p2pServer.BootstrapNodes, // ##CROSS: peer permission — rejected quietly (no warn)
 	}); err != nil {
 		return nil, err
 	}

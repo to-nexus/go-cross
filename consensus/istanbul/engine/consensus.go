@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
@@ -282,6 +283,109 @@ func (e *Engine) getStakedValidatorInfo(number uint64) ([]ValidatorInfo, error) 
 	}
 
 	return validatorInfos, nil
+}
+
+// eligibilityCacheTTL / minStakeCacheTTL control how long the permissioning caches stay
+// valid. minValidatorStake changes rarely (admin only) so it is cached longer; per-address
+// eligibility (registered / blacklist / stake) uses a shorter TTL.
+const (
+	eligibilityCacheTTL = time.Minute
+	minStakeCacheTTL    = 10 * time.Minute
+)
+
+// IsEligibleValidator reports whether the given validator (nodekey) address is eligible
+// to be an active validator in the StakeHub contract, i.e. it is registered, its operator
+// is not blacklisted, and it holds at least the minimum validator stake. Used for consensus
+// peer permissioning while PoSA is active. Concretely a validator is eligible when:
+//   - validatorToOperator(addr) != 0 (registered), and
+//   - the operator is not blacklisted, and
+//   - the operator's staked amount is at least minValidatorStake.
+//
+// The result (both eligible/ineligible) is cached per address for eligibilityCacheTTL.
+// minStake is cached separately for minStakeCacheTTL (a global value that changes rarely).
+func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) bool {
+	c := e.validatorCache
+	// eligible is an lru.Cache, so it is self-synchronized (no extra lock needed). The capacity cap also prevents unbounded growth.
+	if ent, ok := c.eligible.Get(addr); ok && time.Now().Before(ent.exp) {
+		return ent.ok
+	}
+	result := e.queryEligibleValidator(addr, number)
+	c.eligible.Add(addr, eligibilityEntry{ok: result, exp: time.Now().Add(eligibilityCacheTTL)})
+	return result
+}
+
+// queryEligibleValidator performs the actual StakeHub lookups. Per-address eligibility is
+// not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
+func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool {
+	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
+	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
+
+	// 1) validator (nodekey) address → operator address. 0 means not registered.
+	operator, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackValidatorToOperator(addr), e.stakeHub.UnpackValidatorToOperator)
+	if err != nil {
+		log.Warn("Failed to call validatorToOperator", "addr", addr, "number", number, "err", err)
+		return false
+	}
+	if operator == (common.Address{}) {
+		return false
+	}
+
+	// 2) invalid if the operator is on the blacklist. (the blacklist is keyed by operator address)
+	blacklisted, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackIsBlackListed(operator), e.stakeHub.UnpackIsBlackListed)
+	if err != nil {
+		log.Warn("Failed to call isBlackListed", "operator", operator, "number", number, "err", err)
+		return false
+	}
+	if blacklisted {
+		return false
+	}
+
+	// 3) the operator's staked amount. (stake is keyed by operator address, not validator address)
+	staked, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackGetStakedAmount(operator), e.stakeHub.UnpackGetStakedAmount)
+	if err != nil {
+		log.Warn("Failed to call getStakedAmount", "operator", operator, "number", number, "err", err)
+		return false
+	}
+
+	// 4) minimum validator stake (cached with a separate TTL).
+	minStake, err := e.minValidatorStakeCached(number)
+	if err != nil {
+		log.Warn("Failed to get minValidatorStake", "number", number, "err", err)
+		return false
+	}
+
+	// A validator is valid only if staked >= minValidatorStake.
+	return staked.Cmp(minStake) >= 0
+}
+
+// minValidatorStakeCached returns minValidatorStake, cached for minStakeCacheTTL. It is a
+// global value that changes only via admin action, so a coarse TTL is fine.
+func (e *Engine) minValidatorStakeCached(number uint64) (*big.Int, error) {
+	c := e.validatorCache
+	if m := func() *big.Int {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.minStake != nil && time.Now().Before(c.minStakeExp) {
+			return c.minStake
+		}
+		return nil
+	}(); m != nil {
+		return m, nil
+	}
+
+	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
+	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
+	if minStake, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackMinValidatorStake(), e.stakeHub.UnpackMinValidatorStake); err != nil {
+		return nil, err
+	} else {
+		func() {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			c.minStake = minStake
+			c.minStakeExp = time.Now().Add(minStakeCacheTTL)
+		}()
+		return minStake, nil
+	}
 }
 
 // getMaxCouncil reads the max number of council from the StakeHub contract.

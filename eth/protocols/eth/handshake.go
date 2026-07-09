@@ -36,7 +36,16 @@ const (
 
 // Handshake executes the eth protocol handshake, negotiating version number,
 // network IDs, difficulties, head and genesis blocks.
-func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter) error {
+func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter, perm *PermissionPeers) error {
+	// ##CROSS: peer permission
+	// Reject the peer here if consensus permissioning disallows it (nil perm = open).
+	if perm != nil {
+		if err := perm.checkPeerPermission(p); err != nil {
+			return err
+		}
+	}
+	// ##
+
 	// Send out own handshake in a new thread
 	errc := make(chan error, 2)
 

@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
@@ -67,6 +69,31 @@ type Engine struct {
 	rewardHub      *breakpoint.RewardHub
 	validatorSlash *breakpoint.ValidatorSlash
 	// ##
+
+	// permissioning cache. Kept as a pointer to avoid copying the Engine value (copylocks).
+	validatorCache *validatorCache
+}
+
+// validatorCacheSize bounds the number of per-address eligibility entries kept in memory.
+const validatorCacheSize = 4096
+
+// validatorCache holds the peer-permissioning caches with a TTL: the global
+// minValidatorStake value and per-address eligibility results.
+type validatorCache struct {
+	// per-address eligibility: capacity-bounded LRU + per-entry TTL. lru.Cache is internally
+	// synchronized, so it needs no external lock and cannot grow unbounded.
+	eligible *lru.Cache[common.Address, eligibilityEntry]
+
+	// minValidatorStake (global) with its own TTL, guarded by mu.
+	mu          sync.Mutex
+	minStake    *big.Int  // cached minValidatorStake (nil if unset)
+	minStakeExp time.Time // minStake expiry
+}
+
+// eligibilityEntry is a cached IsEligibleValidator result with its expiry.
+type eligibilityEntry struct {
+	ok  bool
+	exp time.Time
 }
 
 func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signTx SignerTxFn, blsSign BLSSignerFn, ce consensus.Engine, contractBackend bind.ContractBackend) *Engine {
@@ -84,6 +111,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		rewardHub:       breakpoint.NewRewardHub(),
 		validatorSlash:  breakpoint.NewValidatorSlash(),
 		// ##
+		validatorCache: &validatorCache{eligible: lru.NewCache[common.Address, eligibilityEntry](validatorCacheSize)},
 	}
 	return e
 }

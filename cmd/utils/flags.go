@@ -2011,7 +2011,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
 		}
 	}
-	// ##CROSS: istanbul posa
+
 	// --dev.noposa runs a chain in pre-PoSA mode by clearing the Istanbul PoSA
 	// config, avoiding the PoSA system-contract bootstrap that cannot run on a fresh
 	// chain whose genesis predates the Breakpoint fork. It is a local dev/test
@@ -2019,15 +2019,28 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// chain, so it is honored ONLY for a fresh datadir on a non-official network. In
 	// every other case it is ignored and the node follows the genesis config. The
 	// config is cloned so the shared package-level default is not mutated.
-	if ctx.Bool(DeveloperNoPoSAFlag.Name) {
+	if ctx.Bool(DeveloperNoPoSAFlag.Name) { // ##CROSS: istanbul posa
+		// If chaindata already exists, inspect its stored genesis for Istanbul PoSA.
+		// --dev.noposa is ignored only when the persisted chain actually has PoSA
+		// configured (disabling it would diverge from the stored chain); a preexisting
+		// chaindata without PoSA is fine to keep running in pre-PoSA mode.
+		storedPoSAConfigured, storedPoSAActive, storedHead := false, false, uint64(0)
+		if rawdb.PreexistingDatabase(stack.ResolvePath("chaindata")) != "" {
+			storedPoSAConfigured, storedPoSAActive, storedHead = storedChainPoSAStatus(ctx, stack)
+		}
 		switch {
 		case cfg.Genesis == nil || cfg.Genesis.Config == nil || cfg.Genesis.Config.Istanbul == nil || cfg.Genesis.Config.Istanbul.PoSA == nil:
 			log.Warn("--dev.noposa ignored: chain has no Istanbul PoSA config to disable")
 		case cfg.Genesis.Config.ChainID.Cmp(params.CrossChainConfig.ChainID) == 0 || cfg.Genesis.Config.ChainID.Cmp(params.ZoneZeroChainConfig.ChainID) == 0:
 			// Never disable PoSA on the official Cross mainnet or ZoneZero testnet.
 			log.Warn("--dev.noposa ignored on an official network; following the genesis config", "chainid", cfg.Genesis.Config.ChainID)
-		case rawdb.PreexistingDatabase(stack.ResolvePath("chaindata")) != "":
-			log.Warn("--dev.noposa ignored: chaindata already initialized; following the stored genesis config")
+		case storedPoSAConfigured:
+			// Ignore --dev.noposa only when the stored chaindata actually has PoSA
+			// configured; disabling it now would diverge from the persisted chain.
+			log.Warn("--dev.noposa ignored: chaindata already has Istanbul PoSA configured; following the stored genesis config", "headBlock", storedHead)
+			if storedPoSAActive {
+				log.Warn("chaindata already has Istanbul PoSA active at its head; disabling PoSA now would diverge from the stored chain", "headBlock", storedHead)
+			}
 		default:
 			cfgCopy := *cfg.Genesis.Config
 			istCopy := *cfg.Genesis.Config.Istanbul
@@ -2312,6 +2325,38 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 		Fatalf("Could not open database: %v", err)
 	}
 	return chainDb
+}
+
+// storedChainPoSAStatus inspects an already-initialized chaindata and reports
+// whether its stored genesis configures Istanbul PoSA, whether PoSA is already
+// active at the current head (head past the Breakpoint fork), and the head block
+// number. It is best-effort: any read error yields (false, false, 0).
+func storedChainPoSAStatus(ctx *cli.Context, stack *node.Node) (configured bool, active bool, headNumber uint64) { // ##CROSS: istanbul posa
+	chaindb := tryMakeReadOnlyDatabase(ctx, stack)
+	defer chaindb.Close()
+
+	genesis, err := core.ReadGenesis(chaindb)
+	if err != nil || genesis == nil || genesis.Config == nil ||
+		genesis.Config.Istanbul == nil || genesis.Config.Istanbul.PoSA == nil {
+		return false, false, 0
+	}
+	configured = true
+
+	headHash := rawdb.ReadHeadBlockHash(chaindb)
+	if headHash == (common.Hash{}) {
+		return configured, false, 0
+	}
+	numPtr := rawdb.ReadHeaderNumber(chaindb, headHash)
+	if numPtr == nil {
+		return configured, false, 0
+	}
+	headNumber = *numPtr
+	header := rawdb.ReadHeader(chaindb, headHash, headNumber)
+	if header == nil {
+		return configured, false, headNumber
+	}
+	active = genesis.Config.IsIstanbulPoSA(header.Number, header.Time)
+	return configured, active, headNumber
 }
 
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,

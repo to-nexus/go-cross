@@ -107,7 +107,8 @@ type handlerConfig struct {
 	EventMux       *event.TypeMux         // Legacy event mux, deprecate for `feed`
 	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
 
-	Engine consensus.Engine // ##CROSS: istanbul
+	Engine         consensus.Engine // ##CROSS: istanbul
+	BootstrapNodes []*enode.Node    // ##CROSS: peer permission — rejected quietly (no warn) by permissioning
 }
 
 type handler struct {
@@ -144,6 +145,7 @@ type handler struct {
 	// ##CROSS: istanbul
 	engine          consensus.Engine
 	istanbulHandler consensus.IstanbulHandler
+	permission      *eth.PermissionPeers // consensus peer permissioning
 	// ##
 
 	// ##CROSS: legacy sync
@@ -183,6 +185,18 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	if h.istanbulHandler != nil {
 		h.istanbulHandler.SetBroadcaster((*istanbulHandler)(h))
+	}
+	// ##
+
+	// ##CROSS: peer permission
+	// Enable permissioning only for the Istanbul consensus engine.
+	if checker := eth.NewIstanbulValidatorChecker(h.engine, h.chain); checker != nil {
+		// bootnodes are rejected quietly (no warn), not allowed.
+		bootnodes := make(map[enode.ID]struct{}, len(config.BootstrapNodes))
+		for _, n := range config.BootstrapNodes {
+			bootnodes[n.ID()] = struct{}{}
+		}
+		h.permission = eth.NewPermissionPeers(config.NodeID, checker, bootnodes)
 	}
 	// ##
 
@@ -348,7 +362,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		td      = h.chain.GetTd(hash, number) // ##CROSS: legacy sync
 	)
 	forkID := forkid.NewID(h.chain.Config(), genesis, number, head.Time)
-	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter); err != nil {
+	if err := peer.Handshake(h.networkID, td, hash, genesis.Hash(), forkID, h.forkFilter, h.permission); err != nil {
 		peer.Log().Debug("Ethereum handshake failed", "err", err)
 
 		// When the Handshake() returns an error, the Run method corresponding to `eth` protocol returns with the error, causing the peer to drop, signal subprotocol as well to exit the `Run` method
@@ -520,6 +534,73 @@ func (h *handler) unregisterPeer(id string) {
 	}
 }
 
+// ##CROSS: peer permission
+// permissionSweepInterval is how often a validator re-checks its connected peers and
+// drops any that are no longer permitted (validator no longer eligible, trust revoked, ...).
+const permissionSweepInterval = 30 * time.Second
+
+// permissionSweepConcurrency bounds how many peers are checked in parallel during a sweep
+// (caps the burst of StakeHub lookups on a cold cache).
+const permissionSweepConcurrency = 8
+
+// permissionSweepLoop periodically re-validates connected peers against the current
+// validator set and disconnects any that are no longer permitted. It is a no-op when
+// permissioning is disabled (non-istanbul engine). Eligibility lookups are cached, so a
+// sweep mostly hits the cache and does not hammer the StakeHub contract.
+func (h *handler) permissionSweepLoop() {
+	defer h.wg.Done()
+
+	if h.permission == nil {
+		return
+	}
+	h.permission.LogSelfStatus()
+
+	ticker := time.NewTicker(permissionSweepInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			h.sweepPermissionedPeers()
+		case <-h.quitSync:
+			return
+		}
+	}
+
+}
+
+// sweepPermissionedPeers disconnects connected peers that are no longer permitted, catching
+// eligibility/trust changes after connect. Peers are checked with bounded concurrency.
+func (h *handler) sweepPermissionedPeers() {
+	eachPeerBounded(h.peers.allPeers(), permissionSweepConcurrency, func(p *ethPeer) {
+		id := p.Node().ID()
+		if h.permission.PeerAllowed(id, p.Trusted(), p.StaticDialed()) {
+			return
+		}
+		p.Log().Warn("Disconnecting peer no longer permitted by consensus permissioning", "id", id)
+		p.Peer.Disconnect(p2p.DiscUselessPeer)
+	})
+}
+
+// eachPeerBounded runs fn for each peer concurrently, at most limit at a time, returning
+// once all complete. limit must be positive.
+func eachPeerBounded(peers []*ethPeer, limit int, fn func(*ethPeer)) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, limit)
+	for _, p := range peers {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(p *ethPeer) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fn(p)
+		}(p)
+	}
+	wg.Wait()
+}
+
+// ##
+
 func (h *handler) Start(maxPeers int) {
 	h.maxPeers = maxPeers
 
@@ -543,6 +624,12 @@ func (h *handler) Start(maxPeers int) {
 	// start peer handler tracker
 	h.wg.Add(1)
 	go h.protoTracker()
+
+	// ##CROSS: peer permission
+	// periodically re-check connected peers and drop any no longer permitted
+	h.wg.Add(1)
+	go h.permissionSweepLoop()
+	// ##
 }
 
 func (h *handler) Stop() {
@@ -561,6 +648,7 @@ func (h *handler) Stop() {
 	h.peers.close()
 	h.wg.Wait()
 
+	h.permission.Close() // ##CROSS: peer permission
 	log.Info("Ethereum protocol stopped")
 }
 
