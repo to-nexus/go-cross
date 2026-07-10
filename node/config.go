@@ -214,9 +214,11 @@ type Config struct {
 	DBEngine string `toml:",omitempty"`
 
 	// ##CROSS: gas abstraction url.
+	// GasAbsURL is the remote address of Gas Abstraction server.
 	GasAbsURL string `toml:",omitempty"`
 
 	// ##CROSS: bls seal
+	// BLSSecretKey is the secret key for the validator BLS signer.
 	BLSSecretKey bls.SecretKey `toml:"-"`
 }
 
