@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -411,8 +410,5 @@ func (b *backendMock) Engine() consensus.Engine { return nil }
 
 func (b *backendMock) CurrentView() *filtermaps.ChainView           { return nil }
 func (b *backendMock) NewMatcherBackend() filtermaps.MatcherBackend { return nil }
-
-// GasAbs returns no gas abstraction client for this mock backend.
-func (b *backendMock) GasAbs() *gasabs.Client { return nil }
 
 func (b *backendMock) HistoryPruningCutoff() uint64 { return 0 }

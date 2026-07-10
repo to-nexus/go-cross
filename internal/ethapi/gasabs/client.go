@@ -2,13 +2,10 @@ package gasabs
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -24,7 +21,6 @@ type Client struct {
 	cancel context.CancelFunc
 	rawurl string
 	c      *rpc.Client
-	signer types.Signer
 	log    log.Logger
 
 	accessListLock    sync.RWMutex
@@ -36,32 +32,30 @@ type Client struct {
 }
 
 // Dial connects a client to the given URL.
-func Dial(rawurl string, config *params.ChainConfig) (*Client, error) {
-	return DialContext(context.Background(), rawurl, config)
+func Dial(rawurl string) (*Client, error) {
+	return DialContext(context.Background(), rawurl)
 }
 
 // DialContext connects a client to the given URL with context.
-func DialContext(ctx context.Context, rawurl string, config *params.ChainConfig) (*Client, error) {
+func DialContext(ctx context.Context, rawurl string) (*Client, error) {
 	c, err := rpc.DialContext(ctx, rawurl)
 	if err != nil {
 		return nil, err
 	}
-	cli := NewClient(ctx, c, rawurl, config)
+	cli := NewClient(ctx, c, rawurl)
 
 	return cli, err
 }
 
 // NewClient creates a client that uses the given RPC client.
-func NewClient(ctx context.Context, c *rpc.Client, rawurl string, config *params.ChainConfig) *Client {
+func NewClient(ctx context.Context, c *rpc.Client, rawurl string) *Client {
 	var (
 		chlid, cancel = context.WithCancel(ctx)
-		signer        = types.LatestSigner(config)
 		client        = &Client{
 			ctx:    chlid,
 			cancel: cancel,
 			rawurl: rawurl,
 			c:      c,
-			signer: signer,
 			log:    log.New("module", "gasabs"),
 
 			accessListLock:    sync.RWMutex{},
@@ -100,7 +94,8 @@ func (ec *Client) Close() {
 	ec.c.Close()
 }
 
-// SignFeeDelegateTransaction asks the gas abstraction service to sign a fee-delegated transaction.
+// ##CROSS: fee delegation
+// SignFeeDelegateTransaction
 func (ec *Client) SignFeeDelegateTransaction(ctx context.Context, tx *types.Transaction) (*types.Transaction, error) {
 	var resp hexutil.Bytes
 
@@ -120,32 +115,29 @@ func (ec *Client) SignFeeDelegateTransaction(ctx context.Context, tx *types.Tran
 	}
 }
 
-// IsApprovedFrom reports whether the sender is approved for gas abstraction.
-func (ec *Client) IsApprovedFrom(address common.Address) (approved bool) {
+// IsApproved
+func (ec *Client) IsApprovedFrom(ctx context.Context, address common.Address) (approved bool) {
 	ec.accessListLock.RLock()
 	_, approved = ec.whitelistFrom[address]
 	ec.accessListLock.RUnlock()
 	return
 }
 
-// IsApprovedTo reports whether the recipient is approved for gas abstraction.
-func (ec *Client) IsApprovedTo(address common.Address) (approved bool) {
+func (ec *Client) IsApprovedTo(ctx context.Context, address common.Address) (approved bool) {
 	ec.accessListLock.RLock()
 	_, approved = ec.whitelistTo[address]
 	ec.accessListLock.RUnlock()
 	return
 }
 
-// IsBlacklistedFrom reports whether the sender is blocked from gas abstraction.
-func (ec *Client) IsBlacklistedFrom(address common.Address) (blacklisted bool) {
+func (ec *Client) IsBlacklistedFrom(ctx context.Context, address common.Address) (blacklisted bool) {
 	ec.accessListLock.RLock()
 	_, blacklisted = ec.blacklistFrom[address]
 	ec.accessListLock.RUnlock()
 	return
 }
 
-// IsBlacklistedTo reports whether the recipient is blocked from gas abstraction.
-func (ec *Client) IsBlacklistedTo(address common.Address) (blacklisted bool) {
+func (ec *Client) IsBlacklistedTo(ctx context.Context, address common.Address) (blacklisted bool) {
 	ec.accessListLock.RLock()
 	_, blacklisted = ec.blacklistTo[address]
 	ec.accessListLock.RUnlock()
@@ -196,59 +188,11 @@ func (ec *Client) syncAccessList(ctx context.Context) error {
 	ec.blacklistTo = blacklistTo
 	ec.accessListLock.Unlock()
 
-	ec.log.Warn("Gasabs accessList updated", "version", ec.accessListVersion, "whitelist_from_length", len(ec.whitelistFrom), "whitelist_to_length", len(ec.whitelistTo), "blacklist_from_length", len(ec.blacklistFrom), "blacklist_to_length", len(ec.blacklistTo))
-	for addr := range ec.whitelistTo {
-		ec.log.Warn("Whitelist to", "address", addr)
-	}
+	ec.log.Info("Gasabs accessList updated", "version", ec.accessListVersion, "whitelist_from_length", len(ec.whitelistFrom), "whitelist_to_length", len(ec.whitelistTo), "blacklist_from_length", len(ec.blacklistFrom), "blacklist_to_length", len(ec.blacklistTo))
 	return nil
 }
 
-// Host returns the configured gas abstraction RPC endpoint.
+// Host
 func (ec *Client) Host() string {
 	return ec.rawurl
-}
-
-// CanDelegateTx checks if the transaction can be delegated.
-func (ec *Client) CanDelegateTx(tx *types.Transaction) (bool, common.Address, common.Address, error) {
-	from, err := ec.signer.Sender(tx)
-	if err != nil {
-		return false, common.Address{}, common.Address{}, err
-	}
-	to := common.Address{}
-	if tx.To() != nil {
-		to = *tx.To()
-	}
-
-	// blacklisted addresses are not allowed
-	if ec.IsBlacklistedFrom(from) {
-		return false, from, to, errors.New("from address is blacklisted")
-	} else if ec.IsBlacklistedTo(to) {
-		return false, from, to, errors.New("to address is blacklisted")
-	}
-
-	// only dynamic fee transaction with whitelisted addresses can be delegated
-	approved := tx.Type() == types.DynamicFeeTxType &&
-		(ec.IsApprovedFrom(from) || ec.IsApprovedTo(to))
-	return approved, from, to, nil
-}
-
-// CanDelegateCall checks if the call can be delegated during gas estimation.
-func (ec *Client) CanDelegateCall(call *core.Message) (bool, common.Address, common.Address, error) {
-	from := call.From
-	to := common.Address{}
-	if call.To != nil {
-		to = *call.To
-	}
-
-	// blacklisted addresses are not allowed
-	if ec.IsBlacklistedFrom(from) {
-		return false, from, to, errors.New("from address is blacklisted")
-	} else if ec.IsBlacklistedTo(to) {
-		return false, from, to, errors.New("to address is blacklisted")
-	}
-
-	// If gas tip cap and gas fee cap are set, the call is treated as a dynamic fee transaction.
-	approved := call.GasTipCap != nil && call.GasFeeCap != nil && call.GasFeeCap.Sign() != 0 &&
-		(ec.IsApprovedFrom(from) || ec.IsApprovedTo(to))
-	return approved, from, to, nil
 }

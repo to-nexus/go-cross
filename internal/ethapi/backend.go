@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/internal/ethapi/gasabs"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -101,8 +100,6 @@ type Backend interface {
 
 	CurrentView() *filtermaps.ChainView
 	NewMatcherBackend() filtermaps.MatcherBackend
-
-	GasAbs() *gasabs.Client // ##CROSS: gas abstraction
 }
 
 func GetAPIs(apiBackend Backend, nodeConfig *node.Config) []rpc.API {
@@ -116,7 +113,7 @@ func GetAPIs(apiBackend Backend, nodeConfig *node.Config) []rpc.API {
 			Service:   NewBlockChainAPI(apiBackend),
 		}, {
 			Namespace: "eth",
-			Service:   NewTransactionAPI(apiBackend, nonceLock),
+			Service:   NewTransactionAPI(apiBackend, nonceLock, nodeConfig.GasAbsURL),
 		}, {
 			Namespace: "txpool",
 			Service:   NewTxPoolAPI(apiBackend),

@@ -75,44 +75,34 @@ func Estimate(ctx context.Context, call *core.Message, opts *Options, gasCap uin
 	if feeCap.BitLen() != 0 {
 		balance := opts.State.GetBalance(call.From).ToBig()
 
-		// If fee payer is set, only ensure the sender can cover call value.
 		available := balance
 		if call.Value != nil {
-			// ##CROSS: fee delegation
-			if call.FeePayer != nil {
-				if call.Value.Cmp(available) > 0 {
-					return 0, nil, core.ErrInsufficientFundsForTransfer
-				}
-			} else {
-				if call.Value.Cmp(available) >= 0 {
-					return 0, nil, core.ErrInsufficientFundsForTransfer
-				}
-				available.Sub(available, call.Value)
+			if call.Value.Cmp(available) >= 0 {
+				return 0, nil, core.ErrInsufficientFundsForTransfer
 			}
+			available.Sub(available, call.Value)
 		}
-		if call.FeePayer == nil {
-			if opts.Config.IsCancun(opts.Header.Number, opts.Header.Time) && len(call.BlobHashes) > 0 {
-				blobGasPerBlob := new(big.Int).SetInt64(params.BlobTxBlobGasPerBlob)
-				blobBalanceUsage := new(big.Int).SetInt64(int64(len(call.BlobHashes)))
-				blobBalanceUsage.Mul(blobBalanceUsage, blobGasPerBlob)
-				blobBalanceUsage.Mul(blobBalanceUsage, call.BlobGasFeeCap)
-				if blobBalanceUsage.Cmp(available) >= 0 {
-					return 0, nil, core.ErrInsufficientFunds
-				}
-				available.Sub(available, blobBalanceUsage)
+		if opts.Config.IsCancun(opts.Header.Number, opts.Header.Time) && len(call.BlobHashes) > 0 {
+			blobGasPerBlob := new(big.Int).SetInt64(params.BlobTxBlobGasPerBlob)
+			blobBalanceUsage := new(big.Int).SetInt64(int64(len(call.BlobHashes)))
+			blobBalanceUsage.Mul(blobBalanceUsage, blobGasPerBlob)
+			blobBalanceUsage.Mul(blobBalanceUsage, call.BlobGasFeeCap)
+			if blobBalanceUsage.Cmp(available) >= 0 {
+				return 0, nil, core.ErrInsufficientFunds
 			}
-			allowance := new(big.Int).Div(available, feeCap)
+			available.Sub(available, blobBalanceUsage)
+		}
+		allowance := new(big.Int).Div(available, feeCap)
 
-			// If the allowance is larger than maximum uint64, skip checking
-			if allowance.IsUint64() && hi > allowance.Uint64() {
-				transfer := call.Value
-				if transfer == nil {
-					transfer = new(big.Int)
-				}
-				log.Debug("Gas estimation capped by limited funds", "original", hi, "balance", balance,
-					"sent", transfer, "maxFeePerGas", feeCap, "fundable", allowance)
-				hi = allowance.Uint64()
+		// If the allowance is larger than maximum uint64, skip checking
+		if allowance.IsUint64() && hi > allowance.Uint64() {
+			transfer := call.Value
+			if transfer == nil {
+				transfer = new(big.Int)
 			}
+			log.Debug("Gas estimation capped by limited funds", "original", hi, "balance", balance,
+				"sent", transfer, "maxFeePerGas", feeCap, "fundable", allowance)
+			hi = allowance.Uint64()
 		}
 	}
 	// Recap the highest gas allowance with specified gascap.
