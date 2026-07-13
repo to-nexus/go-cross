@@ -161,7 +161,7 @@ var (
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
 		CancunTime:              newUint64(1770076800),
 		PragueTime:              newUint64(1770076800),
-		BreakpointTime:          newUint64(1778050800), // ##CROSS: fork breakpoint
+		BreakpointTime:          newUint64(1781164800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -185,7 +185,12 @@ var (
 			// ##CROSS: istanbul posa
 			PoSA: CrossDev3PoSAConfig,
 		},
-		Transitions: []Transition{},
+		Transitions: []Transition{
+			{
+				Block:    big.NewInt(9188602),
+				GasLimit: newUint64(210000000),
+			},
+		},
 	}
 
 	CrossDevChainConfig = &ChainConfig{
@@ -208,9 +213,9 @@ var (
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64), // ##CROSS: legacy sync
 		ShanghaiTime:            newUint64(0),
 		AdventureTime:           newUint64(0), // ##CROSS: fork adventure
-		CancunTime:              newUint64(1771556400),
-		PragueTime:              newUint64(1771556400),
-		BreakpointTime:          newUint64(1778050800), // ##CROSS: fork breakpoint
+		CancunTime:              newUint64(1770076800),
+		PragueTime:              newUint64(1770076800),
+		BreakpointTime:          newUint64(1781164800), // ##CROSS: fork breakpoint
 		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
