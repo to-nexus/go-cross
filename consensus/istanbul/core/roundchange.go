@@ -120,6 +120,20 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 			if c.hasBadProposal(roundChange.PreparedBlock.Hash()) {
 				logger.Warn("Istanbul: ignoring bad prepared proposal in ROUND-CHANGE", "badProposal", roundChange.PreparedBlock.Hash())
 			} else {
+				// ##CROSS: istanbul validation
+				if err := validateProposalSequence(roundChange.PreparedBlock, roundChange.Sequence); err != nil {
+					logger.Warn("Istanbul: invalid ROUND-CHANGE prepared proposal sequence", "err", err)
+					return errInvalidPreparedBlock
+				}
+				if err := validateMessageSequence(roundChange.Justification, roundChange.Sequence); err != nil {
+					logger.Warn("Istanbul: invalid ROUND-CHANGE PREPARE sequence", "err", err)
+					return errInvalidPreparedBlock
+				}
+				if err := validateMessageJustification(roundChange.Justification, c.valSet, c.valSet.QuorumSize()); err != nil {
+					logger.Warn("Istanbul: invalid ROUND-CHANGE PREPARE justification", "err", err, "quorum", c.valSet.QuorumSize())
+					return errInvalidPreparedBlock
+				}
+				// ##
 				prepareMessages = roundChange.Justification
 				pr = roundChange.PreparedRound
 				pb = roundChange.PreparedBlock
@@ -180,6 +194,26 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 			rcSignedPayloads = append(rcSignedPayloads, &rcMsg.SignedRoundChangePayload)
 		}
 
+		// ##CROSS: istanbul validation
+		if err := validateMessageSequence(rcSignedPayloads, c.current.Sequence()); err != nil {
+			logger.Error("Istanbul: invalid ROUND-CHANGE sequence justification", "err", err)
+			return nil
+		}
+		if err := validateMessageJustification(rcSignedPayloads, c.valSet, c.valSet.QuorumSize()); err != nil {
+			logger.Error("Istanbul: invalid ROUND-CHANGE source justification", "err", err, "quorum", c.valSet.QuorumSize())
+			return nil
+		}
+		if len(prepareMessages) != 0 {
+			if err := validateMessageSequence(prepareMessages, c.current.Sequence()); err != nil {
+				logger.Error("Istanbul: invalid PREPARE sequence justification", "err", err)
+				return nil
+			}
+			if err := validateMessageJustification(prepareMessages, c.valSet, c.valSet.QuorumSize()); err != nil {
+				logger.Error("Istanbul: invalid PREPARE source justification", "err", err, "quorum", c.valSet.QuorumSize())
+				return nil
+			}
+		}
+		// ##
 		if err := isJustified(proposal, rcSignedPayloads, prepareMessages, c.valSet.QuorumSize(), c.hasBadProposal); err != nil {
 			logger.Error("Istanbul: invalid ROUND-CHANGE message justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return nil
@@ -201,6 +235,14 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 func (c *Core) highestPrepared(round *big.Int) (*big.Int, istanbul.Proposal) {
 	pr := c.roundChangeSet.highestPreparedRound[round.Uint64()]
 	pb := c.roundChangeSet.highestPreparedBlock[round.Uint64()]
+	// ##CROSS: istanbul validation
+	if pb != nil && c.current != nil {
+		if err := validateProposalSequence(pb, c.current.Sequence()); err != nil {
+			c.currentLogger(true, nil).Warn("Istanbul: ignoring stale highest prepared proposal", "err", err, "proposal.number", pb.Number(), "proposal.hash", pb.Hash())
+			return nil, nil
+		}
+	}
+	// ##
 	// ##CROSS: bad block mitigation
 	// If the highest prepared block is bad, treat it as nil
 	if c.isBadProposal(pb) {
@@ -216,10 +258,18 @@ func (c *Core) preparedProposal() (*big.Int, istanbul.Proposal, []*protocols.Pre
 	if c.current == nil || c.current.preparedBlock == nil {
 		return nil, nil, nil
 	}
+	// ##CROSS: istanbul validation
+	if err := validateProposalSequence(c.current.preparedBlock, c.current.Sequence()); err != nil {
+		c.currentLogger(true, nil).Warn("Istanbul: excluding stale prepared proposal from ROUND-CHANGE", "err", err, "proposal.number", c.current.preparedBlock.Number(), "proposal.hash", c.current.preparedBlock.Hash())
+		return nil, nil, nil
+	}
+	// ##
+	// ##CROSS: bad block mitigation
 	if c.isBadProposal(c.current.preparedBlock) {
 		c.currentLogger(true, nil).Warn("Istanbul: excluding bad prepared proposal from ROUND-CHANGE", "badProposal", c.current.preparedBlock.Hash())
 		return nil, nil, nil
 	}
+	// ##
 	return c.current.preparedRound, c.current.preparedBlock, c.PreparedPrepares
 }
 

@@ -272,6 +272,9 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 	case *protocols.RoundChange:
 		signedPreparePayloads := msgType.Justification
 		for _, p := range signedPreparePayloads {
+			if p == nil {
+				return errInvalidMessage
+			}
 			if err := verify(p); err != nil {
 				return err
 			}
@@ -279,10 +282,24 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 	case *protocols.Preprepare:
 		signedRoundChangePayloads := msgType.JustificationRoundChanges
 		for _, p := range signedRoundChangePayloads {
+			if p == nil {
+				return errInvalidMessage
+			}
 			if err := verify(p); err != nil {
 				return err
 			}
 		}
+		// ##CROSS: istanbul validation
+		signedPreparePayloads := msgType.JustificationPrepares
+		for _, p := range signedPreparePayloads {
+			if p == nil {
+				return errInvalidMessage
+			}
+			if err := verify(p); err != nil {
+				return err
+			}
+		}
+		// ##
 	}
 
 	return nil

@@ -291,9 +291,11 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 	err := e.VerifyHeader(chain, block.Header(), nil, validators)
 	if err == nil || err == istanbul.ErrEmptyCommittedSeals {
 		// ignore errEmptyCommittedSeals error because we don't have the committed seals yet
-		// TODO e.verifyBlockProposalTransactions() should implemented again.
-		// Old verification was too strict and caused liveness problem,
-		// so it was removed for safety temporarily.
+		// ##CROSS: istanbul validation
+		if err := e.verifyProposalTransactions(chain, block); err != nil {
+			return 0, err
+		}
+		// ##
 		return 0, nil
 	} else if err == consensus.ErrFutureBlock {
 		return time.Until(time.Unix(int64(block.Header().Time), 0)), consensus.ErrFutureBlock
@@ -310,6 +312,50 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 
 	return 0, err
 }
+
+// ##CROSS: istanbul validation
+// verifyProposalTransactions quick-checks order and senders of transactions before they enter round progress.
+func (e *Engine) verifyProposalTransactions(chain consensus.ChainHeaderReader, block *types.Block) error {
+	header := block.Header()
+	signer := types.MakeSigner(chain.Config(), header.Number, header.Time)
+
+	var seenSystemTx bool
+	for i, tx := range block.Transactions() {
+		isSystemTx, err := e.IsSystemTransaction(tx, header)
+		if err != nil {
+			return fmt.Errorf("invalid system transaction %d [%v]: %w", i, tx.Hash(), err)
+		}
+		if isSystemTx {
+			seenSystemTx = true
+			continue
+		}
+		// No normal tx after system tx
+		if seenSystemTx {
+			return fmt.Errorf("normal tx %d [%v] after system transaction", i, tx.Hash())
+		}
+		// Check sender is valid
+		if _, err := types.Sender(signer, tx); err != nil {
+			return fmt.Errorf("invalid sender in transaction %d [%v]: %w", i, tx.Hash(), err)
+		}
+		// Check fee payer
+		if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+			feePayer := tx.FeePayer()
+			if feePayer == nil {
+				return fmt.Errorf("invalid fee payer in transaction %d [%v]: %w: fee payer is nil", i, tx.Hash(), core.ErrInvalidFeePayer)
+			}
+			recovered, err := types.FeePayer(signer, tx)
+			if err != nil {
+				return fmt.Errorf("invalid fee payer in transaction %d [%v]: %w: %w", i, tx.Hash(), core.ErrInvalidFeePayer, err)
+			}
+			if recovered != *feePayer {
+				return fmt.Errorf("invalid fee payer in transaction %d [%v]: %w: feepayer: %v, sig: %v", i, tx.Hash(), core.ErrInvalidFeePayer, *feePayer, recovered)
+			}
+		}
+	}
+	return nil
+}
+
+// ##
 
 // VerifyHeader verifies the header of the block.
 func (e *Engine) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header, validators istanbul.ValidatorSet) error {

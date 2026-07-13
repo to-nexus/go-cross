@@ -1352,7 +1352,10 @@ func NewTransactionAPI(b Backend, nonceLock *AddrLocker, gasAbsURL string) *Tran
 
 	// ##CROSS: gas abstraction
 	if gasAbsURL != "" {
-		gasAbs, _ = gasabs.DialContext(context.Background(), gasAbsURL)
+		var err error
+		if gasAbs, err = gasabs.DialContext(context.Background(), gasAbsURL); err != nil {
+			log.Warn("Failed to dial to gasabs", "error", err)
+		}
 	}
 
 	return &TransactionAPI{b, nonceLock, signer, gasAbs}
@@ -1706,44 +1709,26 @@ func (api *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil
 
 	// ##CROSS: gas abstraction
 	if api.gasAbs != nil {
-		to := common.Address{}
-		if tx.To() != nil {
-			to = *tx.To()
-		}
-
-		from, err := api.signer.Sender(tx)
+		approved, from, to, err := api.gasAbs.CanDelegateTx(tx, api.signer)
 		if err != nil {
-			return common.Hash{}, err
-		}
-
-		if api.gasAbs.IsBlacklistedFrom(ctx, from) {
-			log.Root().Warn("Transaction rejected: from address is blacklisted", "from", from, "tx", tx.Hash().Hex())
-			return common.Hash{}, errors.New("not allowed")
-		} else if api.gasAbs.IsBlacklistedTo(ctx, to) {
-			log.Root().Warn("Transaction rejected: to address is blacklisted", "to", to, "tx", tx.Hash().Hex())
+			log.Warn(fmt.Sprintf("Transaction rejected: %s", err.Error()),
+				"from", from, "to", to, "tx", tx.Hash().Hex())
 			return common.Hash{}, errors.New("not allowed")
 		}
 
-		if tx.Type() == types.DynamicFeeTxType {
-			approved := api.gasAbs.IsApprovedTo(ctx, to)
-			if !approved {
-				approved = api.gasAbs.IsApprovedFrom(ctx, from)
-			}
-
-			if approved {
-				logger := log.New("to", to, "tx", tx.Hash().Hex())
-				logger.Info("Request GasAbstraction")
-				var err error
-				if tx, err = api.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
-					errlog := logger.Warn
-					if errors.Is(err, syscall.ECONNREFUSED) {
-						errlog = logger.Error
-					}
-					errlog("Failed to request GasAbstraction", "error", err)
-					return tx.Hash(), err
+		if approved {
+			logger := log.New("from", from, "to", to, "tx", tx.Hash().Hex())
+			logger.Info("Request GasAbstraction")
+			var err error
+			if tx, err = api.gasAbs.SignFeeDelegateTransaction(ctx, tx); err != nil {
+				errlog := logger.Warn
+				if errors.Is(err, syscall.ECONNREFUSED) {
+					errlog = logger.Error
 				}
-				logger.Info("Successfully requested GasAbstraction")
+				errlog("Failed to request GasAbstraction", "error", err)
+				return tx.Hash(), err
 			}
+			logger.Info("Successfully requested GasAbstraction")
 		}
 	}
 

@@ -2,6 +2,7 @@ package gasabs
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -95,7 +96,7 @@ func (ec *Client) Close() {
 }
 
 // ##CROSS: fee delegation
-// SignFeeDelegateTransaction
+// SignFeeDelegateTransaction asks the gas abstraction service to sign a fee-delegated transaction.
 func (ec *Client) SignFeeDelegateTransaction(ctx context.Context, tx *types.Transaction) (*types.Transaction, error) {
 	var resp hexutil.Bytes
 
@@ -115,29 +116,32 @@ func (ec *Client) SignFeeDelegateTransaction(ctx context.Context, tx *types.Tran
 	}
 }
 
-// IsApproved
-func (ec *Client) IsApprovedFrom(ctx context.Context, address common.Address) (approved bool) {
+// IsApprovedFrom reports whether the sender is approved for gas abstraction.
+func (ec *Client) IsApprovedFrom(address common.Address) (approved bool) {
 	ec.accessListLock.RLock()
 	_, approved = ec.whitelistFrom[address]
 	ec.accessListLock.RUnlock()
 	return
 }
 
-func (ec *Client) IsApprovedTo(ctx context.Context, address common.Address) (approved bool) {
+// IsApprovedTo reports whether the recipient is approved for gas abstraction.
+func (ec *Client) IsApprovedTo(address common.Address) (approved bool) {
 	ec.accessListLock.RLock()
 	_, approved = ec.whitelistTo[address]
 	ec.accessListLock.RUnlock()
 	return
 }
 
-func (ec *Client) IsBlacklistedFrom(ctx context.Context, address common.Address) (blacklisted bool) {
+// IsBlacklistedFrom reports whether the sender is blocked from gas abstraction.
+func (ec *Client) IsBlacklistedFrom(address common.Address) (blacklisted bool) {
 	ec.accessListLock.RLock()
 	_, blacklisted = ec.blacklistFrom[address]
 	ec.accessListLock.RUnlock()
 	return
 }
 
-func (ec *Client) IsBlacklistedTo(ctx context.Context, address common.Address) (blacklisted bool) {
+// IsBlacklistedTo reports whether the recipient is blocked from gas abstraction.
+func (ec *Client) IsBlacklistedTo(address common.Address) (blacklisted bool) {
 	ec.accessListLock.RLock()
 	_, blacklisted = ec.blacklistTo[address]
 	ec.accessListLock.RUnlock()
@@ -192,7 +196,31 @@ func (ec *Client) syncAccessList(ctx context.Context) error {
 	return nil
 }
 
-// Host
+// Host returns remote URL of the gas abstraction service.
 func (ec *Client) Host() string {
 	return ec.rawurl
+}
+
+// CanDelegateTx checks if the transaction can be delegated.
+func (ec *Client) CanDelegateTx(tx *types.Transaction, signer types.Signer) (bool, common.Address, common.Address, error) {
+	from, err := signer.Sender(tx)
+	if err != nil {
+		return false, common.Address{}, common.Address{}, err
+	}
+	to := common.Address{}
+	if tx.To() != nil {
+		to = *tx.To()
+	}
+
+	// blacklisted addresses are not allowed
+	if ec.IsBlacklistedFrom(from) {
+		return false, from, to, errors.New("from address is blacklisted")
+	} else if ec.IsBlacklistedTo(to) {
+		return false, from, to, errors.New("to address is blacklisted")
+	}
+
+	// only dynamic fee transaction with whitelisted addresses can be delegated
+	approved := tx.Type() == types.DynamicFeeTxType &&
+		(ec.IsApprovedFrom(from) || ec.IsApprovedTo(to))
+	return approved, from, to, nil
 }

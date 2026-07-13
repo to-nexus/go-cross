@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"math"
 	"math/big"
 	"testing"
@@ -240,11 +241,10 @@ func TestWriteCommittedSealsBLS(t *testing.T) {
 		Time:   1000,
 	}
 
-	ts := uint64(0)
 	chain := &chainMock{
 		config: &params.ChainConfig{
 			LondonBlock:    big.NewInt(0),
-			BreakpointTime: &ts,
+			BreakpointTime: newUint64(0),
 			Istanbul: &params.IstanbulConfig{
 				PoSA: &params.PoSAConfig{},
 			},
@@ -481,3 +481,132 @@ func TestWriteValidatorVote(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, istExtra.Vote, expectedIstExtra.Vote)
 }
+
+// ##CROSS: istanbul validation
+func TestVerifyProposalTransactions(t *testing.T) {
+	chainConfig := &params.ChainConfig{
+		ChainID:        big.NewInt(612088),
+		HomesteadBlock: big.NewInt(0),
+		EIP155Block:    big.NewInt(0),
+		BerlinBlock:    big.NewInt(0),
+		LondonBlock:    big.NewInt(0),
+		AdventureTime:  newUint64(0),
+	}
+	chain := &chainMock{config: chainConfig}
+	engine := &Engine{}
+
+	proposerKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	senderKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	feePayerKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	wrongFeePayerKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	recipient := common.HexToAddress("0x1000000000000000000000000000000000000001")
+	header := &types.Header{
+		Number:   big.NewInt(1),
+		Time:     1,
+		Coinbase: crypto.PubkeyToAddress(proposerKey.PublicKey),
+	}
+	signer := types.MakeSigner(chainConfig, header.Number, header.Time)
+	systemSigner := types.LatestSignerForChainID(chainConfig.ChainID)
+
+	normalTx := types.MustSignNewTx(senderKey, signer, &types.DynamicFeeTx{
+		ChainID:   chainConfig.ChainID,
+		Nonce:     0,
+		GasTipCap: big.NewInt(1),
+		GasFeeCap: big.NewInt(2),
+		Gas:       21_000,
+		To:        &recipient,
+	})
+	systemTx := types.MustSignNewTx(proposerKey, systemSigner, &types.LegacyTx{
+		Nonce:    0,
+		GasPrice: big.NewInt(0),
+		Gas:      21_000,
+		To:       &contracts.ValidatorSetAddr,
+	})
+	invalidSenderTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainConfig.ChainID,
+		Nonce:     1,
+		GasTipCap: big.NewInt(1),
+		GasFeeCap: big.NewInt(2),
+		Gas:       21_000,
+		To:        &recipient,
+	})
+	validFeePayerTx := newFeeDelegatedTx(chainConfig.ChainID, senderKey, feePayerKey, crypto.PubkeyToAddress(feePayerKey.PublicKey), &recipient)
+	invalidFeePayerTx := newFeeDelegatedTx(chainConfig.ChainID, senderKey, wrongFeePayerKey, crypto.PubkeyToAddress(feePayerKey.PublicKey), &recipient)
+
+	tests := []struct {
+		name    string
+		txs     []*types.Transaction
+		wantErr string
+	}{
+		{
+			name: "accepts normal, fee delegated and system transactions",
+			txs:  []*types.Transaction{normalTx, validFeePayerTx, systemTx},
+		},
+		{
+			name:    "rejects normal transaction after system transaction",
+			txs:     []*types.Transaction{systemTx, normalTx},
+			wantErr: "after system transaction",
+		},
+		{
+			name:    "rejects invalid sender signature",
+			txs:     []*types.Transaction{invalidSenderTx},
+			wantErr: "invalid sender",
+		},
+		{
+			name:    "rejects invalid fee payer signature",
+			txs:     []*types.Transaction{invalidFeePayerTx},
+			wantErr: "invalid fee payer",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			block := types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: tt.txs})
+			err := engine.verifyProposalTransactions(chain, block)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func newFeeDelegatedTx(chainID *big.Int, senderKey, feePayerKey *ecdsa.PrivateKey, feePayer common.Address, to *common.Address) *types.Transaction {
+	signer := types.NewAdventureSigner(chainID)
+	senderTx := types.MustSignNewTx(senderKey, signer, &types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     0,
+		GasTipCap: big.NewInt(1),
+		GasFeeCap: big.NewInt(2),
+		Gas:       21_000,
+		To:        to,
+	})
+
+	v, r, s := senderTx.RawSignatureValues()
+	senderTxData := types.DynamicFeeTx{
+		ChainID:    chainID,
+		Nonce:      senderTx.Nonce(),
+		GasTipCap:  senderTx.GasTipCap(),
+		GasFeeCap:  senderTx.GasFeeCap(),
+		Gas:        senderTx.Gas(),
+		To:         senderTx.To(),
+		Value:      senderTx.Value(),
+		Data:       senderTx.Data(),
+		AccessList: senderTx.AccessList(),
+		V:          new(big.Int).Set(v),
+		R:          new(big.Int).Set(r),
+		S:          new(big.Int).Set(s),
+	}
+
+	feeDelegationSigner := types.NewFeeDelegationSigner(chainID)
+	return types.MustSignNewTx(feePayerKey, feeDelegationSigner, types.NewFeeDelegatedDynamicFeeTx(&feePayer, senderTxData))
+}
+
+// ##
+
+func newUint64(val uint64) *uint64 { return &val }

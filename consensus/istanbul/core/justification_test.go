@@ -190,6 +190,37 @@ func TestRoundChangeSetBadPrepared(t *testing.T) {
 
 // ##
 
+// ##CROSS: istanbul validation
+func TestValidateMessageJustification(t *testing.T) {
+	pp := istanbul.NewRoundRobinProposerPolicy()
+	pp.Use(istanbul.ValidatorSortByByte())
+	validatorSet := validator.NewSet(generateValidators(3), nil, pp)
+
+	t.Run("duplicated round change messages", func(t *testing.T) {
+		source := validatorSet.List()[0].Address()
+		roundChange := createRoundChangeMessage(source, 1, 0, nil)
+
+		roundChangeMessages := []*protocols.SignedRoundChangePayload{roundChange, roundChange, roundChange}
+		if err := validateMessageJustification(roundChangeMessages, validatorSet, 3); err == nil {
+			t.Fatalf("expected duplicate ROUND-CHANGE source to be rejected")
+		}
+	})
+
+	t.Run("duplicated prepare messages", func(t *testing.T) {
+		block := makeBlock(1)
+
+		// Duplicated prepare messages
+		prepare := createPrepareMessage(validatorSet.List()[0].Address(), 1, block)
+		prepareMessages := []*protocols.Prepare{prepare, prepare, prepare}
+
+		if err := validateMessageJustification(prepareMessages, validatorSet, 3); err == nil {
+			t.Fatalf("expected duplicate PREPARE source to be rejected")
+		}
+	})
+}
+
+// ##
+
 func createRoundChangeMessage(from common.Address, round int64, preparedRound int64, preparedBlock istanbul.Proposal) *protocols.SignedRoundChangePayload {
 	m := protocols.NewRoundChange(big.NewInt(1), big.NewInt(1), big.NewInt(preparedRound), preparedBlock)
 	m.SetSource(from)
