@@ -62,15 +62,14 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 
 	// refer logic in ValidateBody
 	if !chain.Config().IsCancun(block.Number(), block.Time()) {
-		if block.Sidecars() != nil {
+		if len(block.Sidecars()) != 0 {
 			return errors.New("sidecars present in block body before cancun")
 		}
 		return nil
 	}
 
-	// only required to check within MinTimeDurationForBlobRequests seconds's DA
-	current := chain.CurrentHeader()
-	if block.Time()+params.MinTimeDurationForBlobRequests < current.Time {
+	now := uint64(time.Now().Unix())
+	if block.Time()+params.MinTimeDurationForBlobRequests < now {
 		// if we needn't check DA of this block, just clean it
 		block.CleanSidecars()
 		return nil

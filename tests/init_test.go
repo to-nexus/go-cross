@@ -21,15 +21,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -291,3 +295,23 @@ func TestMatcherRunonlylist(t *testing.T) {
 		}
 	})
 }
+
+// ##CROSS: bls seal
+// patchVanillaOsaka patches Osaka precompiles to Ethereum's vanilla version.
+// This patch keeps tests for downloaded fixtures not to break.
+func patchVanillaOsaka(t *testing.T) {
+	osakaContracts := maps.Clone(vm.PrecompiledContractsOsaka)
+	osakaAddresses := slices.Clone(vm.PrecompiledAddressesOsaka)
+	t.Cleanup(func() {
+		vm.PrecompiledContractsOsaka = osakaContracts
+		vm.PrecompiledAddressesOsaka = osakaAddresses
+	})
+
+	delete(vm.PrecompiledContractsOsaka, common.BytesToAddress([]byte{0xc0}))
+	vm.PrecompiledAddressesOsaka = make([]common.Address, 0, len(vm.PrecompiledContractsOsaka))
+	for k := range vm.PrecompiledContractsOsaka {
+		vm.PrecompiledAddressesOsaka = append(vm.PrecompiledAddressesOsaka, k)
+	}
+}
+
+// ##

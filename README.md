@@ -56,12 +56,12 @@ It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-
 
 | Item | Value |
 |---|---|
-| Execution Layer (EL) | **go-ethereum v1.15 base** |
+| Execution Layer (EL) | **go-ethereum v1.16 base** |
 | Consensus engine | **PoSA** (Istanbul Engine + BLS) |
 | Hard forks | Homestead → Berlin → London → Shanghai → Adventure → Cancun → Prague → **Breakpoint** |
 | Breakpoint activation (mainnet Cross) | `BreakpointTime = 1780282800` (2026-06-01 03:00:00 UTC) |
 | Breakpoint activation (testnet ZoneZero) | `BreakpointTime = 1778814000` (2026-05-15 03:00:00 UTC) |
-| Go version | **1.23 or higher** |
+| Go version | **1.25 or higher** |
 | RLP, DB, Trie | 1.15 line |
 
 > The **Breakpoint** hard fork is the **PoSA activation point**.
@@ -168,7 +168,6 @@ Source code lives in the `cross-contracts` repository — <https://github.com/to
 
 | Address | Contract | Role |
 |---|---|---|
-| `0x...1000` | `IstanbulParam` | Checkpointed consensus parameters (epoch / council period / base fee, etc.) |
 | `0x...1001` | `ValidatorSet` | Stores active validator addresses + BLS signer keys; updated only by node system calls |
 | `0x...1002` | **`StakeHub`** | Validator registration / revocation / jail-unjail; entry point for stake / unstake / restake |
 | `0x...1003` | **`RewardHub`** | Block-reward distribution, emission table, commission settlement, log aggregation |
@@ -326,7 +325,7 @@ A validator's effective yield is the above APR plus their own commission and the
 
 ### 10.1 Prerequisites
 
-- Go **1.23+**
+- Go **1.25+**
 - GCC / make / pkg-config
 - (optional) Docker / docker-compose
 
@@ -384,7 +383,7 @@ To use a custom genesis, just pass the path to `genesis.json` instead.
 If you need to retain the full state trie, add:
 
 ```bash
-  --gcmode archive --state.scheme hash
+  --gcmode archive --state.scheme path
 ```
 
 ### 11.4 Metrics / Profiling
@@ -558,7 +557,7 @@ Key differences vs. the previous QBFT-based release:
 | Validator refresh | Governance / off-chain coordination | Council rotates **every 24 hours** based on the latest stake ranking |
 | Delegators (stakers) | None | Anyone with 5 CROSS or more; 14-day unbonding |
 | Base-fee handling | (N/A) | Entire EIP-1559 base fee burned (`0x...dEaD`) |
-| EL base version | go-ethereum 1.13 | **go-ethereum 1.15** |
+| EL base version | go-ethereum 1.13 | **go-ethereum 1.16** |
 | Activation | Genesis | **Breakpoint = `block.timestamp ≥ 1780282800`** (mainnet, 2026-06-01 03:00:00 UTC) |
 
 > Existing data directories can be reused as-is.

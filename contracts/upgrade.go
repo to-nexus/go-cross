@@ -1,3 +1,19 @@
+// Copyright 2025 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
 package contracts
 
 import (
@@ -298,7 +314,7 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
-	if config.IsOnBreakpointAlpha(header.Number, lastBlockTime, header.Time) {
+	if config.IsOnBreakpointAlpha(header.Number, lastBlockTime, header.Time) && isPoSAConfigured(config) {
 		applySystemContractUpgrade(getUpgrade(forks.BreakpointAlpha, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
@@ -318,9 +334,10 @@ func InitSystemContract(config *params.ChainConfig, header *types.Header, lastBl
 	return
 }
 
+// ##CROSS: istanbul posa
 // isPoSAConfigured reports whether the Istanbul PoSA config is present. When it is
 // not, the Breakpoint PoSA system-contract upgrade is skipped and the chain runs in
-// pre-PoSA mode. ##CROSS: istanbul posa
+// pre-PoSA mode.
 func isPoSAConfigured(config *params.ChainConfig) bool {
 	return config.Istanbul != nil && config.Istanbul.PoSA != nil
 }
@@ -358,7 +375,7 @@ func applySystemContractUpgrade(upgrade *Upgrade, header *types.Header, statedb 
 				// If it is the first deployment, set the nonce to 1
 				statedb.SetNonce(cfg.ContractAddr, 1, tracing.NonceChangeNewContract)
 			}
-			statedb.SetCode(cfg.ContractAddr, newCode)
+			statedb.SetCode(cfg.ContractAddr, newCode, tracing.CodeChangeSystemContractUpgrade)
 		}
 
 		// write storage

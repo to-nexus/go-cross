@@ -43,6 +43,12 @@ const (
 	Breakpoint      // ##CROSS: fork breakpoint
 	BreakpointAlpha // ##CROSS: fork breakpoint
 	Osaka
+	BPO1
+	BPO2
+	BPO3
+	BPO4
+	BPO5
+	Amsterdam
 )
 
 // String implements fmt.Stringer.
@@ -78,4 +84,10 @@ var forkToString = map[Fork]string{
 	Breakpoint:       "Breakpoint",      // ##CROSS: fork breakpoint
 	BreakpointAlpha:  "BreakpointAlpha", // ##CROSS: fork breakpoint
 	Osaka:            "Osaka",
+	BPO1:             "BPO1",
+	BPO2:             "BPO2",
+	BPO3:             "BPO3",
+	BPO4:             "BPO4",
+	BPO5:             "BPO5",
+	Amsterdam:        "Amsterdam",
 }

@@ -30,7 +30,9 @@ type NewMinedBlockEvent struct{ Block *types.Block } // ##CROSS: legacy sync
 type RemovedLogsEvent struct{ Logs []*types.Log }
 
 type ChainEvent struct {
-	Header *types.Header
+	Header       *types.Header
+	Receipts     []*types.Receipt
+	Transactions []*types.Transaction
 }
 
 type ChainHeadEvent struct {

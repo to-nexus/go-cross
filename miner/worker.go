@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
@@ -90,6 +91,7 @@ type environment struct {
 	signer   types.Signer
 	state    *state.StateDB // apply state changes here
 	tcount   int            // tx count in cycle
+	size     uint64         // size of the block we are building
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 	evm      *vm.EVM
@@ -101,6 +103,11 @@ type environment struct {
 	blobs    int
 
 	witness *stateless.Witness
+}
+
+// txFits reports whether the transaction fits into the block size limit.
+func (env *environment) txFitsSize(tx *types.Transaction) bool {
+	return env.size+tx.Size() < params.MaxBlockSize-maxBlockSizeBufferZone
 }
 
 // copy creates a deep copy of environment.
@@ -154,6 +161,11 @@ const (
 	commitInterruptTimeout
 )
 
+// Block size is capped by the protocol at params.MaxBlockSize. When producing blocks, we
+// try to say below the size including a buffer zone, this is to avoid going over the
+// maximum size with auxiliary data added into the block.
+const maxBlockSizeBufferZone = 1_000_000
+
 // newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
 type newWorkReq struct {
 	interrupt *atomic.Int32
@@ -187,7 +199,7 @@ type intervalAdjust struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
-	config      *Config
+	config      *minerconfig.Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
 	eth         Backend
@@ -258,7 +270,7 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
+func newWorker(config *minerconfig.Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -282,12 +294,16 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 	}
+	if config.PendingFeeRecipient != (common.Address{}) {
+		worker.coinbase = config.PendingFeeRecipient
+	}
 	// ##CROSS: istanbul
 	if worker.istanbulBackend, _ = engine.(*istanbulBackend.Backend); worker.istanbulBackend == nil {
 		if beacon, ok := engine.(*beacon.Beacon); ok {
 			worker.istanbulBackend, _ = beacon.InnerEngine().(*istanbulBackend.Backend)
 		}
 	}
+	// ##
 
 	// Subscribe for transaction insertion events (whether from network or resurrects)
 	worker.txsSub = eth.TxPool().SubscribeTransactions(worker.txsCh, true)
@@ -305,11 +321,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	// Sanitize the timeout config for creating payload.
 	newpayloadTimeout := worker.config.NewPayloadTimeout
 	if newpayloadTimeout == 0 {
-		log.Warn("Sanitizing new payload timeout to default", "provided", newpayloadTimeout, "updated", DefaultConfig.NewPayloadTimeout)
-		newpayloadTimeout = DefaultConfig.NewPayloadTimeout
+		log.Warn("Sanitizing new payload timeout to default", "provided", newpayloadTimeout, "updated", minerconfig.DefaultConfig.NewPayloadTimeout)
+		newpayloadTimeout = minerconfig.DefaultConfig.NewPayloadTimeout
 	}
 	if newpayloadTimeout < time.Millisecond*100 {
-		log.Warn("Low payload timeout may cause high amount of non-full blocks", "provided", newpayloadTimeout, "default", DefaultConfig.NewPayloadTimeout)
+		log.Warn("Low payload timeout may cause high amount of non-full blocks", "provided", newpayloadTimeout, "default", minerconfig.DefaultConfig.NewPayloadTimeout)
 	}
 	worker.newpayloadTimeout = newpayloadTimeout
 
@@ -776,15 +792,16 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		if err != nil {
 			return nil, err
 		}
-		state.StartPrefetcher("miner", bundle)
+		state.StartPrefetcher("miner", bundle, nil)
 	} else {
-		state.StartPrefetcher("miner", nil)
+		state.StartPrefetcher("miner", nil, nil)
 	}
 
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
 		signer:   types.MakeSigner(w.chainConfig, header.Number, header.Time),
 		state:    state,
+		size:     uint64(header.Size()),
 		coinbase: coinbase,
 		header:   header,
 		witness:  state.Witness(),
@@ -824,6 +841,8 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	}
 	env.txs = append(env.txs, tx)
 	env.receipts = append(env.receipts, receipt)
+	env.size += tx.Size()
+	env.tcount++
 	return receipt.Logs, nil
 }
 
@@ -847,10 +866,13 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) 
 		return nil, err
 	}
 	sc.TxIndex = uint64(len(env.txs))
-	env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
+	txNoBlob := tx.WithoutBlobTxSidecar()
+	env.txs = append(env.txs, txNoBlob)
 	env.receipts = append(env.receipts, receipt)
 	env.sidecars = append(env.sidecars, sc)
 	env.blobs += len(sc.Blobs)
+	env.size += txNoBlob.Size()
+	env.tcount++
 	*env.header.BlobGasUsed += receipt.BlobGasUsed
 	return receipt.Logs, nil
 }
@@ -873,7 +895,10 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 }
 
 func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce, interrupt *atomic.Int32) error {
-	gasLimit := env.header.GasLimit
+	var (
+		isCancun = w.chainConfig.IsCancun(env.header.Number, env.header.Time)
+		gasLimit = env.header.GasLimit
+	)
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
 		// ##CROSS: consensus system contract
@@ -892,8 +917,8 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		}
 		// ##
 	}
-	var coalescedLogs []*types.Log
 
+	var coalescedLogs []*types.Log
 	for {
 		// Check interruption signal and abort building if it's fired.
 		if interrupt != nil {
@@ -947,7 +972,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		// Most of the blob gas logic here is agnostic as to if the chain supports
 		// blobs or not, however the max check panics when called on a chain without
 		// a defined schedule, so we need to verify it's safe to call.
-		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) {
+		if isCancun {
 			left := eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time) - env.blobs
 			if left < int(ltx.BlobGas/params.BlobTxBlobGasPerBlob) {
 				log.Trace("Not enough blob space left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas/params.BlobTxBlobGasPerBlob)
@@ -963,6 +988,12 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 			log.Trace("Ignoring evicted transaction", "hash", ltx.Hash)
 			txs.Pop()
 			continue
+		}
+
+		// if inclusion of the transaction would put the block size over the
+		// maximum we allow, don't add any more txs to the payload.
+		if !env.txFitsSize(tx) {
+			break
 		}
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance is the transaction pool.
@@ -988,7 +1019,6 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		case errors.Is(err, nil):
 			// Everything ok, collect the logs and shift in the next transaction from the same account
 			coalescedLogs = append(coalescedLogs, logs...)
-			env.tcount++
 			txs.Shift()
 
 		default:
@@ -1071,12 +1101,6 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		Coinbase: genParams.coinbase,
 	}
 
-	// ##CROSS: istanbul
-	if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
-		header.GasLimit = *gasLimit
-	}
-	// ##
-
 	// Set the extra field.
 	if len(w.extra) != 0 {
 		header.Extra = w.extra
@@ -1155,10 +1179,18 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 	if env.header.ExcessBlobGas != nil {
 		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
 	}
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
+	if w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+		filter.GasLimitCap = params.MaxTxGas
+	}
+	filter.BlobTxs = false
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
 
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
+	filter.BlobTxs = true
+	if !w.chainConfig.IsIstanbulConsensus() && w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+		filter.BlobVersion = types.BlobSidecarVersion1
+	} else {
+		filter.BlobVersion = types.BlobSidecarVersion0
+	}
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
 	// Fill the block with all available pending transactions.
@@ -1174,14 +1206,24 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 }
 
 // generateWork generates a sealing block based on the given parameters.
-func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadResult {
-	work, err := w.prepareWork(params, witness)
+func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloadResult {
+	work, err := w.prepareWork(genParam, witness)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
 	defer work.discard()
 
-	if !params.noTxs {
+	// Check withdrawals fit max block size.
+	// Due to the cap on withdrawal count, this can actually never happen, but we still need to
+	// check to ensure the CL notices there's a problem if the withdrawal cap is ever lifted.
+	maxBlockSize := params.MaxBlockSize - maxBlockSizeBufferZone
+	if genParam.withdrawals.Size() > maxBlockSize {
+		return &newPayloadResult{err: errors.New("withdrawals exceed max block size")}
+	}
+	// Also add size of withdrawals to work block size.
+	work.size += uint64(genParam.withdrawals.Size())
+
+	if !genParam.noTxs {
 		interrupt := new(atomic.Int32)
 		timer := time.AfterFunc(w.newpayloadTimeout, func() {
 			interrupt.Store(commitInterruptTimeout)
@@ -1195,13 +1237,15 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 	body := types.Body{Transactions: work.txs}
 	if w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
+		// Always zero withdrawals if Istanbul Consensus is enabled.
 		if w.chainConfig.IsCancun(work.header.Number, work.header.Time) {
 			body.Withdrawals = types.Withdrawals{}
 		}
 	} else {
-		body.Withdrawals = params.withdrawals
+		body.Withdrawals = genParam.withdrawals
 	}
-	// Collect consensus-layer requests if Prague is enabled.
+
+	// Collect consensus-layer requests if Prague is enabled and Istanbul Consensus is disabled.
 	var requests [][]byte
 	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
 		allLogs := make([]*types.Log, 0)
