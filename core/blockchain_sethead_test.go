@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/params"
@@ -1970,11 +1969,11 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 	datadir := t.TempDir()
 	ancient := filepath.Join(datadir, "ancient")
 
-	pdb, err := pebble.New(datadir, 0, 0, "", false, true)
+	pdb, err := pebble.New(datadir, 0, 0, "", false)
 	if err != nil {
 		t.Fatalf("Failed to create persistent key-value database: %v", err)
 	}
-	db, err := rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false)
+	db, err := rawdb.Open(pdb, rawdb.OpenOptions{Ancient: ancient})
 	if err != nil {
 		t.Fatalf("Failed to create persistent freezer database: %v", err)
 	}
@@ -1986,18 +1985,19 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 			BaseFee: big.NewInt(params.InitialBaseFee),
 			Config:  params.AllEthashProtocolChanges,
 		}
-		engine = ethash.NewFullFaker()
-		config = &CacheConfig{
+		engine  = ethash.NewFullFaker()
+		options = &BlockChainConfig{
 			TrieCleanLimit: 256,
 			TrieDirtyLimit: 256,
 			TrieTimeLimit:  5 * time.Minute,
-			SnapshotLimit:  0, // Disable snapshot
+			SnapshotLimit:  0,  // disable snapshot
+			TxLookupLimit:  -1, // disable tx indexing
 			StateScheme:    scheme,
 		}
 	)
 	if snapshots {
-		config.SnapshotLimit = 256
-		config.SnapshotWait = true
+		options.SnapshotLimit = 256
+		options.SnapshotWait = true
 	}
 	// ##CROSS: additional database tables
 	if err = db.SetupFreezerEnv(&ethdb.FreezerEnv{
@@ -2007,7 +2007,7 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 		t.Fatalf("Failed to create chain: %v", err)
 	}
 	// ##
-	chain, err := NewBlockChain(db, config, gspec, nil, engine, vm.Config{}, nil)
+	chain, err := NewBlockChain(db, gspec, engine, options)
 	if err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}
@@ -2032,7 +2032,7 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 	}
 	if tt.commitBlock > 0 {
 		chain.triedb.Commit(canonblocks[tt.commitBlock-1].Root(), false)
-		if snapshots {
+		if snapshots && scheme == rawdb.HashScheme {
 			if err := chain.snaps.Cap(canonblocks[tt.commitBlock-1].Root(), 0); err != nil {
 				t.Fatalf("Failed to flatten snapshots: %v", err)
 			}
@@ -2054,14 +2054,14 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 
 	// Force run a freeze cycle
 	type freezer interface {
-		Freeze() error
+		Freeze(threshold uint64) error
 		Ancients() (uint64, error)
 	}
 	if tt.freezeThreshold < uint64(tt.canonicalBlocks) {
 		final := uint64(tt.canonicalBlocks) - tt.freezeThreshold
 		chain.SetFinalized(canonblocks[int(final)-1].Header())
 	}
-	db.(freezer).Freeze()
+	db.(freezer).Freeze(tt.freezeThreshold)
 
 	// Set the simulated pivot block
 	if tt.pivotBlock != nil {

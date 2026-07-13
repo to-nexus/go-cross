@@ -1450,7 +1450,7 @@ func executeSystemTransaction(evm *vm.EVM, msg *core.Message, tx *types.Transact
 	receipt = types.NewReceipt(root, false, *usedGas)
 	receipt.TxHash = tx.Hash()
 	receipt.GasUsed = gasUsed
-	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
+	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash(), header.Time)
 	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockHash = header.Hash()
 	receipt.BlockNumber = header.Number

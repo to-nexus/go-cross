@@ -25,13 +25,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-const (
-	dbKeySnapshotPrefix = "istanbul-snapshot"
-)
+var dbKeySnapshotPrefix = rawdb.IstanbulSnapshotPrefix
 
 // Vote represents a single vote that an authorized validator made to modify the
 // list of authorizations.
@@ -76,7 +75,7 @@ func newSnapshot(epoch uint64, number uint64, hash common.Hash, valSet istanbul.
 
 // loadSnapshot loads an existing snapshot from the database.
 func loadSnapshot(epoch uint64, db ethdb.Database, hash common.Hash) (*Snapshot, error) {
-	blob, err := db.Get(append([]byte(dbKeySnapshotPrefix), hash[:]...))
+	blob, err := db.Get(append(dbKeySnapshotPrefix, hash[:]...))
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +94,7 @@ func (s *Snapshot) store(db ethdb.Database) error {
 	if err != nil {
 		return err
 	}
-	return db.Put(append([]byte(dbKeySnapshotPrefix), s.Hash[:]...), blob)
+	return db.Put(append(dbKeySnapshotPrefix, s.Hash[:]...), blob)
 }
 
 // copy creates a deep copy of the snapshot, though not the individual votes.

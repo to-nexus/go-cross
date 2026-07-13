@@ -19,7 +19,9 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -190,6 +192,14 @@ func (ps *peerSet) peer(id string) *ethPeer {
 	defer ps.lock.RUnlock()
 
 	return ps.peers[id]
+}
+
+// all returns all current peers.
+func (ps *peerSet) all() []*ethPeer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	return slices.Collect(maps.Values(ps.peers))
 }
 
 // peersWithoutBlock retrieves a list of peers that do not have a given block in

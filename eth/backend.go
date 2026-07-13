@@ -18,9 +18,11 @@
 package eth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"runtime"
 	"sync"
@@ -66,6 +68,26 @@ import (
 	gethversion "github.com/ethereum/go-ethereum/version"
 )
 
+const (
+	// This is the fairness knob for the discovery mixer. When looking for peers, we'll
+	// wait this long for a single source of candidates before moving on and trying other
+	// sources. If this timeout expires, the source will be skipped in this round, but it
+	// will continue to fetch in the background and will have a chance with a new timeout
+	// in the next rounds, giving it overall more time but a proportionally smaller share.
+	// We expect a normal source to produce ~10 candidates per second.
+	discmixTimeout = 100 * time.Millisecond
+
+	// discoveryPrefetchBuffer is the number of peers to pre-fetch from a discovery
+	// source. It is useful to avoid the negative effects of potential longer timeouts
+	// in the discovery, keeping dial progress while waiting for the next batch of
+	// candidates.
+	discoveryPrefetchBuffer = 32
+
+	// maxParallelENRRequests is the maximum number of parallel ENR requests that can be
+	// performed by a disc/v4 source.
+	maxParallelENRRequests = 16
+)
+
 // Config contains the configuration options of the ETH protocol.
 // Deprecated: use ethconfig.Config instead.
 type Config = ethconfig.Config
@@ -76,6 +98,7 @@ type Ethereum struct {
 	config         *ethconfig.Config
 	nodeConfig     *node.Config // ##CROSS: gas abstraction
 	txPool         *txpool.TxPool
+	blobTxPool     *blobpool.BlobPool
 	localTxTracker *locals.TxTracker
 	blockchain     *core.BlockChain
 
@@ -128,7 +151,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		log.Warn("Sanitizing invalid miner gas price", "provided", config.Miner.GasPrice, "updated", ethconfig.Defaults.Miner.GasPrice)
 		config.Miner.GasPrice = new(big.Int).Set(ethconfig.Defaults.Miner.GasPrice)
 	}
-	if config.NoPruning && config.TrieDirtyCache > 0 {
+	if config.NoPruning && config.TrieDirtyCache > 0 && config.StateScheme == rawdb.HashScheme {
 		if config.SnapshotCache > 0 {
 			config.TrieCleanCache += config.TrieDirtyCache * 3 / 5
 			config.SnapshotCache += config.TrieDirtyCache * 2 / 5
@@ -139,7 +162,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	log.Info("Allocated trie memory caches", "clean", common.StorageSize(config.TrieCleanCache)*1024*1024, "dirty", common.StorageSize(config.TrieDirtyCache)*1024*1024)
 
-	chainDb, err := stack.OpenDatabaseWithFreezer("chaindata", config.DatabaseCache, config.DatabaseHandles, config.DatabaseFreezer, "eth/db/chaindata/", false)
+	dbOptions := node.DatabaseOptions{
+		Cache:             config.DatabaseCache,
+		Handles:           config.DatabaseHandles,
+		AncientsDirectory: config.DatabaseFreezer,
+		EraDirectory:      config.DatabaseEra,
+		MetricsNamespace:  "eth/db/chaindata/",
+	}
+	chainDb, err := stack.OpenDatabaseWithOptions("chaindata", dbOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +210,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Assemble the Ethereum object.
 	eth := &Ethereum{
 		config:          config,
-		nodeConfig:      stack.Config(),
+		nodeConfig:      stack.Config(), // ##CROSS: gas abstraction
 		chainDb:         chainDb,
 		eventMux:        stack.EventMux(),
 		accountManager:  stack.AccountManager(),
@@ -188,7 +218,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		gasPrice:        config.Miner.GasPrice,
 		etherbase:       config.Miner.Etherbase, // ##CROSS: legacy sync
 		p2pServer:       stack.Server(),
-		discmix:         enode.NewFairMix(0),
+		discmix:         enode.NewFairMix(discmixTimeout),
 		shutdownTracker: shutdowncheck.NewShutdownTracker(chainDb),
 	}
 
@@ -221,20 +251,29 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	}
 	var (
-		vmConfig = vm.Config{
-			EnablePreimageRecording: config.EnablePreimageRecording,
-		}
-		cacheConfig = &core.CacheConfig{
-			TrieCleanLimit:      config.TrieCleanCache,
-			TrieCleanNoPrefetch: config.NoPrefetch,
-			TrieDirtyLimit:      config.TrieDirtyCache,
-			TrieDirtyDisabled:   config.NoPruning,
-			TrieTimeLimit:       config.TrieTimeout,
-			SnapshotLimit:       config.SnapshotCache,
-			Preimages:           config.Preimages,
-			StateHistory:        config.StateHistory,
-			StateScheme:         scheme,
-			ChainHistoryMode:    config.HistoryMode,
+		options = &core.BlockChainConfig{
+			TrieCleanLimit:   config.TrieCleanCache,
+			NoPrefetch:       config.NoPrefetch,
+			TrieDirtyLimit:   config.TrieDirtyCache,
+			ArchiveMode:      config.NoPruning,
+			TrieTimeLimit:    config.TrieTimeout,
+			SnapshotLimit:    config.SnapshotCache,
+			Preimages:        config.Preimages,
+			StateHistory:     config.StateHistory,
+			StateScheme:      scheme,
+			ChainHistoryMode: config.HistoryMode,
+			TxLookupLimit:    int64(min(config.TransactionHistory, math.MaxInt64)),
+			VmConfig: vm.Config{
+				EnablePreimageRecording: config.EnablePreimageRecording,
+				EnableWitnessStats:      config.EnableWitnessStats,
+				StatelessSelfValidation: config.StatelessSelfValidation,
+			},
+			// Enables file journaling for the trie database. The journal files will be stored
+			// within the data directory. The corresponding paths will be either:
+			// - DATADIR/triedb/merkle.journal
+			// - DATADIR/triedb/verkle.journal
+			TrieJournalDirectory: stack.ResolvePath("triedb"),
+			StateSizeTracking:    config.EnableStateSizeTracking,
 		}
 	)
 	if config.VMTrace != "" {
@@ -246,17 +285,25 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create tracer %s: %v", config.VMTrace, err)
 		}
-		vmConfig.Tracer = t
+		options.VmConfig.Tracer = t
 	}
 	// Override the chain config with provided settings.
 	var overrides core.ChainOverrides
-	if config.OverridePrague != nil {
-		overrides.OverridePrague = config.OverridePrague
+	if config.OverrideOsaka != nil {
+		overrides.OverrideOsaka = config.OverrideOsaka
+	}
+	if config.OverrideBPO1 != nil {
+		overrides.OverrideBPO1 = config.OverrideBPO1
+	}
+	if config.OverrideBPO2 != nil {
+		overrides.OverrideBPO2 = config.OverrideBPO2
 	}
 	if config.OverrideVerkle != nil {
 		overrides.OverrideVerkle = config.OverrideVerkle
 	}
-	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, &config.TransactionHistory)
+	options.Overrides = &overrides
+
+	eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +321,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if fb := eth.blockchain.CurrentFinalBlock(); fb != nil {
 		finalBlock = fb.Number.Uint64()
 	}
-	eth.filterMaps = filtermaps.NewFilterMaps(chainDb, chainView, historyCutoff, finalBlock, filtermaps.DefaultParams, fmConfig)
+	filterMaps, err := filtermaps.NewFilterMaps(chainDb, chainView, historyCutoff, finalBlock, filtermaps.DefaultParams, fmConfig)
+	if err != nil {
+		return nil, err
+	}
+	eth.filterMaps = filterMaps
 	eth.closeFilterMaps = make(chan chan struct{})
 
 	// TxPool
@@ -286,9 +337,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.BlobPool.Datadir != "" {
 		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
 	}
-	blobPool := blobpool.New(config.BlobPool, eth.blockchain, legacyPool.HasPendingAuth)
+	eth.blobTxPool = blobpool.New(config.BlobPool, eth.blockchain, legacyPool.HasPendingAuth)
 
-	eth.txPool, err = txpool.New(config.TxPool.PriceLimit, eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
+	eth.txPool, err = txpool.New(config.TxPool.PriceLimit, eth.blockchain, []txpool.SubPool{legacyPool, eth.blobTxPool})
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +355,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Permit the downloader to use the trie cache allowance during fast sync
-	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
+	cacheLimit := options.TrieCleanLimit + options.TrieDirtyLimit + options.SnapshotLimit
 	if eth.handler, err = newHandler(&handlerConfig{
 		NodeID:         eth.p2pServer.Self().ID(),
 		Database:       chainDb,
@@ -544,6 +595,7 @@ func (s *Ethereum) Miner() *miner.Miner { return s.miner }
 func (s *Ethereum) AccountManager() *accounts.Manager  { return s.accountManager }
 func (s *Ethereum) BlockChain() *core.BlockChain       { return s.blockchain }
 func (s *Ethereum) TxPool() *txpool.TxPool             { return s.txPool }
+func (s *Ethereum) BlobTxPool() *blobpool.BlobPool     { return s.blobTxPool }
 func (s *Ethereum) EventMux() *event.TypeMux           { return s.eventMux } // ##CROSS: legacy sync
 func (s *Ethereum) Engine() consensus.Engine           { return s.engine }
 func (s *Ethereum) ChainDb() ethdb.Database            { return s.chainDb }
@@ -673,10 +725,27 @@ func (s *Ethereum) setupDiscovery() error {
 		s.discmix.AddSource(iter)
 	}
 
+	// Add DHT nodes from discv4.
+	if s.p2pServer.DiscoveryV4() != nil {
+		iter := s.p2pServer.DiscoveryV4().RandomNodes()
+		resolverFunc := func(ctx context.Context, enr *enode.Node) *enode.Node {
+			// RequestENR does not yet support context. It will simply time out.
+			// If the ENR can't be resolved, RequestENR will return nil. We don't
+			// care about the specific error here, so we ignore it.
+			nn, _ := s.p2pServer.DiscoveryV4().RequestENR(enr)
+			return nn
+		}
+		iter = enode.AsyncFilter(iter, resolverFunc, maxParallelENRRequests)
+		iter = enode.Filter(iter, eth.NewNodeFilter(s.blockchain))
+		iter = enode.NewBufferIter(iter, discoveryPrefetchBuffer)
+		s.discmix.AddSource(iter)
+	}
+
 	// Add DHT nodes from discv5.
 	if s.p2pServer.DiscoveryV5() != nil {
 		filter := eth.NewNodeFilter(s.blockchain)
 		iter := enode.Filter(s.p2pServer.DiscoveryV5().RandomNodes(), filter)
+		iter = enode.NewBufferIter(iter, discoveryPrefetchBuffer)
 		s.discmix.AddSource(iter)
 	}
 
@@ -712,17 +781,17 @@ func (s *Ethereum) Stop() error {
 
 // SyncMode retrieves the current sync mode, either explicitly set, or derived
 // from the chain status.
-func (s *Ethereum) SyncMode() downloader.SyncMode {
+func (s *Ethereum) SyncMode() ethconfig.SyncMode {
 	// If we're in snap sync mode, return that directly
 	if s.handler.snapSync.Load() {
-		return downloader.SnapSync
+		return ethconfig.SnapSync
 	}
 	// We are probably in full sync, but we might have rewound to before the
 	// snap sync pivot, check if we should re-enable snap sync.
 	head := s.blockchain.CurrentBlock()
 	if pivot := rawdb.ReadLastPivotNumber(s.chainDb); pivot != nil {
 		if head.Number.Uint64() < *pivot {
-			return downloader.SnapSync
+			return ethconfig.SnapSync
 		}
 	}
 	// We are in a full sync, but the associated head state is missing. To complete
@@ -730,8 +799,8 @@ func (s *Ethereum) SyncMode() downloader.SyncMode {
 	// persistent state is corrupted, just mismatch with the head block.
 	if !s.blockchain.HasState(head.Root) {
 		log.Info("Reenabled snap sync as chain is stateless")
-		return downloader.SnapSync
+		return ethconfig.SnapSync
 	}
 	// Nope, we're really full syncing
-	return downloader.FullSync
+	return ethconfig.FullSync
 }

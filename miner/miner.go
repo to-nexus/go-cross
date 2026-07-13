@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -33,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -43,32 +43,8 @@ type Backend interface {
 	TxPool() *txpool.TxPool
 }
 
-// Config is the configuration parameters of mining.
-type Config struct {
-	Etherbase common.Address `toml:",omitempty"` // Public address for block mining rewards
-	ExtraData hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	GasFloor  uint64         // Target gas floor for mined blocks.
-	GasCeil   uint64         // Target gas ceiling for mined blocks.
-	GasPrice  *big.Int       // Minimum gas price for mining a transaction
-	Recommit  time.Duration  // The time interval for miner to re-create mining work.
-
-	NewPayloadTimeout time.Duration // The maximum time allowance for creating a new payload
-}
-
-// DefaultConfig contains default settings for miner.
-var DefaultConfig = Config{
-	GasCeil:  30000000,
-	GasPrice: big.NewInt(params.GWei), // ##CROSS: min tip
-
-	// The default recommit time is chosen as two seconds since
-	// consensus-layer usually will wait a half slot of time(6s)
-	// for payload generation. It should be enough for Geth to
-	// run 3 rounds.
-	Recommit:          10 * time.Second,
-	NewPayloadTimeout: 2 * time.Second,
-}
-
-// Miner creates blocks and searches for proof-of-work values.
+// Miner is the main object which takes care of submitting new work to consensus
+// engine and gathering the sealing result.
 type Miner struct {
 	mux     *event.TypeMux
 	eth     Backend
@@ -81,7 +57,7 @@ type Miner struct {
 	wg sync.WaitGroup
 }
 
-func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool) *Miner {
+func New(eth Backend, config *minerconfig.Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool) *Miner {
 	// ##CROSS: istanbul
 	initWorker := true
 	if chainConfig.Istanbul != nil {
