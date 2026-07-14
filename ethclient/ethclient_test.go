@@ -17,7 +17,6 @@
 package ethclient_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -184,7 +183,7 @@ func TestEthClient(t *testing.T) {
 			func(t *testing.T) { testCallContractAtHash(t, client) },
 		},
 		// ##CROSS: legacy sync
-		// NOTE(Cross): No pending block
+		// NOTE(go-cross): No pending block
 		// "AtFunctions": {
 		// 	func(t *testing.T) { testAtFunctions(t, client) },
 		// },
@@ -510,6 +509,7 @@ func testCallContract(t *testing.T, client *rpc.Client) {
 	}
 }
 
+/* ##CROSS: legacy sync
 func testAtFunctions(t *testing.T, client *rpc.Client) {
 	ec := ethclient.NewClient(client)
 
@@ -654,7 +654,7 @@ func testAtFunctions(t *testing.T, client *rpc.Client) {
 	if sender != testAddr {
 		t.Fatal("wrong sender:", sender)
 	}
-}
+}*/
 
 func testTransactionSender(t *testing.T, client *rpc.Client) {
 	ec := ethclient.NewClient(client)
@@ -701,6 +701,7 @@ func newCanceledContext() context.Context {
 	return ctx
 }
 
+/* ##CROSS: legacy sync
 func sendTransaction(ec *ethclient.Client) error {
 	chainID, err := ec.ChainID(context.Background())
 	if err != nil {
@@ -723,7 +724,7 @@ func sendTransaction(ec *ethclient.Client) error {
 		return err
 	}
 	return ec.SendTransaction(context.Background(), tx)
-}
+}*/
 
 // Here we show how to get the error message of reverted contract call.
 func ExampleRevertErrorData() {

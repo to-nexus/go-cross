@@ -139,6 +139,9 @@ type ConsensusAPI struct {
 // The underlying blockchain needs to have a valid terminal total difficulty set.
 func NewConsensusAPI(eth *eth.Ethereum) *ConsensusAPI {
 	api := newConsensusAPIWithoutHeartbeat(eth)
+	// ##CROSS: legacy sync
+	// This API is excluded from geth (cmd/geth/config.go:makeFullNode) because go-cross doesn't support beacon.
+	// TODO: (go-cross) devp2p still includes this API, so we need to check the effect of heartbeat.
 	go api.heartbeat()
 	return api
 }

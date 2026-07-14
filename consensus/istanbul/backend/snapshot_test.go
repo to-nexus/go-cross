@@ -433,7 +433,7 @@ func TestSaveAndLoad(t *testing.T) {
 			},
 		},
 		Tally: map[common.Address]Tally{
-			common.BytesToAddress([]byte([]byte("1234567893"))): {
+			common.BytesToAddress([]byte("1234567893")): {
 				Authorize: false,
 				Votes:     20,
 			},

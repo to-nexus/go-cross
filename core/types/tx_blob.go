@@ -69,7 +69,7 @@ type BlobTx struct {
 
 // BlobTxSidecar contains the blobs of a blob transaction.
 type BlobTxSidecar struct {
-	// NOTE(CROSS): PeerDAS support (EIP-7594) is disabled.
+	// NOTE(go-cross): PeerDAS support (EIP-7594) is disabled.
 	// Only sidecar Version = 0 (EIP-4844 legacy proofs) is supported for now.
 	// See upstream PR: https://github.com/ethereum/go-ethereum/pull/31791
 	Version     byte                 `json:"version" rlp:"-"` // Sidecar version
@@ -206,8 +206,8 @@ func (btx *blobTxWithBlobsV0) tx() *BlobTx {
 }
 
 func (btx *blobTxWithBlobsV0) assign(sc *BlobTxSidecar) error {
-	// NOTE(CROSS): Upstream geth supports both Version 0 and 1 sidecars.
-	// CROSS only supports Version 0, as EIP-7594 (cell proofs) is not enabled yet.
+	// NOTE(go-cross): Upstream geth supports both Version 0 and 1 sidecars.
+	// go-cross only supports Version 0, as EIP-7594 (cell proofs) is not enabled yet.
 	sc.Version = BlobSidecarVersion0
 	sc.Blobs = btx.Blobs
 	sc.Commitments = btx.Commitments

@@ -79,14 +79,15 @@ type chainFreezer struct {
 //   - if non-empty directory is given, initializes the regular file-based
 //     state freezer.
 func newChainFreezer(datadir string, eraDir string, namespace string, readonly bool) (*chainFreezer, error) {
+	var (
+		err     error
+		freezer ethdb.AncientStore
+	)
 	if datadir == "" {
-		return &chainFreezer{
-			ancients: NewMemoryFreezer(readonly, chainFreezerTableConfigs),
-			quit:     make(chan struct{}),
-			trigger:  make(chan chan struct{}),
-		}, nil
+		freezer = NewMemoryFreezer(readonly, chainFreezerTableConfigs)
+	} else {
+		freezer, err = NewFreezer(datadir, namespace, readonly, freezerTableSize, chainFreezerTableConfigs)
 	}
-	freezer, err := NewFreezer(datadir, namespace, readonly, freezerTableSize, chainFreezerTableConfigs)
 	if err != nil {
 		return nil, err
 	}

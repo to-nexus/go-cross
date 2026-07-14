@@ -574,7 +574,6 @@ func (h *handler) permissionSweepLoop() {
 			return
 		}
 	}
-
 }
 
 // sweepPermissionedPeers disconnects connected peers that are no longer permitted, catching
@@ -637,7 +636,7 @@ func (h *handler) Start(maxPeers int) {
 	// ##
 
 	// ##CROSS: legacy sync
-	// NOTE(Cross): txFetcher is started in the chainSyncer loop, so we don't start it here.
+	// NOTE: txFetcher is started in the chainSyncer loop, so we don't start it here.
 	// start sync handlers
 	// h.txFetcher.Start()
 	// ##
