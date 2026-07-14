@@ -52,7 +52,7 @@ type Options struct {
 // run successfully with the provided context options. It returns an error if the
 // transaction would always revert, or if there are unexpected failures.
 func Estimate(ctx context.Context, call *core.Message, opts *Options, gasCap uint64) (uint64, []byte, error) {
-	// TODO: (ONE) Should add support for fee payer when TransactionArgs is updated to support fee-delegated tx.
+	// TODO: (go-cross) Should add support for fee payer when TransactionArgs is updated to support fee-delegated tx.
 
 	// Binary search the gas limit, as it may need to be higher than the amount used
 	var (

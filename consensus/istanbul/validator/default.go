@@ -27,7 +27,8 @@ import (
 )
 
 type defaultValidator struct {
-	address common.Address
+	address    common.Address
+	signerAddr types.BLSPublicKey // ##CROSS: bls seal
 }
 
 func (val *defaultValidator) Address() common.Address {
@@ -38,25 +39,7 @@ func (val *defaultValidator) String() string {
 	return val.Address().String()
 }
 
-func (val *defaultValidator) SignerAddress() types.BLSPublicKey {
-	return types.BLSPublicKey{}
-}
-
-// ##CROSS: bls seal
-type blsValidator struct {
-	address    common.Address
-	signerAddr types.BLSPublicKey
-}
-
-func (val *blsValidator) Address() common.Address {
-	return val.address
-}
-
-func (val *blsValidator) String() string {
-	return val.Address().String()
-}
-
-func (val *blsValidator) SignerAddress() types.BLSPublicKey {
+func (val *defaultValidator) SignerAddress() types.BLSPublicKey { // ##CROSS: bls seal
 	return val.signerAddr
 }
 

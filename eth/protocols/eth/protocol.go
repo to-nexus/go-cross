@@ -40,7 +40,7 @@ const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
 // is primary).
-// NOTE(Cross): Only ETH68 is supported for legacy sync, so ETH69 is omitted here.
+// NOTE(go-cross): Only ETH68 is supported for legacy sync, so ETH69 is omitted here.
 var ProtocolVersions = []uint{ /*ETH69,*/ ETH68} // ##CROSS: legacy sync
 
 // protocolLengths are the number of implemented message corresponding to
@@ -65,7 +65,7 @@ const (
 	GetReceiptsMsg                = 0x0f
 	ReceiptsMsg                   = 0x10
 	// ##CROSS: istanbul
-	// NOTE(Cross): BlockRangeUpdateMsg conflicts with istanbulMsg(consensus/istanbul/backend/handler.go).
+	// NOTE(go-cross): BlockRangeUpdateMsg conflicts with istanbulMsg(consensus/istanbul/backend/handler.go).
 	// To enable ETH69, we need to resolve this conflict.
 	BlockRangeUpdateMsg = 0x11
 )

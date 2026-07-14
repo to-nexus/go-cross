@@ -1054,12 +1054,12 @@ func (api *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, i
 
 // ##CROSS: fee collection
 // Beneficiary returns current gas-fee-collector address.
-func (s *BlockChainAPI) Beneficiary(ctx context.Context, blockNr rpc.BlockNumber) (*common.Address, error) {
-	header, err := s.b.HeaderByNumber(ctx, blockNr)
+func (api *BlockChainAPI) Beneficiary(ctx context.Context, blockNr rpc.BlockNumber) (*common.Address, error) {
+	header, err := api.b.HeaderByNumber(ctx, blockNr)
 	if err != nil {
 		return nil, err
 	}
-	return s.b.ChainConfig().GetBeneficiaryAddress(header.Number), nil
+	return api.b.ChainConfig().GetBeneficiaryAddress(header.Number), nil
 }
 
 // ##

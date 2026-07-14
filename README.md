@@ -1,7 +1,7 @@
 # Go Cross
 
 **Go Cross** is the official execution client for the **Cross** blockchain by to-nexus.
-It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-new consensus engine — **PoSA (Proof of Staked Authority)** — together with the **Breakpoint** hard fork, while remaining fully compatible with modern Ethereum specifications such as EIP-1559, Cancun, and Prague.
+It is built on top of the **go-ethereum v1.16** codebase and introduces a brand-new consensus engine — **PoSA (Proof of Staked Authority)** — together with the **Breakpoint** hard fork, while remaining fully compatible with modern Ethereum specifications such as EIP-1559, Cancun, and Prague.
 
 > This release **completely replaces the previous permissioned QBFT (Quorum BFT) consensus with PoSA**.
 > Anyone who stakes the required amount can now participate as a validator, and ordinary users can earn block rewards through delegation.

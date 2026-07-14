@@ -362,11 +362,13 @@ func (sb *Backend) CurrentStat() (istanbul.ValidatorSet, *istanbul.View) {
 // ##
 
 func (sb *Backend) snapLogger(snap *Snapshot) log.Logger {
+	validators, signers := snap.validatorsWithSigners()
 	return sb.logger.New(
 		"snap.number", snap.Number,
 		"snap.hash", snap.Hash.String(),
 		"snap.epoch", snap.Epoch,
-		"snap.validators", snap.validators(),
+		"snap.validators", validators,
+		"snap.signers", signers,
 		//"snap.votes", snap.Votes,
 	)
 }
@@ -465,6 +467,13 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 
 		headers = append(headers, header)
 		number, hash = number-1, header.ParentHash
+	}
+
+	addrs := make([]common.Address, 0, snap.ValSet.Size())
+	signers := make([]types.BLSPublicKey, 0, snap.ValSet.Size())
+	for _, val := range snap.ValSet.List() {
+		addrs = append(addrs, val.Address())
+		signers = append(signers, val.SignerAddress())
 	}
 
 	// Previous snapshot found, apply any pending headers on top of it
