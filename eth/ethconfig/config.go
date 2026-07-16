@@ -221,7 +221,7 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 	}
 
 	// ##CROSS: istanbul
-	if config.Istanbul != nil {
+	if config.IsIstanbulConsensus() {
 		*istanbulCfg = *istanbul.NewConfig(config)
 		ethClient := ethclient.NewClient(stack.Attach())
 		if len(config.Transitions) > 0 {

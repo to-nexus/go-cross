@@ -388,6 +388,39 @@ var (
 			BPO2:   DefaultBPO2BlobConfig,
 		},
 	}
+
+	// ##CROSS: fork
+	CrossTestChainConfig = &ChainConfig{
+		ChainID:                 big.NewInt(612055),
+		HomesteadBlock:          big.NewInt(0),
+		DAOForkBlock:            big.NewInt(0),
+		DAOForkSupport:          false,
+		EIP150Block:             big.NewInt(0),
+		EIP155Block:             big.NewInt(0),
+		EIP158Block:             big.NewInt(0),
+		ByzantiumBlock:          big.NewInt(0),
+		ConstantinopleBlock:     big.NewInt(0),
+		PetersburgBlock:         big.NewInt(0),
+		IstanbulBlock:           big.NewInt(0),
+		MuirGlacierBlock:        big.NewInt(0),
+		BerlinBlock:             big.NewInt(0),
+		LondonBlock:             big.NewInt(0),
+		ArrowGlacierBlock:       big.NewInt(0),
+		GrayGlacierBlock:        big.NewInt(0),
+		TerminalTotalDifficulty: big.NewInt(math.MaxInt64),
+		ShanghaiTime:            newUint64(0),
+		AdventureTime:           newUint64(0),
+		CancunTime:              newUint64(0),
+		PragueTime:              newUint64(0),
+		BreakpointTime:          newUint64(0),
+		BlobScheduleConfig: &BlobScheduleConfig{
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
+		},
+		Istanbul: &IstanbulConfig{PoSA: &PoSAConfig{}},
+	}
+	// ##
+
 	// AllEthashProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Ethash consensus.
 	AllEthashProtocolChanges = &ChainConfig{
@@ -734,7 +767,19 @@ func (c CliqueConfig) String() string {
 // String implements the fmt.Stringer interface, returning a string representation
 // of ChainConfig.
 func (c *ChainConfig) String() string {
-	result := fmt.Sprintf("ChainConfig{ChainID: %v", c.ChainID)
+	var engine any
+	switch {
+	case c.IsIstanbulConsensus(): // ##CROSS: istanbul
+		engine = c.Istanbul
+	case c.Ethash != nil:
+		engine = c.Ethash
+	case c.Clique != nil:
+		engine = c.Clique
+	default:
+		engine = "unknown"
+	}
+
+	result := fmt.Sprintf("ChainConfig{ChainID: %v, Engine: %v", c.ChainID, engine)
 
 	// Add block-based forks
 	if c.HomesteadBlock != nil {
@@ -845,12 +890,12 @@ func (c *ChainConfig) Description() string {
 	}
 	banner += fmt.Sprintf("Chain ID:  %v (%s)\n", c.ChainID, network)
 	switch {
+	case c.IsIstanbulConsensus(): // ##CROSS: istanbul
+		banner += "Consensus: Istanbul (Istanbul Byzantine Fault Tolerance)\n"
 	case c.Ethash != nil:
 		banner += "Consensus: Beacon (proof-of-stake), merged from Ethash (proof-of-work)\n"
 	case c.Clique != nil:
 		banner += "Consensus: Beacon (proof-of-stake), merged from Clique (proof-of-authority)\n"
-	case c.Istanbul != nil:
-		banner += "Consensus: Istanbul (Istanbul Byzantine Fault Tolerance)\n"
 	default:
 		banner += "Consensus: unknown\n"
 	}
@@ -1526,6 +1571,14 @@ func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Addre
 	if fork >= forks.Osaka {
 		// no new system contracts
 	}
+	// ##CROSS: istanbul
+	if c.IsIstanbulConsensus() {
+		if fork >= forks.Prague {
+			active["HISTORY_STORAGE_ADDRESS"] = HistoryStorageAddress
+		}
+		return active
+	}
+	// ##
 	if fork >= forks.Prague {
 		active["CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS"] = ConsolidationQueueAddress
 		active["DEPOSIT_CONTRACT_ADDRESS"] = c.DepositContractAddress
@@ -1727,9 +1780,8 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		chainID = new(big.Int)
 	}
 	// disallow setting Merge out of order
-	isMerge = isMerge && c.IsLondon(num) && c.Istanbul == nil // ##CROSS: istanbul
+	isMerge = isMerge && c.IsLondon(num)
 	isVerkle := isMerge && c.IsVerkle(num, timestamp)
-	isAdventure := c.IsAdventure(num, timestamp) // ##CROSS: fork adventure
 	return Rules{
 		ChainID:          new(big.Int).Set(chainID),
 		IsHomestead:      c.IsHomestead(num),
@@ -1744,13 +1796,13 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsEIP2929:        c.IsBerlin(num) && !isVerkle,
 		IsLondon:         c.IsLondon(num),
 		IsMerge:          isMerge,
-		IsShanghai:       (isMerge || isAdventure) && c.IsShanghai(num, timestamp),
-		IsAdventure:      isAdventure, // ##CROSS: fork adventure
-		IsCancun:         (isMerge || isAdventure) && c.IsCancun(num, timestamp),
-		IsPrague:         (isMerge || isAdventure) && c.IsPrague(num, timestamp),
+		IsShanghai:       (isMerge || c.IsIstanbulConsensus()) && c.IsShanghai(num, timestamp),
+		IsAdventure:      c.IsAdventure(num, timestamp), // ##CROSS: fork adventure
+		IsCancun:         (isMerge || c.IsIstanbulConsensus()) && c.IsCancun(num, timestamp),
+		IsPrague:         (isMerge || c.IsIstanbulConsensus()) && c.IsPrague(num, timestamp),
 		IsBreakpoint:     c.IsBreakpoint(num, timestamp), // ##CROSS: fork breakpoint
-		IsOsaka:          isMerge && c.IsOsaka(num, timestamp),
-		IsAmsterdam:      isMerge && c.IsAmsterdam(num, timestamp),
+		IsOsaka:          (isMerge || c.IsIstanbulConsensus()) && c.IsOsaka(num, timestamp),
+		IsAmsterdam:      (isMerge || c.IsIstanbulConsensus()) && c.IsAmsterdam(num, timestamp),
 		IsVerkle:         isVerkle,
 		IsEIP4762:        isVerkle,
 	}

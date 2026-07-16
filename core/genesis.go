@@ -527,11 +527,18 @@ func (g *Genesis) toBlockWithRoot(root common.Hash) *types.Block {
 	)
 	if conf := g.Config; conf != nil {
 		num := big.NewInt(int64(g.Number))
-		if conf.IsShanghai(num, g.Timestamp) {
+		if !conf.IsIstanbulConsensus() && conf.IsShanghai(num, g.Timestamp) { // ##CROSS: istanbul
 			head.WithdrawalsHash = &types.EmptyWithdrawalsHash
 			withdrawals = make([]*types.Withdrawal, 0)
 		}
 		if conf.IsCancun(num, g.Timestamp) {
+			// ##CROSS: istanbul
+			if conf.IsIstanbulConsensus() {
+				head.WithdrawalsHash = &types.EmptyWithdrawalsHash
+				withdrawals = make([]*types.Withdrawal, 0)
+			}
+			// ##
+
 			// EIP-4788: The parentBeaconBlockRoot of the genesis block is always
 			// the zero hash. This is because the genesis block does not have a parent
 			// by definition.

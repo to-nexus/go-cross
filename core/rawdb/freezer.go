@@ -564,7 +564,7 @@ func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 }
 
 // ResetTable will reset certain table with new start point.
-// only used for ChainFreezerBlobSidecarTable now.
+// only used for ChainFreezerBlobSidecarTable and ChainFreezerDifficultyTable.
 func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	if f.readonly {
 		return errReadOnly

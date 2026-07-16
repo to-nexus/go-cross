@@ -420,7 +420,9 @@ func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Tr
 		header.BlobGasUsed = &used
 
 		beaconRoot := common.HexToHash("0xbeac00")
-		header.ParentBeaconRoot = &beaconRoot
+		if !config.IsIstanbulConsensus() { // ##CROSS: istanbul
+			header.ParentBeaconRoot = &beaconRoot
+		}
 	}
 	// Assemble and return the final block for sealing
 	body := &types.Body{Transactions: txs}

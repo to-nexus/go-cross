@@ -103,7 +103,7 @@ func newChainFreezer(datadir string, eraDir string, namespace string, readonly b
 	}
 
 	// After enabling pruneAncient, the ancient data is not retained. In some specific scenarios where it is
-	// necessary to roll back to blocks prior to the finalized block, it is mandatory to keep the most recent 90,000 blocks in the database to ensure proper functionality and rollback capability.
+	// necessary to roll back to blocks prior to the finalized block, it is mandatory to keep the most recent 300,000 blocks in the database to ensure proper functionality and rollback capability.
 	cf.threshold.Store(params.FullImmutabilityThreshold)
 	return &cf, nil
 }
@@ -596,4 +596,4 @@ func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {
 	return db.ResetTable(ChainFreezerBlobSidecarTable, next, true)
 }
 
-//##
+// ##

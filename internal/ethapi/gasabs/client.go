@@ -220,7 +220,6 @@ func (ec *Client) CanDelegateTx(tx *types.Transaction, signer types.Signer) (boo
 	}
 
 	// only dynamic fee transaction with whitelisted addresses can be delegated
-	approved := tx.Type() == types.DynamicFeeTxType &&
-		(ec.IsApprovedFrom(from) || ec.IsApprovedTo(to))
+	approved := tx.Type() == types.DynamicFeeTxType && (ec.IsApprovedFrom(from) || ec.IsApprovedTo(to))
 	return approved, from, to, nil
 }

@@ -1717,12 +1717,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		return consensus.ErrUnknownAncestor
 	}
 
-	// Irrelevant of the canonical status, write the block itself to the database.
-	//
-	// Note all the components of block(td, hash->number map, header, body, receipts)
-	// should be written atomically. BlockBatch is used for containing all components.
-	blockBatch := bc.db.NewBatch()
-
 	// ##CROSS: legacy sync
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
@@ -1731,9 +1725,15 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	// Make sure no inconsistent state is leaked during insertion
 	externTd := new(big.Int).Add(block.Difficulty(), ptd)
-	rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 	// ##
 
+	// Irrelevant of the canonical status, write the block itself to the database.
+	//
+	// Note all the components of block(td, hash->number map, header, body, receipts)
+	// should be written atomically. BlockBatch is used for containing all components.
+	blockBatch := bc.db.NewBatch()
+
+	rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd) // ##CROSS: legacy sync
 	rawdb.WriteBlock(blockBatch, block)
 	rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
 	// ##CROSS: blob sidecars
@@ -1750,6 +1750,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Precache the block and its TD.
 	bc.hc.tdCache.Add(block.Hash(), externTd) // ##CROSS: legacy sync
 	bc.blockCache.Add(block.Hash(), block)
+	// TODO: (go-cross) Cache receipts.
+	// ##CROSS: blob sidecars
+	if bc.chainConfig.IsCancun(block.Number(), block.Time()) && block.Sidecars() != nil {
+		bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
+	}
+	// ##
 
 	// Commit all cached state changes into underlying memory database.
 	root, stateUpdate, err := statedb.CommitWithUpdate(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))

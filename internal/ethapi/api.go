@@ -1723,18 +1723,9 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	}
 
 	// ##CROSS: fee delegation
-	// For fee-delegated dynamic fee transactions, perform the following checks:
-	// 1. Ensure that a fee payer address is provided (non-nil).
-	// 2. Recover the fee payer address from the transaction signature using a fee delegation signer.
-	// 3. Verify that the recovered fee payer matches the provided fee payer.
-	// If any of these checks fail, the transaction submission is aborted.
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-		if tx.FeePayer() == nil {
-			return common.Hash{}, errors.New("feepayer's address is nil")
-		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(b.ChainConfig().ChainID), tx); err != nil {
+		if _, err := tx.FeePayerValidated(b.ChainConfig().ChainID); err != nil {
 			return common.Hash{}, fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
-		} else if feePayer != *tx.FeePayer() {
-			return common.Hash{}, fmt.Errorf("feepayer's signature mismatch. recoverd: %v want: %v", feePayer, *tx.FeePayer())
 		}
 	}
 	// ##

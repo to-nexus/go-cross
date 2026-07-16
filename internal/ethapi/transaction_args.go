@@ -70,6 +70,9 @@ type TransactionArgs struct {
 
 	// For SetCodeTxType
 	AuthorizationList []types.SetCodeAuthorization `json:"authorizationList"`
+
+	// ##CROSS: fee delegation
+	// TODO: (go-cross) Add support for fee delegated transaction.
 }
 
 // from retrieves the transaction sender address.

@@ -318,12 +318,28 @@ func (tx *Transaction) Value() *big.Int { return new(big.Int).Set(tx.inner.value
 func (tx *Transaction) Nonce() uint64 { return tx.inner.nonce() }
 
 // ##CROSS: fee delegation
-// FeePayer returns the feePayer's address of the transaction.
+// FeePayer returns the fee payer address of the transaction.
 func (tx *Transaction) FeePayer() *common.Address {
 	if v, ok := tx.inner.(*FeeDelegatedDynamicFeeTx); ok {
 		return v.feePayer()
 	}
 	return nil
+}
+
+// FeePayerValidated performs the following checks and returns the fee payer address of the transaction:
+// 1. Ensure that a fee payer address is provided (non-nil).
+// 2. Recover the fee payer address from the transaction signature using a fee delegation signer.
+// 3. Verify that the recovered fee payer matches the provided fee payer.
+func (tx *Transaction) FeePayerValidated(chainID *big.Int) (common.Address, error) {
+	feePayer := tx.FeePayer()
+	if feePayer == nil {
+		return common.Address{}, errors.New("fee payer is nil")
+	} else if recovered, err := FeePayer(NewFeeDelegationSigner(chainID), tx); err != nil {
+		return common.Address{}, err
+	} else if recovered != *feePayer {
+		return common.Address{}, fmt.Errorf("feePayer: %v, sig: %v", *feePayer, recovered)
+	}
+	return *feePayer, nil
 }
 
 // RawFeePayerSignatureValues returns the feePayer's FV, FR, FS signature values of the transaction.
@@ -334,6 +350,8 @@ func (tx *Transaction) RawFeePayerSignatureValues() (v, r, s *big.Int) {
 	}
 	return nil, nil, nil
 }
+
+// ##
 
 // To returns the recipient address of the transaction.
 // For contract-creation transactions, To returns nil.

@@ -111,6 +111,9 @@ type SendTxArgs struct {
 	Blobs       []kzg4844.Blob       `json:"blobs,omitempty"`
 	Commitments []kzg4844.Commitment `json:"commitments,omitempty"`
 	Proofs      []kzg4844.Proof      `json:"proofs,omitempty"`
+
+	// ##CROSS: fee delegation
+	// TODO: (go-cross) Add support for fee delegated transaction.
 }
 
 func (args SendTxArgs) String() string {

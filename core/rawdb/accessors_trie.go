@@ -272,7 +272,7 @@ func ParseStateScheme(provided string, disk ethdb.Database) (string, error) {
 	stored := ReadStateScheme(disk)
 	if provided == "" {
 		if stored == "" {
-			log.Info("State schema set to default", "scheme", "path")
+			log.Info("State scheme set to default", "scheme", "path")
 			return PathScheme, nil // use default scheme for empty database
 		}
 		log.Info("State scheme set to already existing", "scheme", stored)
