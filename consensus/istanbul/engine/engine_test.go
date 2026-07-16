@@ -14,14 +14,12 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,6 +46,8 @@ func TestPrepareExtra(t *testing.T) {
 
 // ##CROSS: consensus system contract
 func TestIsSystemTransaction(t *testing.T) {
+	t.Parallel()
+
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -55,35 +55,37 @@ func TestIsSystemTransaction(t *testing.T) {
 	header := &types.Header{Coinbase: crypto.PubkeyToAddress(key.PublicKey)}
 	signer := types.LatestSignerForChainID(params.TestChainConfig.ChainID)
 
-	legacyTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
-		Nonce:    0,
-		GasPrice: big.NewInt(0),
-		Gas:      21000,
-		To:       &to,
+	t.Run("legacy tx", func(t *testing.T) {
+		legacyTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+			Nonce:    0,
+			GasPrice: big.NewInt(0),
+			Gas:      21000,
+			To:       &to,
+		})
+		isSystemTx, err := IsSystemTransaction(legacyTx, header)
+		require.NoError(t, err)
+		assert.True(t, isSystemTx)
 	})
-	isSystemTx, err := IsSystemTransaction(legacyTx, header)
-	require.NoError(t, err)
-	assert.True(t, isSystemTx)
 
-	dynamicFeeTx := types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
-		ChainID:   params.TestChainConfig.ChainID,
-		Nonce:     1,
-		GasTipCap: big.NewInt(0),
-		GasFeeCap: big.NewInt(0),
-		Gas:       21000,
-		To:        &to,
+	t.Run("dynamic fee tx", func(t *testing.T) {
+		dynamicFeeTx := types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
+			ChainID:   params.TestChainConfig.ChainID,
+			Nonce:     1,
+			GasTipCap: big.NewInt(0),
+			GasFeeCap: big.NewInt(0),
+			Gas:       21000,
+			To:        &to,
+		})
+		isSystemTx, err := IsSystemTransaction(dynamicFeeTx, header)
+		require.NoError(t, err)
+		assert.False(t, isSystemTx)
 	})
-	isSystemTx, err = IsSystemTransaction(dynamicFeeTx, header)
-	require.NoError(t, err)
-	assert.False(t, isSystemTx)
 }
 
 // newTestStateDB creates an empty in-memory state database for testing.
 func newTestStateDB(t *testing.T) *state.StateDB {
 	t.Helper()
-	memdb := rawdb.NewMemoryDatabase()
-	tdb := triedb.NewDatabase(memdb, nil)
-	sdb := state.NewDatabase(tdb, nil)
+	sdb := state.NewDatabaseForTesting()
 	statedb, err := state.New(types.EmptyRootHash, sdb)
 	require.NoError(t, err)
 	return statedb
@@ -92,6 +94,8 @@ func newTestStateDB(t *testing.T) *state.StateDB {
 // TestApplySystemTransaction verifies that replaying a system transaction keeps
 // consensus execution semantics and results in the same state as the consensus path.
 func TestApplySystemTransaction(t *testing.T) {
+	t.Parallel()
+
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -103,6 +107,7 @@ func TestApplySystemTransaction(t *testing.T) {
 		chainConfig = params.TestChainConfig
 		signer      = types.LatestSignerForChainID(chainConfig.ChainID)
 		funds       = uint256.NewInt(1_000_000)
+		engine      = &Engine{}
 	)
 	header := &types.Header{
 		Number:     big.NewInt(100),
@@ -112,6 +117,7 @@ func TestApplySystemTransaction(t *testing.T) {
 		Difficulty: big.NewInt(0),
 		Time:       1_000_000_000,
 	}
+	deleteEmptyObjects := chainConfig.IsEIP158(header.Number)
 	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
 		Nonce:    0,
 		GasPrice: big.NewInt(0),
@@ -124,35 +130,43 @@ func TestApplySystemTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, isSystemTx)
 
-	// Replay the transaction with consensus execution semantics
-	replayDB := newTestStateDB(t)
-	replayDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
-	blockCtx := core.NewEVMBlockContext(header, &chainMock{config: chainConfig}, &header.Coinbase)
-	evm := vm.NewEVM(blockCtx, replayDB, chainConfig, vm.Config{})
+	var replayRoot, consensusRoot common.Hash
 
-	engine := &Engine{}
-	require.NoError(t, engine.ApplySystemTransaction(evm, header, tx, 0))
+	t.Run("replay path", func(t *testing.T) {
+		// Replay the transaction with consensus execution semantics
+		stateDB := newTestStateDB(t)
+		stateDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
+		blockCtx := core.NewEVMBlockContext(header, &chainMock{config: chainConfig}, &header.Coinbase)
+		evm := vm.NewEVM(blockCtx, stateDB, chainConfig, vm.Config{})
 
-	// No intrinsic gas or fee is charged; only the value is transferred
-	assert.Equal(t, uint64(1), replayDB.GetNonce(sender))
-	assert.Equal(t, uint256.NewInt(100), replayDB.GetBalance(to))
-	assert.Equal(t, new(uint256.Int).Sub(funds, uint256.NewInt(100)), replayDB.GetBalance(sender))
+		require.NoError(t, engine.ApplySystemTransaction(evm, header, tx, 0))
 
-	// Apply the same transaction through the consensus path and compare the state
-	consensusDB := newTestStateDB(t)
-	consensusDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
-	var (
-		txs      []*types.Transaction
-		receipts []*types.Receipt
-		usedGas  uint64
-	)
-	msg := newSystemMessage(sender, to, data, value)
-	err = engine.applySystemTransaction(msg, tx, consensusDB, header, &chainMock{config: chainConfig}, header.Coinbase, &txs, &receipts, &usedGas, nil)
-	require.NoError(t, err)
+		// No intrinsic gas or fee is charged; only the value is transferred
+		assert.Equal(t, uint64(1), stateDB.GetNonce(sender))
+		assert.Equal(t, uint256.NewInt(100), stateDB.GetBalance(to))
+		assert.Equal(t, new(uint256.Int).Sub(funds, uint256.NewInt(100)), stateDB.GetBalance(sender))
+
+		replayRoot = stateDB.IntermediateRoot(deleteEmptyObjects)
+	})
+
+	t.Run("consensus path", func(t *testing.T) {
+		// Apply the same transaction through the consensus path and compare the state
+		stateDB := newTestStateDB(t)
+		stateDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
+		var (
+			txs      []*types.Transaction
+			receipts []*types.Receipt
+			usedGas  uint64
+		)
+		msg := newSystemMessage(sender, to, data, value)
+		err = engine.applySystemTransaction(msg, tx, stateDB, header, &chainMock{config: chainConfig}, header.Coinbase, &txs, &receipts, &usedGas, nil)
+		require.NoError(t, err)
+
+		consensusRoot = stateDB.IntermediateRoot(deleteEmptyObjects)
+	})
 
 	// Both state should be equal
-	deleteEmptyObjects := chainConfig.IsEIP158(header.Number)
-	assert.Equal(t, consensusDB.IntermediateRoot(deleteEmptyObjects), replayDB.IntermediateRoot(deleteEmptyObjects))
+	assert.Equal(t, replayRoot, consensusRoot)
 }
 
 // ##
@@ -299,6 +313,8 @@ func TestWriteSigners(t *testing.T) {
 }
 
 func TestBLSSigners(t *testing.T) {
+	t.Parallel()
+
 	t.Run("uses byte sorted validator order", func(t *testing.T) {
 		addrs := []common.Address{
 			common.HexToAddress("0xc53f2189bf6d7bf56722731787127f90d319e112"),
@@ -484,6 +500,8 @@ func TestWriteValidatorVote(t *testing.T) {
 
 // ##CROSS: istanbul validation
 func TestVerifyProposalTransactions(t *testing.T) {
+	t.Parallel()
+
 	chainConfig := &params.ChainConfig{
 		ChainID:        big.NewInt(612088),
 		HomesteadBlock: big.NewInt(0),

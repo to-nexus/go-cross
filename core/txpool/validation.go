@@ -139,21 +139,8 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	// ##CROSS: fee delegation
 	// Make sure the fee payer is signed properly
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-		// Structural validity check that must run before anything dereferences the
-		// fee payer. FeePayer is an RLP-nilable pointer, so a malformed transaction
-		// (e.g. one relayed by a peer over the P2P path, which bypasses the RPC-side
-		// guard) can decode as a fee-delegated transaction with FeePayer == nil while
-		// still carrying fee-payer signature values. Reject it here, before the
-		// *tx.FeePayer() dereferences below would otherwise panic.
-		if tx.FeePayer() == nil {
-			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-		}
-		recovered, err := types.FeePayer(signer, tx)
-		if err != nil {
+		if _, err := tx.FeePayerValidated(signer.ChainID()); err != nil {
 			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
-		}
-		if recovered != *tx.FeePayer() {
-			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), recovered)
 		}
 	}
 	// ##
@@ -316,9 +303,6 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		}
 	}
 
-	if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() == nil { // ##CROSS: fee delegation
-		return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-	}
 	// Ensure the transactor has enough funds to cover the transaction costs
 	var (
 		balance = opts.State.GetBalance(from).ToBig()
@@ -329,22 +313,14 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 	}
 
 	// ##CROSS: fee delegation
-	// If the transaction is a Fee Delegated Dynamic Fee transaction, perform the following checks:
-	// 1. Verify that a FeePayer is specified; if not, return an error.
-	// 2. Confirm that the fee payer's signature, as recovered from the transaction using a FeeDelegationSigner,
-	//    matches the provided FeePayer address.
-	// 3. Ensure that the FeePayer has a sufficient balance to cover the fee payer cost.
-	// These validations ensure that fee delegation is applied correctly and that the fee payer is both authorized and funded.
+	// Make sure the transaction is signed properly.
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-		// Make sure the transaction is signed properly.
-		if tx.FeePayer() == nil {
-			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(signer.ChainID()), tx); err != nil {
+		feePayer, err := tx.FeePayerValidated(signer.ChainID())
+		if err != nil {
 			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
-		} else if *tx.FeePayer() != feePayer {
-			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), feePayer)
 		}
-		feePayerBalance := opts.State.GetBalance(*tx.FeePayer()).ToBig()
+
+		feePayerBalance := opts.State.GetBalance(feePayer).ToBig()
 		// Ensure this single transaction's fee payer cost is covered.
 		if feePayerBalance.Cmp(tx.FeePayerCost()) < 0 {
 			return core.ErrFeePayerInsufficientFunds
@@ -359,7 +335,7 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		// sponsored gas costs and its own outgoing costs come out of the same
 		// account, so both must be counted here.
 		if opts.ExistingFeePayerExpenditure != nil {
-			feePayerSponsored := opts.ExistingFeePayerExpenditure(*tx.FeePayer(), from, tx.Nonce())
+			feePayerSponsored := opts.ExistingFeePayerExpenditure(feePayer, from, tx.Nonce())
 			feePayerOwn := opts.ExistingExpenditure(*tx.FeePayer())
 			feePayerPooled := new(big.Int).Add(feePayerSponsored, feePayerOwn)
 			feePayerNeed := new(big.Int).Add(feePayerPooled, tx.FeePayerCost())

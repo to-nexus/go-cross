@@ -255,7 +255,7 @@ func (b *BlockGen) AddUncle(h *types.Header) {
 
 	// The gas limit and price should be derived from the parent
 	h.GasLimit = parent.GasLimit
-	if b.cm.config.IsLondon(h.Number) {
+	if !b.cm.config.IsIstanbulConsensus() && b.cm.config.IsLondon(h.Number) { // ##CROSS: istanbul
 		h.BaseFee = eip1559.CalcBaseFee(b.cm.config, parent)
 		if !b.cm.config.IsLondon(parent.Number) {
 			parentGasLimit := parent.GasLimit * b.cm.config.ElasticityMultiplier()
@@ -331,7 +331,7 @@ func (b *BlockGen) collectRequests(readonly bool) (requests [][]byte) {
 		statedb = statedb.Copy()
 	}
 
-	if b.cm.config.IsPrague(b.header.Number, b.header.Time) {
+	if b.cm.config.IsPrague(b.header.Number, b.header.Time) && !b.cm.config.IsIstanbulConsensus() { // ##CROSS: istanbul
 		requests = [][]byte{}
 		// EIP-6110 deposits
 		var blockLogs []*types.Log
@@ -637,7 +637,7 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 
 	if cm.config.IsLondon(header.Number) {
 		header.BaseFee = eip1559.CalcBaseFee(cm.config, parentHeader)
-		if !cm.config.IsLondon(parent.Number()) {
+		if !cm.config.IsIstanbulConsensus() && !cm.config.IsLondon(parent.Number()) { // ##CROSS: istanbul
 			parentGasLimit := parent.GasLimit() * cm.config.ElasticityMultiplier()
 			header.GasLimit = CalcGasLimit(parentGasLimit, parentGasLimit)
 		}
@@ -646,8 +646,7 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 		excessBlobGas := eip4844.CalcExcessBlobGas(cm.config, parentHeader, time)
 		header.ExcessBlobGas = &excessBlobGas
 		header.BlobGasUsed = new(uint64)
-		// ##CROSS: fork
-		if cm.config.Istanbul == nil { // ##CROSS: istanbul
+		if !cm.config.IsIstanbulConsensus() { // ##CROSS: istanbul
 			header.ParentBeaconRoot = new(common.Hash)
 		} else {
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
@@ -656,7 +655,6 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 				header.RequestsHash = &types.EmptyRequestsHash
 			}
 		}
-		// ##
 	}
 	return header
 }

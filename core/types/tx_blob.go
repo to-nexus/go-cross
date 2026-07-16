@@ -206,8 +206,6 @@ func (btx *blobTxWithBlobsV0) tx() *BlobTx {
 }
 
 func (btx *blobTxWithBlobsV0) assign(sc *BlobTxSidecar) error {
-	// NOTE(go-cross): Upstream geth supports both Version 0 and 1 sidecars.
-	// go-cross only supports Version 0, as EIP-7594 (cell proofs) is not enabled yet.
 	sc.Version = BlobSidecarVersion0
 	sc.Blobs = btx.Blobs
 	sc.Commitments = btx.Commitments
@@ -220,6 +218,8 @@ func (btx *blobTxWithBlobsV1) tx() *BlobTx {
 }
 
 func (btx *blobTxWithBlobsV1) assign(sc *BlobTxSidecar) error {
+	// NOTE(go-cross): Upstream geth supports both Version 0 and 1 sidecars.
+	// go-cross only supports Version 0, as EIP-7594 (cell proofs) is not enabled yet.
 	if btx.Version != BlobSidecarVersion1 {
 		return fmt.Errorf("unsupported blob tx version %d", btx.Version)
 	}

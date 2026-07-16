@@ -235,6 +235,7 @@ func (api *ExternalSigner) SignTx(account accounts.Account, tx *types.Transactio
 		accessList := tx.AccessList()
 		args.AccessList = &accessList
 	}
+	// ##CROSS: blob sidecars
 	if tx.Type() == types.BlobTxType {
 		args.BlobHashes = tx.BlobHashes()
 		sidecar := tx.BlobTxSidecar()
@@ -245,6 +246,7 @@ func (api *ExternalSigner) SignTx(account accounts.Account, tx *types.Transactio
 		args.Commitments = sidecar.Commitments
 		args.Proofs = sidecar.Proofs
 	}
+	// ##
 
 	var res signTransactionResult
 	if err := api.client.Call(&res, "account_signTransaction", args); err != nil {

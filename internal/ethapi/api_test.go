@@ -591,8 +591,7 @@ func (b testBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.R
 	return receipts, nil
 }
 
-// ##CROSS: blob sidecars
-func (b testBackend) GetBlobSidecars(ctx context.Context, hash common.Hash) (types.BlobSidecars, error) {
+func (b testBackend) GetBlobSidecars(ctx context.Context, hash common.Hash) (types.BlobSidecars, error) { // ##CROSS: blob sidecars
 	header, err := b.HeaderByHash(ctx, hash)
 	if header == nil || err != nil {
 		return nil, err
@@ -601,7 +600,6 @@ func (b testBackend) GetBlobSidecars(ctx context.Context, hash common.Hash) (typ
 	return blobSidecars, nil
 }
 
-// ##
 func (b testBackend) GetTd(ctx context.Context, hash common.Hash) *big.Int { // ##CROSS: legacy sync
 	if b.pending != nil && hash == b.pending.Hash() {
 		return nil
