@@ -175,9 +175,18 @@ func (s *Snapshot) validatorsWithSigners() ([]common.Address, []types.BLSPublicK
 	sorted := validator.SortedValidators(s.ValSet.List())
 	validators := make([]common.Address, 0, len(sorted))
 	signers := make([]types.BLSPublicKey, 0, len(sorted))
+	noSigners := true
 	for _, validator := range sorted {
+		signer := validator.SignerAddress()
 		validators = append(validators, validator.Address())
-		signers = append(signers, validator.SignerAddress())
+		signers = append(signers, signer)
+		if signer != (types.BLSPublicKey{}) {
+			noSigners = false
+		}
+	}
+	// If every signer address is empty, return nil.
+	if noSigners {
+		signers = nil
 	}
 	return validators, signers
 }
