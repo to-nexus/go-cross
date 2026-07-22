@@ -305,16 +305,16 @@ func prepare(ctx *cli.Context) {
 	// If we're running a known preset, log it for convenience.
 	switch {
 	// ##CROSS: config
-	case ctx.IsSet(utils.CrossFlag.Name):
+	case ctx.IsSet(utils.OneFlag.Name):
 		log.Info("Starting Geth on Cross mainnet...")
 
 	case ctx.IsSet(utils.ZoneZeroFlag.Name):
 		log.Info("Starting Geth on ZoneZero testnet...")
 
-	case ctx.IsSet(utils.CrossDev3Flag.Name):
+	case ctx.IsSet(utils.OneDev3Flag.Name):
 		log.Info("Starting Geth on Cross dev3net...")
 
-	case ctx.IsSet(utils.CrossDevFlag.Name):
+	case ctx.IsSet(utils.OneDevFlag.Name):
 		log.Info("Starting Geth on Cross devnet...")
 
 	case ctx.IsSet(utils.MainnetFlag.Name):
@@ -355,8 +355,8 @@ func prepare(ctx *cli.Context) {
 	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
 		// Make sure we're not on any supported preconfigured testnet either
 		if !ctx.IsSet(utils.ZoneZeroFlag.Name) && // ##CROSS: config
-			!ctx.IsSet(utils.CrossDev3Flag.Name) &&
-			!ctx.IsSet(utils.CrossDevFlag.Name) && // ##
+			!ctx.IsSet(utils.OneDev3Flag.Name) &&
+			!ctx.IsSet(utils.OneDevFlag.Name) && // ##
 			!ctx.IsSet(utils.HoleskyFlag.Name) &&
 			!ctx.IsSet(utils.SepoliaFlag.Name) &&
 			!ctx.IsSet(utils.HoodiFlag.Name) &&

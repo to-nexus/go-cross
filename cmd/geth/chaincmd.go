@@ -451,13 +451,13 @@ func importHistory(ctx *cli.Context) error {
 	if utils.IsNetworkPreset(ctx) {
 		switch {
 		// ##CROSS: config
-		case ctx.Bool(utils.CrossFlag.Name):
+		case ctx.Bool(utils.OneFlag.Name):
 			network = "cross"
 		case ctx.Bool(utils.ZoneZeroFlag.Name):
 			network = "zonezero"
-		case ctx.Bool(utils.CrossDev3Flag.Name):
+		case ctx.Bool(utils.OneDev3Flag.Name):
 			network = "crossdev3"
-		case ctx.Bool(utils.CrossDevFlag.Name):
+		case ctx.Bool(utils.OneDevFlag.Name):
 			network = "crossdev"
 		// ##
 		case ctx.Bool(utils.MainnetFlag.Name):
