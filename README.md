@@ -1,7 +1,9 @@
-# Go Cross
+# ONE Chain
 
-**Go Cross** is the official execution client for the **Cross** blockchain by to-nexus.
+**This repository** is the official execution client for the **ONE** blockchain by to-nexus.
 It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-new consensus engine — **PoSA (Proof of Staked Authority)** — together with the **Breakpoint** hard fork, while remaining fully compatible with modern Ethereum specifications such as EIP-1559, Cancun, and Prague.
+
+> **Naming update (effective 2026-07-23):** The chain was renamed from **CROSS chain** to **ONE chain**, and its native coin from **CROSS** to **ONE**. All chain and coin references in this document use the new names. The mainnet flag is now **`--one`** (the old **`--cross`** still works as a backward-compatible alias). Technical identifiers that mirror the codebase and repositories — the `go-cross` / `cross-contracts` repositories, the `cross_*` RPC namespace, and system-contract names such as `CrossReserve` — are unchanged.
 
 > This release **completely replaces the previous permissioned QBFT (Quorum BFT) consensus with PoSA**.
 > Anyone who stakes the required amount can now participate as a validator, and ordinary users can earn block rewards through delegation.
@@ -41,12 +43,12 @@ It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-
 
 - **Consensus engine**: PoSA (Istanbul message protocol + BLS aggregate signatures + stake-weighted validator election)
 - **Block time**: 1 second
-- **Validator requirements**: ≥ 1,000,000 CROSS self-delegation **plus on-chain whitelist registration after KYB (Know-Your-Business) verification**
-- **Minimum delegator stake**: 5 CROSS
+- **Validator requirements**: ≥ 1,000,000 ONE self-delegation **plus on-chain whitelist registration after KYB (Know-Your-Business) verification**
+- **Minimum delegator stake**: 5 ONE
 - **Unbonding period**: 14 days
 - **Council size**: up to 21 validators (top-staked)
 - **Council rotation period**: 86,400 s (24 hours)
-- **Block reward**: starts at 9.5129376 CROSS/block, halved every year (10 tiers)
+- **Block reward**: starts at 9.5129376 ONE/block, halved every year (10 tiers)
 - **Validator commission**: 5 % by default (configurable, capped at 50 %)
 - **Base fee (EIP-1559 burn)**: 100 % burned (`0x...dEaD`)
 
@@ -59,7 +61,7 @@ It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-
 | Execution Layer (EL) | **go-ethereum v1.15 base** |
 | Consensus engine | **PoSA** (Istanbul Engine + BLS) |
 | Hard forks | Homestead → Berlin → London → Shanghai → Adventure → Cancun → Prague → **Breakpoint** |
-| Breakpoint activation (mainnet Cross) | `BreakpointTime = 1780282800` (2026-06-01 03:00:00 UTC) |
+| Breakpoint activation (mainnet ONE) | `BreakpointTime = 1780282800` (2026-06-01 03:00:00 UTC) |
 | Breakpoint activation (testnet ZoneZero) | `BreakpointTime = 1778814000` (2026-05-15 03:00:00 UTC) |
 | Go version | **1.23 or higher** |
 | RLP, DB, Trie | 1.15 line |
@@ -74,10 +76,10 @@ It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-
 
 | Network | Flag | Chain ID | Breakpoint (UTC) | Notes |
 |---|---|---|---|---|
-| Cross Mainnet | `--cross` | **612055** | 2026-06-01 03:00:00 | Production |
+| ONE Mainnet | `--one` | **612055** | 2026-06-01 03:00:00 | Production |
 | ZoneZero (testnet) | `--zonezero` | 612044 | 2026-05-15 03:00:00 | Official public testnet |
 
-The native coin is **CROSS**, and all staking, rewards, and slashing are denominated in the native coin.
+The native coin is **ONE**, and all staking, rewards, and slashing are denominated in the native coin.
 
 ---
 
@@ -85,7 +87,6 @@ The native coin is **CROSS**, and all staking, rewards, and slashing are denomin
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                          Go Cross (geth)                           │
 │                                                                    │
 │  ┌─────────────┐   ┌──────────────────┐   ┌─────────────────────┐  │
 │  │  P2P / eth  │   │ Istanbul Engine  │   │  EVM (Prague-ready) │  │
@@ -118,7 +119,7 @@ The native coin is **CROSS**, and all staking, rewards, and slashing are denomin
 
 ### 5.1 Overview
 
-PoSA is a **stake-weighted authority consensus** in the spirit of BNB Chain, redesigned for the Cross environment.
+PoSA is a **stake-weighted authority consensus** in the spirit of BNB Chain, redesigned for the ONE environment.
 Whereas the previous QBFT was a permissioned scheme in which “N pre-whitelisted validators ran BFT consensus”, PoSA works as follows:
 
 1. **Anyone** can apply to become a validator through `StakeHub`.
@@ -139,7 +140,7 @@ Whereas the previous QBFT was a permissioned scheme in which “N pre-whiteliste
 | Council Period | 86,400 s (24 h) | `IstanbulParam` / PoSA Config |
 | Elasticity Multiplier | 3 | same |
 | Base Fee Change Denom. | 8 | same |
-| Max / Min Base Fee | 1 CROSS / 1 Gwei | same |
+| Max / Min Base Fee | 1 ONE / 1 Gwei | same |
 
 ### 5.3 Round Flow
 
@@ -190,7 +191,7 @@ Every function honors `whenNotPaused` and the blacklist check.
 
 | Function | Description |
 |---|---|
-| `stake() payable` | Stake for the caller. **Minimum 5 CROSS** |
+| `stake() payable` | Stake for the caller. **Minimum 5 ONE** |
 | `stakeFor(address account) payable` | Stake on behalf of another address |
 | `unstake(uint256 amount)` | Begin unbonding. Claimable after 14 days; up to 10 outstanding requests per account |
 | `claimUnstake([recipient])` | Claim all matured unbonding requests in one call |
@@ -209,7 +210,7 @@ earned(account)
 
 | Function | Description |
 |---|---|
-| `applyValidator(validatorAddr, signerAddr, signerProof, id) payable` | Apply to become a validator. **Requires on-chain whitelist registration after KYB (Know-Your-Business) verification** + 3-9-char alphanumeric `id` + BLS Proof-of-Possession verification + cumulative stake ≥ **1,000,000 CROSS** |
+| `applyValidator(validatorAddr, signerAddr, signerProof, id) payable` | Apply to become a validator. **Requires on-chain whitelist registration after KYB (Know-Your-Business) verification** + 3-9-char alphanumeric `id` + BLS Proof-of-Possession verification + cumulative stake ≥ **1,000,000 ONE** |
 | `updateValidator(newValidatorAddr)` | Change the consensus node address. The old value cannot be reused; 1-day cooldown |
 | `updateSigner(signerAddr, signerProof)` | Rotate the BLS signer key; 1-day cooldown |
 | `revokeValidator()` | Voluntarily resign as validator. The id, validator address, and BLS key are permanently sealed and cannot be reused |
@@ -263,7 +264,7 @@ earned(account)
 
 | Start block (offset) | Per-block reward |
 |---|---|
-| `startBlock + 0y` | **9.5129376 CROSS** |
+| `startBlock + 0y` | **9.5129376 ONE** |
 | `+1y` | 4.7564688 |
 | `+2y` | 2.3782344 |
 | `+3y` | 1.1891172 |
@@ -311,9 +312,9 @@ A validator's effective yield is the above APR plus their own commission and the
 1. Validators that fail to produce a block (round timeout) are counted via the `slashOffline([...])` system call.
 2. Once the cumulative count reaches **`offlineSlashThreshold` (default 50)**, `StakeHub.penalizeOffline` is invoked.
 3. Penalty:
-   - Slash **10,000 CROSS** from the operator's stake (moved from DelegationPool to ProtocolReserve)
+   - Slash **10,000 ONE** from the operator's stake (moved from DelegationPool to ProtocolReserve)
    - **2-day jail** (`offlineJailDuration`); removed from the council immediately
-4. To exit jail, the validator must call `unjail()` themselves, and at that moment the remaining stake must be ≥ 1,000,000 CROSS.
+4. To exit jail, the validator must call `unjail()` themselves, and at that moment the remaining stake must be ≥ 1,000,000 ONE.
 
 ### 9.2 Mitigate
 
@@ -357,10 +358,10 @@ docker build -t to-nexus/go-cross:latest -f Dockerfile .
 
 ### 11.1 Initialize the Data Directory
 
-Built-in networks are selected by name as the argument to `init` (one of `cross`, `zonezero`, `crossdev3`, `crossdev`):
+Built-in networks are selected by name as the argument to `init` (one of `one`, `zonezero`, `onedev3`, `onedev`):
 
 ```bash
-./build/bin/geth --datadir <YOUR_DATADIR> init cross
+./build/bin/geth --datadir <YOUR_DATADIR> init one
 ```
 
 To use a custom genesis, just pass the path to `genesis.json` instead.
@@ -369,7 +370,7 @@ To use a custom genesis, just pass the path to `genesis.json` instead.
 
 ```bash
 ./build/bin/geth \
-  --cross \
+  --one \
   --datadir <YOUR_DATADIR> \
   --syncmode full \
   --http --http.addr 0.0.0.0 --http.port 22001 \
@@ -403,12 +404,12 @@ If you need to retain the full state trie, add:
 1. **Operator account** — the ECDSA account used to register and manage the validator. **Must have completed KYB (Know-Your-Business) and be registered in the on-chain whitelist.**
 2. **Consensus node (validator) account** — the node's `etherbase`, used to sign BFT messages. Recommended to be separate from the operator.
 3. **BLS signer key** — mandatory for committing blocks after Breakpoint.
-4. Self-delegation or recruited delegations totaling at least **1,000,000 CROSS**.
+4. Self-delegation or recruited delegations totaling at least **1,000,000 ONE**.
 
 ### 12.2 Validator Registration Flow
 
 ```text
-(1) From the operator wallet:  StakeHub.stake { value: 1_000_000 CROSS }
+(1) From the operator wallet:  StakeHub.stake { value: 1_000_000 ONE }
 (2) Generate a BLS Proof of Possession:  geth bls generate-proof
 (3) From the operator wallet:  StakeHub.applyValidator(
         validatorAddr,   // actual consensus node address
@@ -423,7 +424,7 @@ If you need to retain the full state trie, add:
 
 ```bash
 ./build/bin/geth \
-  --cross \
+  --one \
   --datadir <YOUR_DATADIR> \
   --syncmode full \
   --mine \
@@ -449,7 +450,7 @@ If you need to retain the full state trie, add:
 | Situation | Recovery |
 |---|---|
 | Voluntary `suspend(endTime)` | Automatically rejoins the council in the next Council Period after `endTime` |
-| `jail` state | Call `unjail()` once the remaining stake is ≥ 1,000,000 CROSS |
+| `jail` state | Call `unjail()` once the remaining stake is ≥ 1,000,000 ONE |
 | Blacklisted | Keeper removes from the blacklist, then call `unjail()` as above |
 
 ---
@@ -479,7 +480,7 @@ Usable as `./build/bin/geth --config config.toml`.
 ```toml
 [Eth]
 SyncMode = "full"
-NetworkId = 612055           # Cross mainnet
+NetworkId = 612055           # ONE mainnet
 
 [Eth.Miner]
 Etherbase = "0x..."          # validator address (only when running as a validator)
@@ -526,7 +527,7 @@ On top of the standard EL modules (`eth`, `net`, `web3`, `txpool`, `debug`, `adm
 
 ### `cross_*`
 
-- `cross_chainConfig` — Cross-specific metadata such as PoSA activation block and RewardStartBlock
+- `cross_chainConfig` — ONE-specific metadata such as PoSA activation block and RewardStartBlock
 - System-contract indexing / reward-log helpers (see `eth/api*` for the full list)
 
 ### Standard EVM Calls
@@ -551,12 +552,12 @@ Key differences vs. the previous QBFT-based release:
 
 | Item | QBFT (Before) | PoSA (After) |
 |---|---|---|
-| Validator eligibility | Fixed whitelist | **KYB (Know-Your-Business) verification + 1 M CROSS stake** — anyone qualifies |
+| Validator eligibility | Fixed whitelist | **KYB (Know-Your-Business) verification + 1 M ONE stake** — anyone qualifies |
 | Number of validators | Fixed N | **21-member council** + unlimited candidates |
 | Block rewards | None / external distribution | **On-chain distribution (RewardHub)**, automatic 5 % commission |
-| Slashing | None | Offline slashing (threshold 50, 10,000 CROSS, 2-day jail) |
+| Slashing | None | Offline slashing (threshold 50, 10,000 ONE, 2-day jail) |
 | Validator refresh | Governance / off-chain coordination | Council rotates **every 24 hours** based on the latest stake ranking |
-| Delegators (stakers) | None | Anyone with 5 CROSS or more; 14-day unbonding |
+| Delegators (stakers) | None | Anyone with 5 ONE or more; 14-day unbonding |
 | Base-fee handling | (N/A) | Entire EIP-1559 base fee burned (`0x...dEaD`) |
 | EL base version | go-ethereum 1.13 | **go-ethereum 1.15** |
 | Activation | Genesis | **Breakpoint = `block.timestamp ≥ 1780282800`** (mainnet, 2026-06-01 03:00:00 UTC) |

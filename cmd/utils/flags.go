@@ -140,24 +140,27 @@ var (
 		Category: flags.EthCategory,
 	}
 	// ##CROSS: config
-	CrossFlag = &cli.BoolFlag{
-		Name:     "cross",
-		Usage:    "Cross mainnet",
+	OneFlag = &cli.BoolFlag{
+		Name:     "one",
+		Aliases:  []string{"cross"}, // ##CROSS: backward-compatible alias (mainnet renamed CROSS -> ONE, 2026-07-23)
+		Usage:    "ONE mainnet",
 		Category: flags.EthCategory,
 	}
 	ZoneZeroFlag = &cli.BoolFlag{
 		Name:     "zonezero",
-		Usage:    "Cross testnet",
+		Usage:    "ONE testnet",
 		Category: flags.EthCategory,
 	}
-	CrossDev3Flag = &cli.BoolFlag{
-		Name:     "crossdev3",
-		Usage:    "Cross devnet",
+	OneDev3Flag = &cli.BoolFlag{
+		Name:     "onedev3",
+		Aliases:  []string{"crossdev3"}, // ##CROSS: backward-compatible alias (renamed CROSS -> ONE, 2026-07-23)
+		Usage:    "ONE devnet",
 		Category: flags.EthCategory,
 	}
-	CrossDevFlag = &cli.BoolFlag{
-		Name:     "crossdev",
-		Usage:    "Cross devnet",
+	OneDevFlag = &cli.BoolFlag{
+		Name:     "onedev",
+		Aliases:  []string{"crossdev"}, // ##CROSS: backward-compatible alias (renamed CROSS -> ONE, 2026-07-23)
+		Usage:    "ONE devnet",
 		Category: flags.EthCategory,
 	}
 	// ##
@@ -1047,15 +1050,15 @@ var (
 	TestnetFlags = []cli.Flag{
 		// ##CROSS: config
 		ZoneZeroFlag,
-		CrossDev3Flag,
-		CrossDevFlag,
+		OneDev3Flag,
+		OneDevFlag,
 		// ##
 		SepoliaFlag,
 		HoleskyFlag,
 		HoodiFlag,
 	}
 	// NetworkFlags is the flag group of all built-in supported networks.
-	NetworkFlags = append([]cli.Flag{CrossFlag, MainnetFlag}, TestnetFlags...) // ##CROSS: config
+	NetworkFlags = append([]cli.Flag{OneFlag, MainnetFlag}, TestnetFlags...) // ##CROSS: config
 
 	// DatabaseFlags is the flag group of all database flags.
 	DatabaseFlags = []cli.Flag{
@@ -1141,9 +1144,9 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 		// ##CROSS: config
 		case ctx.Bool(ZoneZeroFlag.Name):
 			urls = params.ZoneZeroBootnodes
-		case ctx.Bool(CrossDev3Flag.Name):
+		case ctx.Bool(OneDev3Flag.Name):
 			urls = params.CrossDev3Bootnodes
-		case ctx.Bool(CrossDevFlag.Name):
+		case ctx.Bool(OneDevFlag.Name):
 			urls = params.CrossDevBootnodes
 		case ctx.Bool(MainnetFlag.Name):
 			urls = params.MainnetBootnodes
@@ -1570,9 +1573,9 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 	// ##CROSS: config
 	case ctx.Bool(ZoneZeroFlag.Name) && cfg.DataDir == node.DefaultDataDir():
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "zonezero")
-	case ctx.Bool(CrossDev3Flag.Name) && cfg.DataDir == node.DefaultDataDir():
+	case ctx.Bool(OneDev3Flag.Name) && cfg.DataDir == node.DefaultDataDir():
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "crossdev3")
-	case ctx.Bool(CrossDevFlag.Name) && cfg.DataDir == node.DefaultDataDir():
+	case ctx.Bool(OneDevFlag.Name) && cfg.DataDir == node.DefaultDataDir():
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "crossdev")
 	// ##
 	case ctx.Bool(SepoliaFlag.Name) && cfg.DataDir == node.DefaultDataDir():
@@ -1704,7 +1707,7 @@ func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
-	flags.CheckExclusive(ctx, CrossFlag, ZoneZeroFlag, CrossDev3Flag, CrossDevFlag, MainnetFlag, DeveloperFlag, SepoliaFlag, HoleskyFlag, HoodiFlag) // ##CROSS: config
+	flags.CheckExclusive(ctx, OneFlag, ZoneZeroFlag, OneDev3Flag, OneDevFlag, MainnetFlag, DeveloperFlag, SepoliaFlag, HoleskyFlag, HoodiFlag) // ##CROSS: config
 	flags.CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag)                                                                                     // Can't use both ephemeral unlocked and external signer
 
 	// Set configurations from CLI flags
@@ -1875,7 +1878,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Override any default configs for hard coded networks.
 	switch {
 	// ##CROSS: config
-	case ctx.Bool(CrossFlag.Name):
+	case ctx.Bool(OneFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 612055
 		}
@@ -1887,13 +1890,13 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.Genesis = core.DefaultZoneZeroGenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.ZoneZeroGenesisHash)
-	case ctx.Bool(CrossDev3Flag.Name):
+	case ctx.Bool(OneDev3Flag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 612088
 		}
 		cfg.Genesis = core.DefaultCrossDev3GenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.CrossDev3GenesisHash)
-	case ctx.Bool(CrossDevFlag.Name):
+	case ctx.Bool(OneDevFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 612066
 		}
@@ -2409,13 +2412,13 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	var genesis *core.Genesis
 	switch {
 	// ##CROSS: config
-	case ctx.Bool(CrossFlag.Name):
+	case ctx.Bool(OneFlag.Name):
 		genesis = core.DefaultCrossGenesisBlock()
 	case ctx.Bool(ZoneZeroFlag.Name):
 		genesis = core.DefaultZoneZeroGenesisBlock()
-	case ctx.Bool(CrossDev3Flag.Name):
+	case ctx.Bool(OneDev3Flag.Name):
 		genesis = core.DefaultCrossDev3GenesisBlock()
-	case ctx.Bool(CrossDevFlag.Name):
+	case ctx.Bool(OneDevFlag.Name):
 		genesis = core.DefaultCrossDevGenesisBlock()
 	// ##
 	case ctx.Bool(MainnetFlag.Name):
