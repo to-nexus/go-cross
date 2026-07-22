@@ -76,7 +76,7 @@ It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-
 
 | Network | Flag | Chain ID | Breakpoint (UTC) | Notes |
 |---|---|---|---|---|
-| ONE Mainnet | `--one` (alias `--cross`) | **612055** | 2026-06-01 03:00:00 | Production |
+| ONE Mainnet | `--one` | **612055** | 2026-06-01 03:00:00 | Production |
 | ZoneZero (testnet) | `--zonezero` | 612044 | 2026-05-15 03:00:00 | Official public testnet |
 
 The native coin is **ONE**, and all staking, rewards, and slashing are denominated in the native coin.
@@ -87,7 +87,6 @@ The native coin is **ONE**, and all staking, rewards, and slashing are denominat
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                          Go Cross (geth)                           │
 │                                                                    │
 │  ┌─────────────┐   ┌──────────────────┐   ┌─────────────────────┐  │
 │  │  P2P / eth  │   │ Istanbul Engine  │   │  EVM (Prague-ready) │  │
@@ -359,10 +358,10 @@ docker build -t to-nexus/go-cross:latest -f Dockerfile .
 
 ### 11.1 Initialize the Data Directory
 
-Built-in networks are selected by name as the argument to `init` (one of `cross`, `zonezero`, `crossdev3`, `crossdev`):
+Built-in networks are selected by name as the argument to `init` (one of `one`, `zonezero`, `onedev3`, `onedev`):
 
 ```bash
-./build/bin/geth --datadir <YOUR_DATADIR> init cross
+./build/bin/geth --datadir <YOUR_DATADIR> init one
 ```
 
 To use a custom genesis, just pass the path to `genesis.json` instead.
