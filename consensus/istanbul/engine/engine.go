@@ -623,7 +623,7 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 			return istanbul.ErrInvalidCommittedSeals
 		}
 
-		if validSeal <= validators.F() {
+		if validSeal < validators.QuorumSize() {
 			log.Error("Istanbul: not enough quorum",
 				"number", header.Number.Uint64(),
 				"validSeal", validSeal,
