@@ -1,6 +1,6 @@
-# Go Cross
+# ONE Chain
 
-**Go Cross** is the official execution client for the **ONE** blockchain by to-nexus.
+**This repository** is the official execution client for the **ONE** blockchain by to-nexus.
 It is built on top of the **go-ethereum v1.15** codebase and introduces a brand-new consensus engine — **PoSA (Proof of Staked Authority)** — together with the **Breakpoint** hard fork, while remaining fully compatible with modern Ethereum specifications such as EIP-1559, Cancun, and Prague.
 
 > **Naming update (effective 2026-07-23):** The chain was renamed from **CROSS chain** to **ONE chain**, and its native coin from **CROSS** to **ONE**. All chain and coin references in this document use the new names. The mainnet flag is now **`--one`** (the old **`--cross`** still works as a backward-compatible alias). Technical identifiers that mirror the codebase and repositories — the `go-cross` / `cross-contracts` repositories, the `cross_*` RPC namespace, and system-contract names such as `CrossReserve` — are unchanged.
