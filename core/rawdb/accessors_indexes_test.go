@@ -83,7 +83,20 @@ func TestLookupStorage(t *testing.T) {
 				GasTipCap: big.NewInt(55),
 				GasFeeCap: big.NewInt(1055),
 			})
-			txs := []*types.Transaction{tx1, tx2, tx3, tx4}
+			// ##CROSS: fee delegation
+			tx5 := types.NewTx(types.NewFeeDelegatedDynamicFeeTx(
+				&common.Address{0x1},
+				types.DynamicFeeTx{
+					To:        new(common.Address),
+					Nonce:     6,
+					Value:     big.NewInt(6),
+					Gas:       6,
+					GasTipCap: big.NewInt(66),
+					GasFeeCap: big.NewInt(1066),
+				},
+			))
+			// ##
+			txs := []*types.Transaction{tx1, tx2, tx3, tx4, tx5}
 
 			block := types.NewBlock(&types.Header{Number: big.NewInt(314)}, &types.Body{Transactions: txs}, nil, newTestHasher())
 
@@ -197,8 +210,22 @@ func TestFindTxInBlockBody(t *testing.T) {
 			},
 		},
 	})
+	// ##CROSS: fee delegation
+	tx6 := types.NewTx(types.NewFeeDelegatedDynamicFeeTx(
+		&common.Address{0x2},
+		types.DynamicFeeTx{
+			Nonce:     2,
+			Gas:       2,
+			To:        new(common.Address),
+			Value:     big.NewInt(6),
+			Data:      []byte{0x22, 0x22, 0x22},
+			GasTipCap: big.NewInt(66),
+			GasFeeCap: big.NewInt(1066),
+		},
+	))
+	// ##
 
-	txs := []*types.Transaction{tx1, tx2, tx3, tx4, tx5}
+	txs := []*types.Transaction{tx1, tx2, tx3, tx4, tx5, tx6}
 
 	block := types.NewBlock(&types.Header{Number: big.NewInt(314)}, &types.Body{Transactions: txs}, nil, newTestHasher())
 	db := NewMemoryDatabase()
