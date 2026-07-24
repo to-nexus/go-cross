@@ -329,7 +329,7 @@ func (st *stateTransition) buyGas() error {
 		}
 	} else {
 		if have, want := st.state.GetBalance(payer).ToBig(), mgval; have.Cmp(want) < 0 {
-			return ErrFeePayerInsufficientFunds
+			return fmt.Errorf("%w: address %v have %v want %v", ErrFeePayerInsufficientFunds, payer, have, want)
 		}
 		if have, want := st.state.GetBalance(st.msg.From).ToBig(), st.msg.Value; have.Cmp(want) < 0 {
 			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
@@ -619,6 +619,16 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		fee.Mul(fee, effectiveTipU256)
 
 		st.state.AddBalance(beneficiary, fee, tracing.BalanceIncreaseRewardTransactionFee)
+
+		// add extra blob fee reward
+		if st.evm.ChainConfig().IsIstanbulConsensus() && rules.IsCancun { // ##CROSS: istanbul
+			blobFee := new(big.Int).SetUint64(st.blobGasUsed())
+			if blobFee.Sign() != 0 {
+				blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
+				blobFeeU256, _ := uint256.FromBig(blobFee)
+				st.state.AddBalance(beneficiary, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
+			}
+		}
 
 		// add the beneficiary to the witness if the fee is greater than 0
 		if rules.IsEIP4762 && fee.Sign() != 0 {

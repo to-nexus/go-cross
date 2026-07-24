@@ -672,10 +672,25 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 				validSeal++
 				continue
 			}
+			log.Error("Istanbul: unknown committer",
+				"number", header.Number.Uint64(),
+				"addr", addr,
+				"committers", committers,
+				"validators", validators.List(),
+				"extra", hexutil.Encode(header.Extra),
+			)
 			return istanbul.ErrInvalidCommittedSeals
 		}
 
 		if validSeal < validators.QuorumSize() {
+			log.Error("Istanbul: not enough quorum",
+				"number", header.Number.Uint64(),
+				"validSeal", validSeal,
+				"quorum", validators.QuorumSize(),
+				"committers", committers,
+				"validators", validators.List(),
+				"extra", hexutil.Encode(header.Extra),
+			)
 			return istanbul.ErrInvalidCommittedSeals
 		}
 	}

@@ -27,6 +27,36 @@ var (
 	EcoCross = common.HexToAddress("0x0575a1b8e9e8950356b0c682bb270e16905eb108")
 )
 
+var (
+	CrossGenesisValidators = []common.Address{
+		common.HexToAddress("0x02f5F938B40A60B2345Ac0C9Fd9D909bD1F012eE"),
+		common.HexToAddress("0x091E0be1D78511dE3b6D7022C99539671d235D73"),
+		common.HexToAddress("0x0A62e6a8553A10B2031fD956df6bc28852F4d91d"),
+		common.HexToAddress("0x49bcC861395C42cA60d773FB053F25DDaACbeA50"),
+		common.HexToAddress("0x60Eef089B72da83eC98330296b1E1Ff37C118588"),
+		common.HexToAddress("0x6C79321D421E9a37041e1477929d478492a04608"),
+		common.HexToAddress("0x7De4fa95e742D34f0979875c060f7e1886948f03"),
+		common.HexToAddress("0x87EB0d108594FFC6DeB4dcBdB43E3B0899B7a863"),
+		common.HexToAddress("0x884DCf7bE65a5287cFb9648283B90C70D0D59c8A"),
+		common.HexToAddress("0x88B9B24C441f8775c01443F6Ce244cEF5dA0364A"),
+		common.HexToAddress("0x90e456Fe1f07A56e891BA11C8dE045091363527D"),
+		common.HexToAddress("0x95fa026C756874f12a499ef0f95531f0b93629F5"),
+		common.HexToAddress("0xAB128537bBC770C8f9E9225c854a2170B708E88A"),
+		common.HexToAddress("0xBb2182CE952F3501325cd77A7327f8De091b394c"),
+		common.HexToAddress("0xbCb02c35e753b25c450727C3cb61F6Aa4D2D545F"),
+		common.HexToAddress("0xc193C8F676aF724B1d2cCF1236200044E8c6C4a6"),
+		common.HexToAddress("0xD6EE737Ff9EABda5f9E9365AfE7D032e2aEb208C"),
+		common.HexToAddress("0xE6927A1181bf5760fC7e25ABC96f7C025fF73802"),
+		common.HexToAddress("0xF405a387AA84e58c1A5D2150305AD1b1788646Cf"),
+		common.HexToAddress("0xfa884b0C778Fa24D015481a262F3efe924dc0D61"),
+	}
+	ZoneZeroGenesisValidators  = extractValidators(ZoneZeroValidators)
+	CrossDev3GenesisValidators = extractValidators(CrossDev3Validators)
+	CrossDevGenesisValidators  = extractValidators(CrossDevValidators)
+)
+
+// ##
+
 // ##CROSS: istanbul posa
 var (
 	CrossValidators = []PoSAValidator{

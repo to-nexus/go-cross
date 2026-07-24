@@ -481,7 +481,16 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
 	}
 
-	snap, err := sb.snapApply(snap, headers, chain)
+	// Preserve the base snapshot header because batch parents may not be stored in the database yet.
+	var baseParent *types.Header
+	if len(headers) > 0 && len(parents) > 0 {
+		candidate := parents[len(parents)-1]
+		if candidate.Number.Uint64() == snap.Number && candidate.Hash() == snap.Hash {
+			baseParent = candidate
+		}
+	}
+
+	snap, err := sb.snapApply(snap, headers, baseParent, chain)
 	if err != nil {
 		return nil, err
 	}
@@ -502,7 +511,7 @@ func (sb *Backend) SealHash(header *types.Header) common.Hash {
 	return sb.Engine().SealHash(header)
 }
 
-func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, chain consensus.ChainHeaderReader) (*Snapshot, error) {
+func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, parent *types.Header, chain consensus.ChainHeaderReader) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
 		return snap, nil
@@ -525,15 +534,11 @@ func (sb *Backend) snapApply(snap *Snapshot, headers []*types.Header, chain cons
 	// Iterate through the headers and create a new snapshot
 	snapCpy := snap.copy()
 
-	for i, header := range headers {
-		var parent *types.Header
-		if i > 0 {
-			parent = headers[i-1]
-		}
-		err := sb.snapApplyHeader(snapCpy, header, parent, chain)
-		if err != nil {
+	for _, header := range headers {
+		if err := sb.snapApplyHeader(snapCpy, header, parent, chain); err != nil {
 			return nil, err
 		}
+		parent = header
 	}
 	snapCpy.Number += uint64(len(headers))
 	snapCpy.Hash = headers[len(headers)-1].Hash()

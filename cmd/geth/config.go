@@ -237,7 +237,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		cfg.Eth.OverrideVerkle = &v
 	}
-	// ##CROSS: blob sidecar
+	// ##CROSS: blob sidecars
 	if ctx.IsSet(utils.OverrideMinBlocksForBlobRequests.Name) {
 		params.MinBlocksForBlobRequests = ctx.Uint64(utils.OverrideMinBlocksForBlobRequests.Name)
 		params.MinTimeDurationForBlobRequests = params.MinBlocksForBlobRequests
