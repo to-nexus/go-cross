@@ -849,7 +849,8 @@ func (f *FilterMaps) deleteTailEpoch(epoch uint32) (bool, error) {
 // Note: acquiring the indexLock read lock is unnecessary here, as this function
 // is always called within the indexLoop.
 func (f *FilterMaps) exportCheckpoints() {
-	finalLvPtr, err := f.getBlockLvPointer(f.finalBlock + 1)
+	exportFinal := min(f.finalBlock, f.targetView.HeadNumber()-1) // ##CROSS: istanbul
+	finalLvPtr, err := f.getBlockLvPointer(exportFinal + 1)
 	if err != nil {
 		log.Error("Error fetching log value pointer of finalized block", "block", f.finalBlock, "error", err)
 		return

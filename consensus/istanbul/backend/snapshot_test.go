@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"math/big"
-	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -32,6 +31,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testerVote struct {
@@ -419,55 +421,158 @@ func TestVoting(t *testing.T) {
 	}
 }
 
+func TestSnapshot(t *testing.T) {
+	t.Run("injects PoSA signers when batch parent is not stored", func(t *testing.T) {
+		key, err := crypto.GenerateKey()
+		require.NoError(t, err)
+
+		validatorAddress := crypto.PubkeyToAddress(key.PublicKey)
+		expectedSigner := types.BytesToBLSPublicKey([]byte{1})
+		breakpointTime := uint64(2)
+
+		genesis := testutils.Genesis([]common.Address{validatorAddress})
+		chainConfig := *genesis.Config
+		istanbulConfig := *genesis.Config.Istanbul
+		istanbulConfig.PoSA = &params.PoSAConfig{
+			Validators: []params.PoSAValidator{
+				{
+					Validator: validatorAddress,
+					Signer:    expectedSigner[:],
+				},
+			},
+		}
+		chainConfig.BreakpointTime = &breakpointTime
+		chainConfig.ShanghaiTime = new(uint64)
+		chainConfig.Istanbul = &istanbulConfig
+		genesis.Config = &chainConfig
+
+		config := copyConfig(istanbul.DefaultConfig)
+		chain, backend := newBlockchainFromConfig(genesis, []*ecdsa.PrivateKey{key}, config)
+		defer backend.Stop()
+
+		genesisHeader := chain.GetHeaderByNumber(0)
+		require.NotNil(t, genesisHeader)
+
+		baseHeader := &types.Header{
+			ParentHash: genesisHeader.Hash(),
+			Number:     big.NewInt(1),
+			Time:       breakpointTime - 1,
+			Coinbase:   validatorAddress,
+			Difficulty: istanbul.DefaultDifficulty,
+			MixDigest:  types.IstanbulDigest,
+			Extra:      append([]byte(nil), genesis.ExtraData...),
+		}
+		breakpointHeader := &types.Header{
+			ParentHash: baseHeader.Hash(),
+			Number:     big.NewInt(2),
+			Time:       breakpointTime,
+			Coinbase:   validatorAddress,
+			Difficulty: istanbul.DefaultDifficulty,
+			MixDigest:  types.IstanbulDigest,
+			Extra:      append([]byte(nil), genesis.ExtraData...),
+		}
+
+		baseSnapshot := newSnapshot(
+			config.Epoch,
+			baseHeader.Number.Uint64(),
+			baseHeader.Hash(),
+			validator.NewSet(
+				[]common.Address{validatorAddress},
+				nil,
+				config.ProposerPolicy,
+			),
+		)
+		backend.recents.Add(baseSnapshot.Hash, baseSnapshot)
+
+		require.Nil(t, chain.GetHeader(baseHeader.Hash(), baseHeader.Number.Uint64()))
+
+		snapshot, err := backend.snapshot(
+			chain,
+			breakpointHeader.Number.Uint64(),
+			breakpointHeader.Hash(),
+			[]*types.Header{baseHeader, breakpointHeader},
+		)
+		require.NoError(t, err)
+
+		_, actualValidator := snapshot.ValSet.GetByAddress(validatorAddress)
+		require.NotNil(t, actualValidator)
+		assert.Equal(t, expectedSigner, actualValidator.SignerAddress())
+	})
+}
+
 func TestSaveAndLoad(t *testing.T) {
-	snap := &Snapshot{
-		Epoch:  5,
-		Number: 10,
-		Hash:   common.HexToHash("1234567890"),
-		Votes: []*Vote{
-			{
-				Validator: common.BytesToAddress([]byte("1234567891")),
-				Block:     15,
-				Address:   common.BytesToAddress([]byte("1234567892")),
-				Authorize: false,
-			},
-		},
-		Tally: map[common.Address]Tally{
-			common.BytesToAddress([]byte("1234567893")): {
-				Authorize: false,
-				Votes:     20,
-			},
-		},
-		ValSet: validator.NewSet([]common.Address{
-			common.BytesToAddress([]byte("1234567894")),
-			common.BytesToAddress([]byte("1234567895")),
-		}, nil, istanbul.NewRoundRobinProposerPolicy()),
+	validators := []common.Address{
+		common.BytesToAddress([]byte("1234567894")),
+		common.BytesToAddress([]byte("1234567895")),
 	}
-	db := rawdb.NewMemoryDatabase()
-	err := snap.store(db)
-	if err != nil {
-		t.Errorf("store snapshot failed: %v", err)
+	newTestSnapshot := func(signers []types.BLSPublicKey) *Snapshot {
+		return &Snapshot{
+			Epoch:  5,
+			Number: 10,
+			Hash:   common.HexToHash("1234567890"),
+			Votes: []*Vote{
+				{
+					Validator: common.BytesToAddress([]byte("1234567891")),
+					Block:     15,
+					Address:   common.BytesToAddress([]byte("1234567892")),
+					Authorize: false,
+				},
+			},
+			Tally: map[common.Address]Tally{
+				common.BytesToAddress([]byte("1234567893")): {
+					Authorize: false,
+					Votes:     20,
+				},
+			},
+			ValSet: validator.NewSet(validators, signers, istanbul.NewRoundRobinProposerPolicy()),
+		}
+	}
+	assertSnapshot := func(t *testing.T, expected, actual *Snapshot) {
+		t.Helper()
+
+		assert.Equal(t, expected.Epoch, actual.Epoch)
+		assert.Equal(t, expected.Number, actual.Number)
+		assert.Equal(t, expected.Hash, actual.Hash)
+		assert.Equal(t, expected.Votes, actual.Votes)
+		assert.Equal(t, expected.Tally, actual.Tally)
+		assert.Equal(t, expected.ValSet.Policy().Id, actual.ValSet.Policy().Id)
+		require.Equal(t, expected.ValSet.Size(), actual.ValSet.Size())
+		for i, expectedVal := range expected.ValSet.List() {
+			actualVal := actual.ValSet.List()[i]
+			assert.Equal(t, expectedVal.Address(), actualVal.Address())
+			assert.Equal(t, expectedVal.SignerAddress(), actualVal.SignerAddress())
+		}
 	}
 
-	snap1, err := loadSnapshot(snap.Epoch, db, snap.Hash)
-	if err != nil {
-		t.Errorf("load snapshot failed: %v", err)
-	}
-	if snap.Epoch != snap1.Epoch {
-		t.Errorf("epoch mismatch: have %v, want %v", snap1.Epoch, snap.Epoch)
-	}
-	if snap.Hash != snap1.Hash {
-		t.Errorf("hash mismatch: have %v, want %v", snap1.Number, snap.Number)
-	}
-	if !reflect.DeepEqual(snap.Votes, snap.Votes) {
-		t.Errorf("votes mismatch: have %v, want %v", snap1.Votes, snap.Votes)
-	}
-	if !reflect.DeepEqual(snap.Tally, snap.Tally) {
-		t.Errorf("tally mismatch: have %v, want %v", snap1.Tally, snap.Tally)
-	}
-	if !reflect.DeepEqual(snap.ValSet, snap.ValSet) {
-		t.Errorf("validator set mismatch: have %v, want %v", snap1.ValSet, snap.ValSet)
-	}
+	t.Run("no signers", func(t *testing.T) {
+		snap := newTestSnapshot(nil)
+		db := rawdb.NewMemoryDatabase()
+		require.NoError(t, snap.store(db))
+
+		// Stored JSON does not contain "signers" field.
+		blob, err := db.Get(append([]byte(dbKeySnapshotPrefix), snap.Hash[:]...))
+		require.NoError(t, err)
+		assert.NotContains(t, string(blob), `"signers"`)
+
+		loaded, err := loadSnapshot(snap.Epoch, db, snap.Hash)
+		require.NoError(t, err)
+		assertSnapshot(t, snap, loaded)
+	})
+
+	// ##CROSS: bls seal
+	t.Run("with signers", func(t *testing.T) {
+		snap := newTestSnapshot([]types.BLSPublicKey{
+			types.BytesToBLSPublicKey([]byte{1}),
+			types.BytesToBLSPublicKey([]byte{2}),
+		})
+		db := rawdb.NewMemoryDatabase()
+		require.NoError(t, snap.store(db))
+
+		loaded, err := loadSnapshot(snap.Epoch, db, snap.Hash)
+		require.NoError(t, err)
+		assertSnapshot(t, snap, loaded)
+	})
+	// ##
 }
 
 // ##CROSS: validator sort policy

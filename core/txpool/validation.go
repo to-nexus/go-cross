@@ -322,8 +322,8 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 
 		feePayerBalance := opts.State.GetBalance(feePayer).ToBig()
 		// Ensure this single transaction's fee payer cost is covered.
-		if feePayerBalance.Cmp(tx.FeePayerCost()) < 0 {
-			return core.ErrFeePayerInsufficientFunds
+		if cost := tx.FeePayerCost(); feePayerBalance.Cmp(cost) < 0 {
+			return fmt.Errorf("%w: address %v have %v want %v", core.ErrFeePayerInsufficientFunds, feePayer, feePayerBalance, cost)
 		}
 		// Ensure the fee payer can cover the cumulative cost of every pooled
 		// fee-delegated transaction it is sponsoring, not just this one in
