@@ -162,12 +162,19 @@ func findTxInBlockBody(blockbody rlp.RawValue, target common.Hash) (*types.Trans
 		if kind == rlp.List { // Legacy transaction
 			txHashPayload = txRLP
 		}
-		if crypto.Keccak256Hash(txHashPayload) == target {
+		rawHashMatch := crypto.Keccak256Hash(txHashPayload) == target
+		feeDelegated := kind != rlp.List &&
+			len(txHashPayload) > 0 &&
+			txHashPayload[0] == types.FeeDelegatedDynamicFeeTxType // ##CROSS: fee delegation
+		if rawHashMatch || feeDelegated {
 			var tx types.Transaction
 			if err := rlp.DecodeBytes(txRLP, &tx); err != nil {
 				return nil, 0, err
 			}
-			return &tx, txIndex, nil
+			// Fee-delegated transactions use the sender transaction hash instead of the raw wrapper hash.
+			if tx.Hash() == target { // ##CROSS: fee delegation
+				return &tx, txIndex, nil
+			}
 		}
 		txIndex++
 	}
