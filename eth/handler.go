@@ -636,7 +636,7 @@ func (h *handler) Start(maxPeers int) {
 	// ##
 
 	// ##CROSS: legacy sync
-	// NOTE: txFetcher is started in the chainSyncer loop, so we don't start it here.
+	// NOTE(go-cross): txFetcher is started in the chainSyncer loop, so we don't start it here.
 	// start sync handlers
 	// h.txFetcher.Start()
 	// ##
