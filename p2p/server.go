@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -499,12 +500,23 @@ func (srv *Server) setupDiscovery() error {
 		}
 	}
 
-	// Add protocol-specific discovery sources.
+	// Add protocol-specific discovery sources. Sources are deduplicated by iterator as well
+	// as by protocol name: an enode.Iterator holds a single cursor, so adding the same one
+	// twice would let two mixer goroutines consume it concurrently and corrupt its state.
 	added := make(map[string]bool)
+	addedIters := make(map[enode.Iterator]bool)
 	for _, proto := range srv.Protocols {
-		if proto.DialCandidates != nil && !added[proto.Name] {
-			srv.discmix.AddSource(proto.DialCandidates)
-			added[proto.Name] = true
+		if proto.DialCandidates == nil || added[proto.Name] {
+			continue
+		}
+		canDedup := reflect.TypeOf(proto.DialCandidates).Comparable()
+		if canDedup && addedIters[proto.DialCandidates] {
+			continue
+		}
+		srv.discmix.AddSource(proto.DialCandidates)
+		added[proto.Name] = true
+		if canDedup {
+			addedIters[proto.DialCandidates] = true
 		}
 	}
 
