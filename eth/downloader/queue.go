@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -68,12 +69,12 @@ type fetchResult struct {
 	Header       *types.Header
 	Uncles       []*types.Header
 	Transactions types.Transactions
-	Receipts     types.Receipts
+	Receipts     rlp.RawValue
 	Withdrawals  types.Withdrawals
 	Sidecars     types.BlobSidecars // ##CROSS: blob sidecars
 }
 
-func newFetchResult(header *types.Header, fastSync bool) *fetchResult {
+func newFetchResult(header *types.Header, snapSync bool) *fetchResult {
 	item := &fetchResult{
 		Header: header,
 	}
@@ -82,8 +83,13 @@ func newFetchResult(header *types.Header, fastSync bool) *fetchResult {
 	} else if header.WithdrawalsHash != nil {
 		item.Withdrawals = make(types.Withdrawals, 0)
 	}
-	if fastSync && !header.EmptyReceipts() {
-		item.pending.Store(item.pending.Load() | (1 << receiptType))
+	if snapSync {
+		if header.EmptyReceipts() {
+			// Ensure the receipts list is valid even if it isn't actively fetched.
+			item.Receipts = rlp.EmptyList
+		} else {
+			item.pending.Store(item.pending.Load() | (1 << receiptType))
+		}
 	}
 	return item
 }
@@ -380,9 +386,7 @@ func (q *queue) Results(block bool) []*fetchResult {
 		for _, uncle := range result.Uncles {
 			size += uncle.Size()
 		}
-		for _, receipt := range result.Receipts {
-			size += receipt.Size()
-		}
+		size += common.StorageSize(len(result.Receipts))
 		for _, tx := range result.Transactions {
 			size += common.StorageSize(tx.Size())
 		}
@@ -390,7 +394,7 @@ func (q *queue) Results(block bool) []*fetchResult {
 		q.resultSize = common.StorageSize(blockCacheSizeWeight)*size +
 			(1-common.StorageSize(blockCacheSizeWeight))*q.resultSize
 	}
-	// Using the newly calibrated resultsize, figure out the new throttle limit
+	// Using the newly calibrated result size, figure out the new throttle limit
 	// on the result cache
 	throttleThreshold := uint64((common.StorageSize(blockCacheMemory) + q.resultSize - 1) / q.resultSize)
 	throttleThreshold = q.resultCache.SetThrottleThreshold(throttleThreshold)
@@ -868,7 +872,7 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 // DeliverReceipts injects a receipt retrieval response into the results queue.
 // The method returns the number of transaction receipts accepted from the delivery
 // and also wakes any threads waiting for data delivery.
-func (q *queue) DeliverReceipts(id string, receiptList [][]*types.Receipt, receiptListHashes []common.Hash) (int, error) {
+func (q *queue) DeliverReceipts(id string, receiptList []rlp.RawValue, receiptListHashes []common.Hash) (int, error) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 

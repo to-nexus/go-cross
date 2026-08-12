@@ -42,13 +42,13 @@ var ZoneZeroBootnodes = []string{
 // CrossDev3Bootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the cross dev network.
 var CrossDev3Bootnodes = []string{
-	"enode://34f27463761e467b1e3382a141e2500c799c240f189ff5b0882a742641bc5da711545d8b233d4f68627f32741846997e8d3019f418a7a03826a1dc266e76a2b4@127.0.0.1:0?discport=30301",
+	"enode://c7d9c0b82ecacd85bf5db814baf630dd19ab82d89180fedcac4e6fb6f4bbd7298e5094b1fefd8b213d7cef56d911c6d15564607d093f140fb3577a2d58011633@52.79.69.231:30303",
 }
 
 // CrossDevBootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the cross dev network.
 var CrossDevBootnodes = []string{
-	"enode://34f27463761e467b1e3382a141e2500c799c240f189ff5b0882a742641bc5da711545d8b233d4f68627f32741846997e8d3019f418a7a03826a1dc266e76a2b4@127.0.0.1:0?discport=30301",
+	"enode://c7d9c0b82ecacd85bf5db814baf630dd19ab82d89180fedcac4e6fb6f4bbd7298e5094b1fefd8b213d7cef56d911c6d15564607d093f140fb3577a2d58011633@52.79.69.231:30303",
 }
 
 // ##

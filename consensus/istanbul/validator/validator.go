@@ -26,7 +26,7 @@ import (
 )
 
 func New(addr common.Address, signerAddr types.BLSPublicKey) istanbul.Validator {
-	return &blsValidator{
+	return &defaultValidator{
 		address:    addr,
 		signerAddr: signerAddr, // ##CROSS: bls seal
 	}

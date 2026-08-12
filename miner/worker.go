@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
@@ -90,6 +91,7 @@ type environment struct {
 	signer   types.Signer
 	state    *state.StateDB // apply state changes here
 	tcount   int            // tx count in cycle
+	size     uint64         // size of the block we are building
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 	evm      *vm.EVM
@@ -101,6 +103,13 @@ type environment struct {
 	blobs    int
 
 	witness *stateless.Witness
+
+	committed bool
+}
+
+// txFits reports whether the transaction fits into the block size limit.
+func (env *environment) txFitsSize(tx *types.Transaction) bool {
+	return env.size+tx.Size() < params.MaxBlockSize-maxBlockSizeBufferZone
 }
 
 // copy creates a deep copy of environment.
@@ -154,6 +163,11 @@ const (
 	commitInterruptTimeout
 )
 
+// Block size is capped by the protocol at params.MaxBlockSize. When producing blocks, we
+// try to say below the size including a buffer zone, this is to avoid going over the
+// maximum size with auxiliary data added into the block.
+const maxBlockSizeBufferZone = 1_000_000
+
 // newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
 type newWorkReq struct {
 	interrupt *atomic.Int32
@@ -187,16 +201,14 @@ type intervalAdjust struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
-	config      *Config
+	config      *minerconfig.Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
 	eth         Backend
+	prio        []common.Address // A list of senders to prioritize
 	chain       *core.BlockChain
 
 	istanbulBackend *istanbulBackend.Backend // ##CROSS: istanbul
-
-	// Feeds
-	pendingLogsFeed event.Feed
 
 	// Subscriptions
 	mux          *event.TypeMux
@@ -219,7 +231,7 @@ type worker struct {
 
 	current *environment // An environment for current running cycle.
 
-	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
+	confMu   sync.RWMutex // The lock used to protect the coinbase and extra fields
 	coinbase common.Address
 	extra    []byte
 	tip      *uint256.Int // Minimum tip needed for non-local transaction to include them
@@ -248,9 +260,6 @@ type worker struct {
 	// payload in proof-of-stake stage.
 	recommit time.Duration
 
-	// External functions
-	isLocalBlock func(header *types.Header) bool // Function used to determine whether the specified block is mined by local miner.
-
 	// Test hooks
 	newTaskHook  func(*task)                        // Method to call upon receiving a new sealing task.
 	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
@@ -258,7 +267,7 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
+func newWorker(config *minerconfig.Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, init bool) *worker {
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -266,7 +275,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		eth:                eth,
 		chain:              eth.BlockChain(),
 		mux:                mux,
-		isLocalBlock:       isLocalBlock,
 		coinbase:           config.Etherbase,
 		extra:              config.ExtraData,
 		tip:                uint256.MustFromBig(config.GasPrice),
@@ -282,12 +290,16 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 	}
+	if config.PendingFeeRecipient != (common.Address{}) {
+		worker.coinbase = config.PendingFeeRecipient
+	}
 	// ##CROSS: istanbul
 	if worker.istanbulBackend, _ = engine.(*istanbulBackend.Backend); worker.istanbulBackend == nil {
 		if beacon, ok := engine.(*beacon.Beacon); ok {
 			worker.istanbulBackend, _ = beacon.InnerEngine().(*istanbulBackend.Backend)
 		}
 	}
+	// ##
 
 	// Subscribe for transaction insertion events (whether from network or resurrects)
 	worker.txsSub = eth.TxPool().SubscribeTransactions(worker.txsCh, true)
@@ -305,11 +317,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	// Sanitize the timeout config for creating payload.
 	newpayloadTimeout := worker.config.NewPayloadTimeout
 	if newpayloadTimeout == 0 {
-		log.Warn("Sanitizing new payload timeout to default", "provided", newpayloadTimeout, "updated", DefaultConfig.NewPayloadTimeout)
-		newpayloadTimeout = DefaultConfig.NewPayloadTimeout
+		log.Warn("Sanitizing new payload timeout to default", "provided", newpayloadTimeout, "updated", minerconfig.DefaultConfig.NewPayloadTimeout)
+		newpayloadTimeout = minerconfig.DefaultConfig.NewPayloadTimeout
 	}
 	if newpayloadTimeout < time.Millisecond*100 {
-		log.Warn("Low payload timeout may cause high amount of non-full blocks", "provided", newpayloadTimeout, "default", DefaultConfig.NewPayloadTimeout)
+		log.Warn("Low payload timeout may cause high amount of non-full blocks", "provided", newpayloadTimeout, "default", minerconfig.DefaultConfig.NewPayloadTimeout)
 	}
 	worker.newpayloadTimeout = newpayloadTimeout
 
@@ -328,35 +340,42 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
 func (w *worker) setEtherbase(addr common.Address) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.coinbase = addr
 }
 
 // etherbase retrieves the configured etherbase address.
 func (w *worker) etherbase() common.Address {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
+	w.confMu.RLock()
+	defer w.confMu.RUnlock()
 	return w.coinbase
 }
 
 func (w *worker) setGasCeil(ceil uint64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.config.GasCeil = ceil
 }
 
 // setExtra sets the content used to initialize the block extra field.
 func (w *worker) setExtra(extra []byte) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.extra = extra
+}
+
+// setPrioAddresses sets a list of addresses to prioritize for transaction inclusion.
+func (w *worker) setPrioAddresses(prio []common.Address) {
+	w.confMu.Lock()
+	w.prio = prio
+	w.confMu.Unlock()
 }
 
 // setGasTip sets the minimum miner tip needed to include a non-local transaction.
 func (w *worker) setGasTip(tip *big.Int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.tip = uint256.MustFromBig(tip)
 }
 
@@ -499,25 +518,20 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 
 		case head := <-w.chainHeadCh:
 			// ##CROSS: istanbul
-			var handler consensus.IstanbulHandler
-			if handler, _ = w.engine.(consensus.IstanbulHandler); handler == nil {
-				if beacon, ok := w.engine.(*beacon.Beacon); ok {
-					handler, _ = beacon.InnerEngine().(consensus.IstanbulHandler)
-				}
+			if w.istanbulBackend != nil {
+				w.istanbulBackend.NewChainHead()
 			}
-			if handler != nil {
-				handler.NewChainHead()
-			}
+			// ##
 
 			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			commit(commitInterruptNewHead)
 
 		case <-timer.C:
-
 			// If sealing is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
-			if w.isRunning() && (w.chainConfig.Clique == nil || w.chainConfig.Clique.Period > 0) {
+			if w.isRunning() && (w.chainConfig.IsIstanbulConsensus() || // ##CROSS: istanbul
+				(w.chainConfig.Clique != nil && w.chainConfig.Clique.Period > 0)) {
 				// Short circuit if no new transaction arrives.
 				if w.newTxs.Load() == 0 {
 					timer.Reset(recommit)
@@ -776,15 +790,16 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		if err != nil {
 			return nil, err
 		}
-		state.StartPrefetcher("miner", bundle)
+		state.StartPrefetcher("miner", bundle, nil)
 	} else {
-		state.StartPrefetcher("miner", nil)
+		state.StartPrefetcher("miner", nil, nil)
 	}
 
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
 		signer:   types.MakeSigner(w.chainConfig, header.Number, header.Time),
 		state:    state,
+		size:     uint64(header.Size()),
 		coinbase: coinbase,
 		header:   header,
 		witness:  state.Witness(),
@@ -814,20 +829,22 @@ func (w *worker) updateSnapshot(env *environment) {
 	w.snapshotState = env.state.Copy()
 }
 
-func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
+func (w *worker) commitTransaction(env *environment, tx *types.Transaction) error {
 	if tx.Type() == types.BlobTxType {
 		return w.commitBlobTransaction(env, tx)
 	}
 	receipt, err := w.applyTransaction(env, tx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	env.txs = append(env.txs, tx)
 	env.receipts = append(env.receipts, receipt)
-	return receipt.Logs, nil
+	env.size += tx.Size()
+	env.tcount++
+	return nil
 }
 
-func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
+func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) error {
 	// ##CROSS: blob sidecars
 	sc := types.NewBlobSidecarFromTx(tx)
 	if sc == nil {
@@ -839,20 +856,23 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) 
 	// tx has too many blobs. So we have to explicitly check it here.
 	maxBlobs := eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time)
 	if (env.blobs + len(sc.Blobs)) > maxBlobs {
-		return nil, errors.New("max data blobs reached")
+		return errors.New("max data blobs reached")
 	}
 
 	receipt, err := w.applyTransaction(env, tx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	sc.TxIndex = uint64(len(env.txs))
-	env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
+	txNoBlob := tx.WithoutBlobTxSidecar()
+	env.txs = append(env.txs, txNoBlob)
 	env.receipts = append(env.receipts, receipt)
 	env.sidecars = append(env.sidecars, sc)
 	env.blobs += len(sc.Blobs)
+	env.size += txNoBlob.Size()
+	env.tcount++
 	*env.header.BlobGasUsed += receipt.BlobGasUsed
-	return receipt.Logs, nil
+	return nil
 }
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
@@ -861,7 +881,6 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
 	)
-	// func ApplyTransaction(evm *vm.EVM, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64) (*types.Receipt, error) {
 	blockContext := core.NewEVMBlockContext(env.header, w.chain, &env.coinbase)
 	evm := vm.NewEVM(blockContext, env.state, w.chainConfig, *w.chain.GetVMConfig())
 	receipt, err := core.ApplyTransaction(evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
@@ -873,7 +892,10 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 }
 
 func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce, interrupt *atomic.Int32) error {
-	gasLimit := env.header.GasLimit
+	var (
+		isCancun = w.chainConfig.IsCancun(env.header.Number, env.header.Time)
+		gasLimit = env.header.GasLimit
+	)
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
 		// ##CROSS: consensus system contract
@@ -892,7 +914,6 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		}
 		// ##
 	}
-	var coalescedLogs []*types.Log
 
 	for {
 		// Check interruption signal and abort building if it's fired.
@@ -947,7 +968,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		// Most of the blob gas logic here is agnostic as to if the chain supports
 		// blobs or not, however the max check panics when called on a chain without
 		// a defined schedule, so we need to verify it's safe to call.
-		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) {
+		if isCancun {
 			left := eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time) - env.blobs
 			if left < int(ltx.BlobGas/params.BlobTxBlobGasPerBlob) {
 				log.Trace("Not enough blob space left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas/params.BlobTxBlobGasPerBlob)
@@ -964,6 +985,12 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 			txs.Pop()
 			continue
 		}
+
+		// if inclusion of the transaction would put the block size over the
+		// maximum we allow, don't add any more txs to the payload.
+		if !env.txFitsSize(tx) {
+			break
+		}
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance is the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
@@ -978,7 +1005,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		// Start executing the transaction
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 
-		logs, err := w.commitTransaction(env, tx)
+		err := w.commitTransaction(env, tx)
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
@@ -987,8 +1014,6 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 
 		case errors.Is(err, nil):
 			// Everything ok, collect the logs and shift in the next transaction from the same account
-			coalescedLogs = append(coalescedLogs, logs...)
-			env.tcount++
 			txs.Shift()
 
 		default:
@@ -997,21 +1022,6 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 			log.Debug("Transaction failed, account skipped", "hash", ltx.Hash, "err", err)
 			txs.Pop()
 		}
-	}
-	if !w.isRunning() && len(coalescedLogs) > 0 {
-		// We don't push the pendingLogsEvent while we are sealing. The reason is that
-		// when we are sealing, the worker will regenerate a sealing block every 3 seconds.
-		// In order to avoid pushing the repeated pendingLog, we disable the pending log pushing.
-
-		// make a copy, the state caches the logs and these logs get "upgraded" from pending to mined
-		// logs by filling in the block hash when the block was mined by the local miner. This can
-		// cause a race condition if a log was "upgraded" before the PendingLogsEvent is processed.
-		cpy := make([]*types.Log, len(coalescedLogs))
-		for i, l := range coalescedLogs {
-			cpy[i] = new(types.Log)
-			*cpy[i] = *l
-		}
-		w.pendingLogsFeed.Send(cpy)
 	}
 	return nil
 }
@@ -1032,8 +1042,8 @@ type generateParams struct {
 // either based on the last chain head or specified parent. In this function
 // the pending transactions are not filled yet, only the empty task returned.
 func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environment, error) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
+	w.confMu.RLock()
+	defer w.confMu.RUnlock()
 
 	// Find the parent block for sealing task
 	parent := w.chain.CurrentBlock()
@@ -1070,12 +1080,6 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		Time:     timestamp,
 		Coinbase: genParams.coinbase,
 	}
-
-	// ##CROSS: istanbul
-	if gasLimit := w.chainConfig.GetGasLimit(number); gasLimit != nil {
-		header.GasLimit = *gasLimit
-	}
-	// ##
 
 	// Set the extra field.
 	if len(w.extra) != 0 {
@@ -1141,9 +1145,10 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) error {
-	w.mu.RLock()
+	w.confMu.RLock()
 	tip := w.tip
-	w.mu.RUnlock()
+	prio := w.prio
+	w.confMu.RUnlock()
 
 	// Retrieve the pending transactions pre-filtered by the 1559/4844 dynamic fees
 	filter := txpool.PendingFilter{
@@ -1155,33 +1160,75 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 	if env.header.ExcessBlobGas != nil {
 		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
 	}
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
+	if w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+		filter.GasLimitCap = params.MaxTxGas
+	}
+	filter.BlobTxs = false
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
 
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
+	filter.BlobTxs = true
+	if !w.chainConfig.IsIstanbulConsensus() && w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+		filter.BlobVersion = types.BlobSidecarVersion1
+	} else {
+		filter.BlobVersion = types.BlobSidecarVersion0
+	}
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
+	// Split the pending transactions into locals and remotes.
+	prioPlainTxs, normalPlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
+	prioBlobTxs, normalBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
+
+	for _, account := range prio {
+		if txs := normalPlainTxs[account]; len(txs) > 0 {
+			delete(normalPlainTxs, account)
+			prioPlainTxs[account] = txs
+		}
+		if txs := normalBlobTxs[account]; len(txs) > 0 {
+			delete(normalBlobTxs, account)
+			prioBlobTxs[account] = txs
+		}
+	}
+
 	// Fill the block with all available pending transactions.
-	if len(pendingPlainTxs) > 0 || len(pendingBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, pendingPlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, pendingBlobTxs, env.header.BaseFee)
+	if len(prioPlainTxs) > 0 || len(prioBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt); err != nil {
 			return err
 		}
 	}
+	if len(normalPlainTxs) > 0 || len(normalBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, normalPlainTxs, env.header.BaseFee)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee)
+
+		if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // generateWork generates a sealing block based on the given parameters.
-func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadResult {
-	work, err := w.prepareWork(params, witness)
+func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloadResult {
+	work, err := w.prepareWork(genParam, witness)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
 	defer work.discard()
 
-	if !params.noTxs {
+	// Check withdrawals fit max block size.
+	// Due to the cap on withdrawal count, this can actually never happen, but we still need to
+	// check to ensure the CL notices there's a problem if the withdrawal cap is ever lifted.
+	maxBlockSize := params.MaxBlockSize - maxBlockSizeBufferZone
+	if genParam.withdrawals.Size() > maxBlockSize {
+		return &newPayloadResult{err: errors.New("withdrawals exceed max block size")}
+	}
+	// Also add size of withdrawals to work block size.
+	work.size += uint64(genParam.withdrawals.Size())
+
+	if !genParam.noTxs {
 		interrupt := new(atomic.Int32)
 		timer := time.AfterFunc(w.newpayloadTimeout, func() {
 			interrupt.Store(commitInterruptTimeout)
@@ -1195,15 +1242,17 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 	body := types.Body{Transactions: work.txs}
 	if w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
+		// Always zero withdrawals if Istanbul Consensus is enabled.
 		if w.chainConfig.IsCancun(work.header.Number, work.header.Time) {
 			body.Withdrawals = types.Withdrawals{}
 		}
 	} else {
-		body.Withdrawals = params.withdrawals
+		body.Withdrawals = genParam.withdrawals
 	}
-	// Collect consensus-layer requests if Prague is enabled.
+
+	// Collect consensus-layer requests if Prague is enabled and Istanbul Consensus is disabled.
 	var requests [][]byte
-	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && !w.chainConfig.IsIstanbulConsensus() { // ##CROSS: istanbul
+	if !w.chainConfig.IsIstanbulConsensus() && w.chainConfig.IsPrague(work.header.Number, work.header.Time) { // ##CROSS: istanbul
 		allLogs := make([]*types.Log, 0)
 		for _, r := range work.receipts {
 			allLogs = append(allLogs, r.Logs...)
@@ -1311,6 +1360,10 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 // the deep copy first.
 func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
 	if w.isRunning() {
+		if env.committed {
+			log.Warn("Invalid work commit: already committed", "number", env.header.Number.Uint64())
+			return nil
+		}
 		if interval != nil {
 			interval()
 		}
@@ -1319,6 +1372,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
 		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &body, env.receipts, nil)
+		env.committed = true
 		if err != nil {
 			return err
 		}
@@ -1330,13 +1384,12 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
 			env.sidecars = make(types.BlobSidecars, 0)
 		}
+		block = block.WithSidecars(env.sidecars)
+		// ##
 
 		// Create a local environment copy, avoid the data race with snapshot state.
 		// https://github.com/ethereum/go-ethereum/issues/24299
 		env := env.copy()
-
-		block = block.WithSidecars(env.sidecars)
-		// ##
 
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {

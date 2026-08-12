@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common/compiler"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/require"
 )
 
 // Run go generate to recreate the test bindings.
@@ -95,6 +96,7 @@ func TestBindingGeneration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadFile returned error: %v", err)
 		}
+		require.Equal(t, code, string(existingBindings))
 		if code != string(existingBindings) {
 			t.Fatalf("code mismatch for %s", dir)
 		}
