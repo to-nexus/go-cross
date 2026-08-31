@@ -303,20 +303,31 @@ const (
 //
 // The result (both eligible/ineligible) is cached per address for eligibilityCacheTTL.
 // minStake is cached separately for minStakeCacheTTL (a global value that changes rarely).
-func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) bool {
+//
+// It returns (eligible, err). A non-nil err means eligibility could not be determined (a
+// StakeHub lookup failed); such a result is NOT cached so a later call can retry, and callers
+// should treat it as "unknown" rather than "ineligible".
+func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) (bool, error) {
 	c := e.validatorCache
 	// eligible is an lru.Cache, so it is self-synchronized (no extra lock needed). The capacity cap also prevents unbounded growth.
 	if ent, ok := c.eligible.Get(addr); ok && time.Now().Before(ent.exp) {
-		return ent.ok
+		return ent.ok, nil
 	}
-	result := e.queryEligibleValidator(addr, number)
+	result, err := e.queryEligibleValidator(addr, number)
+	if err != nil {
+		return false, err
+	}
 	c.eligible.Add(addr, eligibilityEntry{ok: result, exp: time.Now().Add(eligibilityCacheTTL)})
-	return result
+	return result, nil
 }
 
 // queryEligibleValidator performs the actual StakeHub lookups. Per-address eligibility is
 // not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
-func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool {
+// queryEligibleValidator returns (eligible, err). A non-nil err means the eligibility could
+// not be determined (a StakeHub lookup failed); callers should treat that as "unknown", not
+// as "ineligible". A nil err with false means the address is genuinely not eligible
+// (unregistered, blacklisted, or under-staked).
+func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) (bool, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 
@@ -324,38 +335,38 @@ func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool
 	operator, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackValidatorToOperator(addr), e.stakeHub.UnpackValidatorToOperator)
 	if err != nil {
 		log.Warn("Failed to call validatorToOperator", "addr", addr, "number", number, "err", err)
-		return false
+		return false, err
 	}
 	if operator == (common.Address{}) {
-		return false
+		return false, nil
 	}
 
 	// 2) invalid if the operator is on the blacklist. (the blacklist is keyed by operator address)
 	blacklisted, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackIsBlackListed(operator), e.stakeHub.UnpackIsBlackListed)
 	if err != nil {
 		log.Warn("Failed to call isBlackListed", "operator", operator, "number", number, "err", err)
-		return false
+		return false, err
 	}
 	if blacklisted {
-		return false
+		return false, nil
 	}
 
 	// 3) the operator's staked amount. (stake is keyed by operator address, not validator address)
 	staked, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackGetStakedAmount(operator), e.stakeHub.UnpackGetStakedAmount)
 	if err != nil {
 		log.Warn("Failed to call getStakedAmount", "operator", operator, "number", number, "err", err)
-		return false
+		return false, err
 	}
 
 	// 4) minimum validator stake (cached with a separate TTL).
 	minStake, err := e.minValidatorStakeCached(number)
 	if err != nil {
 		log.Warn("Failed to get minValidatorStake", "number", number, "err", err)
-		return false
+		return false, err
 	}
 
 	// A validator is valid only if staked >= minValidatorStake.
-	return staked.Cmp(minStake) >= 0
+	return staked.Cmp(minStake) >= 0, nil
 }
 
 // minValidatorStakeCached returns minValidatorStake, cached for minStakeCacheTTL. It is a

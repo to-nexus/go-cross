@@ -23,7 +23,6 @@ package eth
 
 import (
 	"errors"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -32,24 +31,15 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
-// ValidatorChecker decides whether an address is an eligible validator.
+// ValidatorChecker decides whether an address is an eligible validator. A non-nil error
+// means eligibility could not be determined (e.g. a StakeHub lookup failed) — callers must
+// treat that as "unknown" and fail open, not as "ineligible".
 type ValidatorChecker interface {
-	IsValidator(addr common.Address) bool
+	IsValidator(addr common.Address) (bool, error)
 }
 
 // errPeerNotPermitted is returned for a peer that fails verification.
 var errPeerNotPermitted = errors.New("peer rejected by consensus permissioning (not an eligible validator/static/trusted)")
-
-// permissionTimeout is the maximum time to wait for a verification request/response.
-const permissionTimeout = 5 * time.Second
-
-// permissionRequest is a single verification request. The result is returned over the result channel.
-type permissionRequest struct {
-	id      enode.ID   // node ID of the remote peer
-	trusted bool       // whether the peer is a trusted node
-	static  bool       // whether the peer is a static node
-	result  chan error // verification result (nil = allowed, err = rejected)
-}
 
 // PermissionPeers verifies peers for consensus permissioning. Owned by the handler and
 // passed to Handshake.
@@ -57,22 +47,16 @@ type PermissionPeers struct {
 	self       enode.ID              // node ID of this node itself
 	validators ValidatorChecker      // validator checker (static / StakeHub, etc.)
 	bootnodes  map[enode.ID]struct{} // configured bootnode IDs (still rejected, but not warned)
-
-	reqCh chan *permissionRequest
-	quit  chan struct{}
 }
 
-// NewPermissionPeers creates a PermissionPeers and starts its verification loop.
+// NewPermissionPeers creates a PermissionPeers.
 // bootnodes are still rejected, but their rejection is logged quietly (not warned).
 func NewPermissionPeers(self enode.ID, checker ValidatorChecker, bootnodes map[enode.ID]struct{}) *PermissionPeers {
 	pp := &PermissionPeers{
 		self:       self,
 		validators: checker,
 		bootnodes:  bootnodes,
-		reqCh:      make(chan *permissionRequest),
-		quit:       make(chan struct{}),
 	}
-	go pp.loop()
 	log.Info("Consensus permissioning enabled", "self", self, "bootnodes", len(bootnodes))
 	return pp
 }
@@ -83,22 +67,22 @@ func (pp *PermissionPeers) isBootnode(id enode.ID) bool {
 	return ok
 }
 
-// Close terminates the verification loop. It is safe to call on a nil receiver.
-func (pp *PermissionPeers) Close() {
-	if pp == nil {
-		return
-	}
-	close(pp.quit)
-}
+// Close is retained for lifecycle symmetry with the handler. Verification is now
+// synchronous and stateless, so there is nothing to tear down. Safe on a nil receiver.
+func (pp *PermissionPeers) Close() {}
 
 // isValidatorNode reports whether the node (by its nodekey address) is an eligible
-// validator. With no checker it is treated as not eligible (= open).
-func (pp *PermissionPeers) isValidatorNode(id enode.ID) bool {
-	return pp.validators != nil && pp.validators.IsValidator(common.BytesToAddress(id[12:]))
+// validator. With no checker it is treated as not eligible (= open). A non-nil error means
+// eligibility could not be determined and the caller should fail open.
+func (pp *PermissionPeers) isValidatorNode(id enode.ID) (bool, error) {
+	if pp.validators == nil {
+		return false, nil
+	}
+	return pp.validators.IsValidator(common.BytesToAddress(id[12:]))
 }
 
 // selfIsValidatorNode returns whether this node itself is an eligible validator.
-func (pp *PermissionPeers) selfIsValidatorNode() bool {
+func (pp *PermissionPeers) selfIsValidatorNode() (bool, error) {
 	return pp.isValidatorNode(pp.self)
 }
 
@@ -107,33 +91,41 @@ func (pp *PermissionPeers) LogSelfStatus() {
 	if pp == nil {
 		return
 	}
-	log.Warn("Consensus permissioning self status", "self", pp.self.String(), "isValidator", pp.selfIsValidatorNode())
+	isValidator, err := pp.selfIsValidatorNode()
+	log.Warn("Consensus permissioning self status", "self", pp.self.String(), "isValidator", isValidator, "err", err)
 }
 
-// loop is the channel handler that processes verification requests serially.
-func (pp *PermissionPeers) loop() {
-	for {
-		select {
-		case req := <-pp.reqCh:
-			req.result <- pp.verifyPermission(req)
-		case <-pp.quit:
-			return
-		}
-	}
-}
-
-// verifyPermission makes the allow/reject decision for a peer.
-func (pp *PermissionPeers) verifyPermission(req *permissionRequest) error {
+// verifyPermission makes the allow/reject decision for a peer. It reads only immutable
+// receiver fields plus the checker's own internally-synchronized cache, so it is safe to
+// call directly and concurrently from any goroutine (handshake or sweep) — no serialization
+// through a single loop is needed, which also removes the head-of-line blocking where one
+// slow eligibility lookup could stall (and time out → falsely reject) every other peer.
+func (pp *PermissionPeers) verifyPermission(id enode.ID, trusted, static bool) error {
 	// static/trusted always allowed (cheap check first, avoids the eligibility lookup).
-	if req.trusted || req.static {
+	if trusted || static {
+		return nil
+	}
+	// Am I a validator? If the lookup fails we cannot know, so fail open: restricting peers
+	// based on our own inability to evaluate eligibility would risk isolating the node.
+	self, err := pp.selfIsValidatorNode()
+	if err != nil {
+		log.Warn("Consensus permissioning: self eligibility lookup failed, allowing peer (fail-open)", "id", id.String(), "err", err)
 		return nil
 	}
 	// if we are not a validator, everything is allowed (open).
-	if !pp.selfIsValidatorNode() {
+	if !self {
 		return nil
 	}
-	// as a validator, allow only eligible-validator peers.
-	if pp.isValidatorNode(req.id) {
+	// As a validator, allow only eligible-validator peers. If the peer lookup fails we cannot
+	// classify it, so fail open rather than reject a possibly-legitimate validator. Note the
+	// error is not attacker-controllable: the lookup runs against our own local state, so a
+	// peer cannot force it to fail in order to be admitted.
+	ok, err := pp.isValidatorNode(id)
+	if err != nil {
+		log.Warn("Consensus permissioning: peer eligibility lookup failed, allowing peer (fail-open)", "id", id.String(), "err", err)
+		return nil
+	}
+	if ok {
 		return nil
 	}
 	return errPeerNotPermitted
@@ -145,55 +137,38 @@ func (pp *PermissionPeers) PeerAllowed(id enode.ID, trusted, static bool) bool {
 	if pp == nil {
 		return true
 	}
-	return pp.verifyPermission(&permissionRequest{id: id, trusted: trusted, static: static}) == nil
+	return pp.verifyPermission(id, trusted, static) == nil
 }
 
 // checkPeerPermission is called from Handshake: it verifies the peer and returns an error
-// to reject it (aborting the handshake). A nil receiver always passes.
+// to reject it (aborting the handshake). A nil receiver always passes. The check runs
+// synchronously on the calling handshake goroutine; eligibility results are cached, so it
+// does not block other peers' handshakes.
 func (pp *PermissionPeers) checkPeerPermission(p *Peer) error {
 	if pp == nil {
 		return nil
 	}
 	id := p.Node().ID()
+	trusted, static := p.Trusted(), p.StaticDialed()
 
-	req := &permissionRequest{
-		id:      id,
-		trusted: p.Trusted(),
-		static:  p.StaticDialed(),
-		result:  make(chan error, 1),
-	}
-
-	// submit the request (timeout guards against a busy/stopped handler).
-	select {
-	case pp.reqCh <- req:
-	case <-pp.quit:
-		return nil
-	case <-time.After(permissionTimeout):
-		log.Warn("Consensus permissioning timed out on submit", "id", id)
-		return errPeerNotPermitted
-	}
-	// wait for the result.
-	select {
-	case err := <-req.result:
-		if err != nil {
-			// bootnodes keep dialing validators, so log their rejection quietly.
-			if !pp.isBootnode(id) {
-				log.Warn("Rejecting peer by consensus permissioning",
-					"id", id.String(), "trusted", req.trusted, "static", req.static, "err", err)
-			}
-		} else {
-			log.Trace("Peer permitted by consensus permissioning", "id", id.String())
+	err := pp.verifyPermission(id, trusted, static)
+	if err != nil {
+		// bootnodes keep dialing validators, so log their rejection quietly.
+		if !pp.isBootnode(id) {
+			log.Warn("Rejecting peer by consensus permissioning",
+				"id", id.String(), "trusted", trusted, "static", static, "err", err)
 		}
-		return err
-	case <-time.After(permissionTimeout):
-		log.Warn("Consensus permissioning timed out on result", "id", id.String())
-		return errPeerNotPermitted
+	} else {
+		log.Trace("Peer permitted by consensus permissioning", "id", id.String())
 	}
+	return err
 }
 
 // istanbulValidatorSource is the minimal Istanbul engine interface for eligibility checks.
+// IsValidatorAt returns (isValidator, err); a non-nil err signals the status could not be
+// determined (e.g. a failed StakeHub lookup).
 type istanbulValidatorSource interface {
-	IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, addr common.Address) bool
+	IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, addr common.Address) (bool, error)
 }
 
 // istanbulValidatorChecker implements ValidatorChecker via the Istanbul engine,
@@ -220,10 +195,13 @@ func NewIstanbulValidatorChecker(engine consensus.Engine, chain consensus.ChainH
 }
 
 // IsValidator returns whether the address is an eligible validator against the current head.
-func (c *istanbulValidatorChecker) IsValidator(addr common.Address) bool {
+// A non-nil error propagates an undeterminable result (failed lookup) to the caller so it
+// can fail open. With no current head yet, it reports (false, nil) — not an error — so the
+// permission layer treats early startup as "not a validator" (open).
+func (c *istanbulValidatorChecker) IsValidator(addr common.Address) (bool, error) {
 	header := c.chain.CurrentHeader()
 	if header == nil {
-		return false
+		return false, nil
 	}
 	return c.source.IsValidatorAt(c.chain, header, addr)
 }

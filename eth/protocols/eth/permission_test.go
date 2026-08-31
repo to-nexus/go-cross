@@ -17,9 +17,9 @@
 package eth
 
 import (
+	"errors"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -51,9 +51,9 @@ func newMapChecker(addrs ...common.Address) mapValidatorChecker {
 	return m
 }
 
-func (m mapValidatorChecker) IsValidator(addr common.Address) bool {
+func (m mapValidatorChecker) IsValidator(addr common.Address) (bool, error) {
 	_, ok := m[addr]
-	return ok
+	return ok, nil
 }
 
 // TestVerifyPermission verifies the permission decision rules in a table-driven way.
@@ -61,7 +61,7 @@ func TestVerifyPermission(t *testing.T) {
 	// Register self and the peer validator as validators (by their derived addresses).
 	checker := newMapChecker(idAddr(idSelfValidator), idAddr(idPeerValidator))
 
-	// Construct directly to verify only the decision logic without the loop goroutine.
+	// Construct directly to verify only the decision logic.
 	newPP := func(self enode.ID) *PermissionPeers {
 		return &PermissionPeers{self: self, validators: checker}
 	}
@@ -69,45 +69,22 @@ func TestVerifyPermission(t *testing.T) {
 	tests := []struct {
 		name    string
 		self    enode.ID
-		req     *permissionRequest
+		id      enode.ID
+		trusted bool
+		static  bool
 		wantErr bool
 	}{
-		{
-			name:    "allow anyone if self is not a validator",
-			self:    idNonValidator,
-			req:     &permissionRequest{id: idNonValidator},
-			wantErr: false,
-		},
-		{
-			name:    "validator <-> validator is allowed", // core case
-			self:    idSelfValidator,
-			req:     &permissionRequest{id: idPeerValidator},
-			wantErr: false,
-		},
-		{
-			name:    "validator rejects a non-validator",
-			self:    idSelfValidator,
-			req:     &permissionRequest{id: idNonValidator},
-			wantErr: true,
-		},
-		{
-			name:    "validator allows a non-validator if trusted",
-			self:    idSelfValidator,
-			req:     &permissionRequest{id: idNonValidator, trusted: true},
-			wantErr: false,
-		},
-		{
-			name:    "validator allows a non-validator if static",
-			self:    idSelfValidator,
-			req:     &permissionRequest{id: idNonValidator, static: true},
-			wantErr: false,
-		},
+		{name: "allow anyone if self is not a validator", self: idNonValidator, id: idNonValidator, wantErr: false},
+		{name: "validator <-> validator is allowed", self: idSelfValidator, id: idPeerValidator, wantErr: false}, // core case
+		{name: "validator rejects a non-validator", self: idSelfValidator, id: idNonValidator, wantErr: true},
+		{name: "validator allows a non-validator if trusted", self: idSelfValidator, id: idNonValidator, trusted: true, wantErr: false},
+		{name: "validator allows a non-validator if static", self: idSelfValidator, id: idNonValidator, static: true, wantErr: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pp := newPP(tt.self)
-			err := pp.verifyPermission(tt.req)
+			err := pp.verifyPermission(tt.id, tt.trusted, tt.static)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("verifyPermission() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -115,43 +92,27 @@ func TestVerifyPermission(t *testing.T) {
 	}
 }
 
-// TestPermissionPeersChannel verifies the verification path through the channel handler
-// (loop goroutine) end-to-end: connections between validators are allowed, others rejected.
-func TestPermissionPeersChannel(t *testing.T) {
+// TestPermissionPeersDecisions verifies the decisions end-to-end through a PermissionPeers
+// built by NewPermissionPeers: validator <-> validator allowed, others rejected, trusted
+// exempted. Verification is now a direct synchronous call (no loop goroutine).
+func TestPermissionPeersDecisions(t *testing.T) {
 	checker := newMapChecker(idAddr(idSelfValidator), idAddr(idPeerValidator))
 
 	// A node that is itself a validator.
 	pp := NewPermissionPeers(idSelfValidator, checker, nil)
 	defer pp.Close()
 
-	// Helper that sends a request over the channel and receives the result.
-	ask := func(req *permissionRequest) error {
-		req.result = make(chan error, 1)
-		select {
-		case pp.reqCh <- req:
-		case <-time.After(time.Second):
-			t.Fatal("failed to submit permission request")
-		}
-		select {
-		case err := <-req.result:
-			return err
-		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for permission result")
-			return nil
-		}
-	}
-
 	// validator peer → allowed
-	if err := ask(&permissionRequest{id: idPeerValidator}); err != nil {
-		t.Errorf("validator peer should be permitted, got %v", err)
+	if !pp.PeerAllowed(idPeerValidator, false, false) {
+		t.Errorf("validator peer should be permitted")
 	}
 	// non-validator peer → rejected
-	if err := ask(&permissionRequest{id: idNonValidator}); err == nil {
+	if pp.PeerAllowed(idNonValidator, false, false) {
 		t.Errorf("non-validator peer should be rejected")
 	}
 	// non-validator but trusted → allowed
-	if err := ask(&permissionRequest{id: idNonValidator, trusted: true}); err != nil {
-		t.Errorf("trusted peer should be permitted, got %v", err)
+	if !pp.PeerAllowed(idNonValidator, true, false) {
+		t.Errorf("trusted peer should be permitted")
 	}
 }
 
@@ -163,10 +124,63 @@ func TestPermissionPeersOpenWhenNotValidator(t *testing.T) {
 	pp := NewPermissionPeers(idNonValidator, checker, nil)
 	defer pp.Close()
 
-	req := &permissionRequest{id: idNonValidator, result: make(chan error, 1)}
-	pp.reqCh <- req
-	if err := <-req.result; err != nil {
-		t.Errorf("non-validator self should accept any peer, got %v", err)
+	if !pp.PeerAllowed(idNonValidator, false, false) {
+		t.Errorf("non-validator self should accept any peer")
+	}
+}
+
+// errChecker is a ValidatorChecker whose lookups fail for a chosen address, and otherwise
+// report a fixed validator set. It models a StakeHub backend that cannot answer.
+type errChecker struct {
+	validators map[common.Address]struct{}
+	failOn     map[common.Address]struct{} // addresses whose lookup returns an error
+	err        error
+}
+
+func (c *errChecker) IsValidator(addr common.Address) (bool, error) {
+	if _, fail := c.failOn[addr]; fail {
+		return false, c.err
+	}
+	_, ok := c.validators[addr]
+	return ok, nil
+}
+
+// TestVerifyPermissionFailOpen verifies A-2: when an eligibility lookup cannot be resolved
+// (returns an error), the peer is allowed rather than rejected — for both the self check and
+// the peer check — while a definitive "not a validator" (nil error, false) is still rejected.
+func TestVerifyPermissionFailOpen(t *testing.T) {
+	lookupErr := errors.New("stakehub unavailable")
+
+	// (1) Peer lookup fails while self is a validator → fail open (allow).
+	c1 := &errChecker{
+		validators: map[common.Address]struct{}{idAddr(idSelfValidator): {}},
+		failOn:     map[common.Address]struct{}{idAddr(idNonValidator): {}},
+		err:        lookupErr,
+	}
+	pp1 := &PermissionPeers{self: idSelfValidator, validators: c1}
+	if err := pp1.verifyPermission(idNonValidator, false, false); err != nil {
+		t.Errorf("peer lookup failure should fail open (allow), got %v", err)
+	}
+
+	// (2) Self lookup fails → fail open (allow), regardless of the peer.
+	c2 := &errChecker{
+		validators: map[common.Address]struct{}{idAddr(idSelfValidator): {}},
+		failOn:     map[common.Address]struct{}{idAddr(idSelfValidator): {}},
+		err:        lookupErr,
+	}
+	pp2 := &PermissionPeers{self: idSelfValidator, validators: c2}
+	if err := pp2.verifyPermission(idNonValidator, false, false); err != nil {
+		t.Errorf("self lookup failure should fail open (allow), got %v", err)
+	}
+
+	// (3) Definitive "peer is not a validator" (no error) is still rejected — fail-open must
+	// not soften a resolved negative.
+	c3 := &errChecker{
+		validators: map[common.Address]struct{}{idAddr(idSelfValidator): {}},
+	}
+	pp3 := &PermissionPeers{self: idSelfValidator, validators: c3}
+	if err := pp3.verifyPermission(idNonValidator, false, false); err == nil {
+		t.Errorf("a resolved non-validator peer must still be rejected")
 	}
 }
 
@@ -259,16 +273,17 @@ func TestPeerAllowed(t *testing.T) {
 // returns a fixed result.
 type mockValidatorSource struct {
 	result    bool
+	err       error
 	called    bool
 	gotAddr   common.Address
 	gotHeader *types.Header
 }
 
-func (m *mockValidatorSource) IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, addr common.Address) bool {
+func (m *mockValidatorSource) IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, addr common.Address) (bool, error) {
 	m.called = true
 	m.gotAddr = addr
 	m.gotHeader = header
-	return m.result
+	return m.result, m.err
 }
 
 // stubChainHeaderReader is a minimal consensus.ChainHeaderReader for tests; only
@@ -298,8 +313,8 @@ func TestIstanbulValidatorCheckerIsValidator(t *testing.T) {
 	// No current header → false, and the source must not be consulted.
 	src := &mockValidatorSource{result: true}
 	c := &istanbulValidatorChecker{source: src, chain: &stubChainHeaderReader{header: nil}}
-	if c.IsValidator(idAddr(idPeerValidator)) {
-		t.Error("IsValidator should be false when the current header is nil")
+	if ok, err := c.IsValidator(idAddr(idPeerValidator)); ok || err != nil {
+		t.Errorf("IsValidator should be (false, nil) when the current header is nil, got (%v, %v)", ok, err)
 	}
 	if src.called {
 		t.Error("source should not be consulted when the header is nil")
@@ -310,8 +325,8 @@ func TestIstanbulValidatorCheckerIsValidator(t *testing.T) {
 	for _, want := range []bool{true, false} {
 		src := &mockValidatorSource{result: want}
 		c := &istanbulValidatorChecker{source: src, chain: &stubChainHeaderReader{header: header}}
-		if got := c.IsValidator(idAddr(idPeerValidator)); got != want {
-			t.Errorf("IsValidator() = %v, want %v", got, want)
+		if got, err := c.IsValidator(idAddr(idPeerValidator)); got != want || err != nil {
+			t.Errorf("IsValidator() = (%v, %v), want (%v, nil)", got, err, want)
 		}
 		if !src.called {
 			t.Error("source should be consulted when the header is present")
