@@ -19,6 +19,7 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -30,13 +31,45 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"golang.org/x/time/rate"
 )
+
+// ##CROSS: istanbul rate limit
+const (
+	// Allow normal consensus bursts while bounding sustained traffic from one peer.
+	consensusMessageRate  rate.Limit = 100
+	consensusMessageBurst            = 200
+	consensusByteRate     rate.Limit = 16 * 1024 * 1024
+	consensusByteBurst               = 2 * protocolMaxMsgSize
+)
+
+// ##
 
 var (
 	// errEthPeerNil is returned when no eth peer is found to be associated with a p2p peer.
 	errEthPeerNil           = errors.New("eth peer was nil")
 	errEthPeerNotRegistered = errors.New("eth peer was not registered")
+	errConsensusRateLimit   = errors.New("consensus message rate limit exceeded")
 )
+
+// ##CROSS: istanbul rate limit
+type consensusLimiter struct {
+	messages *rate.Limiter
+	bytes    *rate.Limiter
+}
+
+func newConsensusLimiter() *consensusLimiter {
+	return &consensusLimiter{
+		messages: rate.NewLimiter(consensusMessageRate, consensusMessageBurst),
+		bytes:    rate.NewLimiter(consensusByteRate, consensusByteBurst),
+	}
+}
+
+func (l *consensusLimiter) allow(now time.Time, size uint32) bool {
+	return l.messages.AllowN(now, 1) && l.bytes.AllowN(now, int(size))
+}
+
+// ##
 
 type istanbulHandler handler // ##CROSS: istanbul
 
@@ -116,9 +149,11 @@ func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, versio
 }
 
 func (h *istanbulHandler) handleConsensusLoop(p *eth.Peer, protoRW p2p.MsgReadWriter) error {
+	limiter := newConsensusLimiter() // ##CROSS: istanbul rate limit
+
 	// Handle incoming messages until the connection is torn down
 	for {
-		if err := h.handleConsensus(p, protoRW); err != nil {
+		if err := h.handleConsensus(p, protoRW, limiter); err != nil {
 			// allow the P2P connection to remain active during sync (when the engine is stopped)
 			if errors.Is(err, istanbul.ErrStoppedEngine) && h.downloader.Synchronising() {
 				// should this be warn or debug
@@ -132,7 +167,7 @@ func (h *istanbulHandler) handleConsensusLoop(p *eth.Peer, protoRW p2p.MsgReadWr
 }
 
 // This is a no-op because the eth handleMsg main loop handle ibf message as well.
-func (h *istanbulHandler) handleConsensus(p *eth.Peer, protoRW p2p.MsgReadWriter) error {
+func (h *istanbulHandler) handleConsensus(p *eth.Peer, protoRW p2p.MsgReadWriter, limiter *consensusLimiter) error {
 	// Read the next message from the remote peer (in protoRW), and ensure it's fully consumed
 	msg, err := protoRW.ReadMsg()
 	if err != nil {
@@ -142,6 +177,11 @@ func (h *istanbulHandler) handleConsensus(p *eth.Peer, protoRW p2p.MsgReadWriter
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, protocolMaxMsgSize)
 	}
 	defer msg.Discard()
+	// ##CROSS: istanbul rate limit
+	if !limiter.allow(time.Now(), msg.Size) {
+		return errConsensusRateLimit
+	}
+	// ##
 
 	// See if the consensus engine protocol can handle this message, e.g. istanbul will check for message is
 	// istanbulMsg = 0x11, and NewBlockMsg = 0x07.

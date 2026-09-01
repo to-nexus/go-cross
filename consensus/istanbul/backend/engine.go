@@ -51,7 +51,8 @@ var _ consensus.IstanbulEngine = (*Backend)(nil)
 // IsSystemTransaction checks if the transaction is a system transaction,
 // which is a legacy transaction to a system contract with gas price 0 and sender is the block proposer.
 func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	return sb.Engine().IsSystemTransaction(tx, header)
+	signer := types.MakeSigner(sb.chain.Config(), header.Number, header.Time)
+	return sb.Engine().IsSystemTransaction(tx, header, signer)
 }
 
 // IsSystemContract checks if the address is a system contract.
@@ -469,13 +470,6 @@ func (sb *Backend) snapshot(chain consensus.ChainHeaderReader, number uint64, ha
 		number, hash = number-1, header.ParentHash
 	}
 
-	addrs := make([]common.Address, 0, snap.ValSet.Size())
-	signers := make([]types.BLSPublicKey, 0, snap.ValSet.Size())
-	for _, val := range snap.ValSet.List() {
-		addrs = append(addrs, val.Address())
-		signers = append(signers, val.SignerAddress())
-	}
-
 	// Previous snapshot found, apply any pending headers on top of it
 	for i := 0; i < len(headers)/2; i++ {
 		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
@@ -601,6 +595,9 @@ func (sb *Backend) snapApplyHeader(snap *Snapshot, header, parent *types.Header,
 			validators, signers, err := sb.Engine().ExtractValidators(header)
 			if err != nil {
 				return err
+			}
+			if len(validators) != len(signers) {
+				return istanbul.ErrInvalidSignersLength
 			}
 			if len(validators) > 0 {
 				snap.ValSet = validator.NewSet(validators, signers, sb.config.GetConfig(header.Number).ProposerPolicy)

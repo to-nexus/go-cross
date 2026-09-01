@@ -99,5 +99,8 @@ var (
 
 	// ErrDuplicatedSigner is returned if the seal signer is duplicated.
 	ErrDuplicatedSigner = errors.New("duplicated signer")
+
+	// ErrInvalidSignersLength is returned if the signers list length is not equal to the validators list length.
+	ErrInvalidSignersLength = errors.New("invalid signers length")
 	// ##
 )

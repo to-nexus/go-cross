@@ -553,7 +553,7 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 // ##
 
 // ##CROSS: validator reward
-func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+func (e *Engine) distributeRewards(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	coinbase := header.Coinbase
 	if coinbase == (common.Address{}) {
 		coinbase = e.signer
@@ -562,8 +562,9 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 	// Calculate total tip and total fee by summing up the tip and fee of all transactions
 	totalTip := new(big.Int)
 	totalFee := new(big.Int)
+	signer := types.MakeSigner(chain.Config(), header.Number, header.Time)
 	for i, tx := range *txs {
-		if isSystemTx, err := e.IsSystemTransaction(tx, header); err != nil {
+		if isSystemTx, err := e.IsSystemTransaction(tx, header, signer); err != nil {
 			return err
 		} else if isSystemTx {
 			// All remaining transactions are system transactions

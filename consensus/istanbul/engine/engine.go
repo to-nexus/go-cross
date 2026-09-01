@@ -120,7 +120,8 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 
 // IsSystemTransaction checks if the transaction is a system transaction.
 // A system transaction is a transaction to a system contract with gas price 0 and sender is the block proposer.
-func IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+// If the block coinbase is not set, it uses the engine's signer as the coinbase.
+func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header, signer types.Signer) (bool, error) {
 	if tx.Type() != types.LegacyTxType {
 		return false, nil
 	}
@@ -130,20 +131,15 @@ func IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, err
 	if tx.GasPrice().Sign() != 0 {
 		return false, nil
 	}
-	sender, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	sender, err := types.Sender(signer, tx)
 	if err != nil {
 		return false, err
 	}
-	return sender == header.Coinbase, nil
-}
-
-// IsSystemTransaction checks if the transaction is a system transaction.
-// If the block coinbase is not set, use the engine's signer as the coinbase.
-func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	if header.Coinbase == (common.Address{}) {
-		return IsSystemTransaction(tx, &types.Header{Coinbase: e.signer})
+	coinbase := header.Coinbase
+	if coinbase == (common.Address{}) {
+		coinbase = e.signer
 	}
-	return IsSystemTransaction(tx, header)
+	return sender == coinbase, nil
 }
 
 func (e *Engine) IsSystemContract(to *common.Address) bool {
@@ -306,7 +302,7 @@ func (e *Engine) verifyProposalTransactions(chain consensus.ChainHeaderReader, b
 
 	var seenSystemTx bool
 	for i, tx := range block.Transactions() {
-		isSystemTx, err := e.IsSystemTransaction(tx, header)
+		isSystemTx, err := e.IsSystemTransaction(tx, header, signer)
 		if err != nil {
 			return fmt.Errorf("invalid system transaction %d [%v]: %w", i, tx.Hash(), err)
 		}
@@ -955,7 +951,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		// ##
 
 		// ##CROSS: validator reward
-		if err := e.distributeRewards(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+		if err := e.distributeRewards(chain, header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 			log.Error("Finalize: failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", header.Coinbase, "usedGas", *usedGas)
 			return err
 		}
@@ -1040,7 +1036,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		// ##
 
 		// ##CROSS: validator reward
-		if err := e.distributeRewards(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+		if err := e.distributeRewards(chain, header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 			log.Error("FinalizeAndAssemble: failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", e.signer, "usedGas", header.GasUsed)
 			return nil, nil, err
 		}

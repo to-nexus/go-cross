@@ -166,7 +166,7 @@ func (c *Core) sendEvent(ev interface{}) {
 }
 
 func (c *Core) handleEncodedMsg(code uint64, data []byte) error {
-	logger := c.logger.New("code", code, "data", data)
+	logger := c.logger.New("code", code, "dataSize", len(data))
 
 	if _, ok := protocols.MessageCodes()[code]; !ok {
 		logger.Error("Istanbul: invalid message event code")

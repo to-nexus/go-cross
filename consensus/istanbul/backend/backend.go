@@ -65,25 +65,20 @@ type Backend struct {
 	currentBlock func() *types.Block
 	hasBadBlock  func(db ethdb.Reader, hash common.Hash) bool
 
-	// the channels for istanbul engine notifications
-	commitCh          chan *types.Block
+	commitCh          chan *types.Block // The channels for istanbul engine notifications
 	proposedBlockHash common.Hash
-	sealMu            sync.Mutex
+	sealMu            sync.Mutex // Protects proposedBlockHash field
 	coreStarted       bool
-	coreMu            sync.RWMutex
+	coreMu            sync.RWMutex // Protects coreStarted field
 
-	// Current list of candidates we are pushing
-	candidates map[common.Address]bool
-	// Protects the signer fields
-	candidatesLock sync.RWMutex
-	// Snapshots for recent block to speed up reorgs
-	recents *lru.Cache[common.Hash, *Snapshot]
+	candidates     map[common.Address]bool            // Current list of candidates we are pushing
+	candidatesLock sync.RWMutex                       // Protects candidates field
+	recents        *lru.Cache[common.Hash, *Snapshot] // Snapshots for recent block to speed up reorgs
 
-	// event subscription for ChainHeadEvent event
-	broadcaster consensus.IstanbulBroadcaster
+	broadcaster consensus.IstanbulBroadcaster // Event subscription for ChainHeadEvent event
 
-	recentMessages *lru.Cache[common.Address, *lru.Cache[common.Hash, bool]] // the cache of peer's messages
-	knownMessages  *lru.Cache[common.Hash, bool]                             // the cache of self messages
+	recentMessages *lru.Cache[common.Address, *lru.Cache[common.Hash, bool]] // The cache of peer's messages
+	knownMessages  *lru.Cache[common.Hash, bool]                             // The cache of self messages
 
 	blsSecretKey bls.SecretKey // ##CROSS: bls seal
 }
