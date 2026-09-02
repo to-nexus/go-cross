@@ -176,7 +176,8 @@ func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, head
 		if chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
 			return systemTxsGasBreakpoint
 		}
-		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// Parent block also should be PoSA to check council period rollover
+		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
 			if e.cfg.OnNewCouncilPeriod(parent.Time, header.Time) {
 				return systemTxsGasNewPeriod
 			}
@@ -827,7 +828,9 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 	// Reading the contract at parent here would return the pre-rollover council.
 	// We pre-compute the post-rollover council manually to match what updateValidatorSet will produce in Finalize.
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-	if parent != nil && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+	if parent != nil && chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) &&
+		// Parent block also should be PoSA to check council period rollover
+		e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 		validatorList, signerList, err = e.computeNextCouncil(header.Number.Uint64() - 1)
 		log.Warn("New epoch + new council period: computing next council manually",
 			"number", header.Number.Uint64(),
@@ -962,7 +965,7 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		// ##
 
 		// At the beginning of a new council period
-		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 				mitigateSystemTxSkippedMeter.Mark(1)
@@ -1047,7 +1050,7 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		// ##
 
 		// At the beginning of a new council period
-		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 				mitigateSystemTxSkippedMeter.Mark(1)

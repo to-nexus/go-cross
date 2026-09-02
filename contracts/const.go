@@ -28,6 +28,10 @@ var (
 	BridgeAddr     = common.HexToAddress("0xb81d6e000000000000000000000000000000C0de")
 	BridgeImplAddr = common.HexToAddress("0xB81D6e000000000000000000000000000000AAaA")
 	Multicall3Addr = common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11")
+	// ##CROSS: predeploys singleton factory
+	SingletonFactoryAddr  = common.HexToAddress("0x4e59b44847b379578588920cA78FbF26c0B4956C")
+	SingletonFactory2Addr = common.HexToAddress("0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7")
+	// ##
 
 	// breakpoint
 	// ##CROSS: consensus system contract

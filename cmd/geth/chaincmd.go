@@ -266,9 +266,9 @@ func initGenesis(ctx *cli.Context) error {
 		genesis = core.DefaultCrossGenesisBlock()
 	case "zonezero":
 		genesis = core.DefaultZoneZeroGenesisBlock()
-	case "crossdev3":
+	case "crossdev3", "onedev3":
 		genesis = core.DefaultCrossDev3GenesisBlock()
-	case "crossdev":
+	case "crossdev", "onedev":
 		genesis = core.DefaultCrossDevGenesisBlock()
 	// ##
 	default:
