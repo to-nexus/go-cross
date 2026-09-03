@@ -11,8 +11,8 @@ import (
 var (
 	CrossGenesisHash     = common.HexToHash("0x675a5d7c97cc1be3bf061635d31206966ef7ae0205a45890a4bab931456a8348")
 	ZoneZeroGenesisHash  = common.HexToHash("0xcd8ce15999597691045f5f9675debfe4e0a7e5dca94b866e01df6b5b9d4263aa")
-	CrossDev3GenesisHash = common.HexToHash("0xda75bb3ff72575b0fdc746a7fd23ebb733c8ce83cc6a6710470d1cf5528eab3f")
-	CrossDevGenesisHash  = common.HexToHash("0x43edb9ebbb2f946b92268c6934a2f89e4f2dc4249223f3ed61a320cb8dcc1b19")
+	CrossDev3GenesisHash = common.HexToHash("0x2f592dc7775e57fd89fb0664453f30598414d273956a5128607a30e7d73b979a")
+	CrossDevGenesisHash  = common.HexToHash("0xb1f6dbbd51f772ca57ded9ad49627396b877914918d3344139170c655e738d7e")
 
 	FoundationCross     = common.HexToAddress("0xb9e345ba27826d71eb89a015852c752e341010ec")
 	FoundationZoneZero  = common.HexToAddress("0x06Dc63E28d18172A689213071884c66c5281b493")
@@ -254,18 +254,18 @@ var (
 	CrossDev3PoSAConfig = &PoSAConfig{
 		CouncilPeriod:        86400,
 		ValidatorEpochLength: 300,
-		DelegationPool:       common.HexToAddress("0x000000af71b874fa018c65A89C9cBe16C5831253"),
+		DelegationPool:       common.HexToAddress("0x000000057d121080B6925657e9C6df24D4F8c4Bd"),
 		Admin:                common.HexToAddress("0x901eb0353ca4E815e94EeF2a66F12325ea3Ac859"),
-		RewardStartBlock:     big.NewInt(6690300),
+		RewardStartBlock:     big.NewInt(1),
 		Validators:           CrossDev3Validators,
 	}
 
 	CrossDevPoSAConfig = &PoSAConfig{
 		CouncilPeriod:        86400,
 		ValidatorEpochLength: 300,
-		DelegationPool:       common.HexToAddress("0x000000af71b874fa018c65A89C9cBe16C5831253"),
+		DelegationPool:       common.HexToAddress("0x000000057d121080B6925657e9C6df24D4F8c4Bd"),
 		Admin:                common.HexToAddress("0x901eb0353ca4E815e94EeF2a66F12325ea3Ac859"),
-		RewardStartBlock:     big.NewInt(6690300),
+		RewardStartBlock:     big.NewInt(1),
 		Validators:           CrossDevValidators,
 	}
 )

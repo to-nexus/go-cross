@@ -15,4 +15,6 @@ var (
 	Multicall3Code string
 	//go:embed erc1967_proxy
 	ERC1967ProxyCode string
+	//go:embed singleton_factory
+	SingletonFactoryCode string
 )
