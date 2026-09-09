@@ -175,7 +175,7 @@ var (
 			RequestTimeoutSeconds:    5,
 			ProposerPolicy:           0,
 			Validators:               CrossDev3GenesisValidators,
-			MaxRequestTimeoutSeconds: nil,
+			MaxRequestTimeoutSeconds: newUint64(60),
 			Beneficiary:              &BeneficiaryCrossDev3,
 			ElasticityMultiplier:     newUint64(3),
 			BaseFeeChangeDenominator: newUint64(8),
