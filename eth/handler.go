@@ -419,6 +419,16 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 			return err
 		}
 	}
+
+	// ##CROSS: peer permission
+	// Notify the syncer about the new peer. Otherwise the only thing that wakes the chain
+	// syncer is an incoming full block broadcast, so a node that fell behind never starts
+	// downloading even while connected. When the lagging node's vote is required for quorum
+	// (with 2 validators, a single one suffices), block production halts as well, leaving no
+	// broadcast to wake it — both sides then wait on each other indefinitely.
+	h.chainSync.handlePeerEvent()
+	// ##
+
 	// Propagate existing transactions. new transactions appearing
 	// after this will be sent via broadcasts.
 	h.syncTransactions(peer)
