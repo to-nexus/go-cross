@@ -222,7 +222,7 @@ func TestValidateMessageJustification(t *testing.T) {
 // ##
 
 func createRoundChangeMessage(from common.Address, round int64, preparedRound int64, preparedBlock istanbul.Proposal) *protocols.SignedRoundChangePayload {
-	m := protocols.NewRoundChange(big.NewInt(1), big.NewInt(1), big.NewInt(preparedRound), preparedBlock)
+	m := protocols.NewRoundChange(big.NewInt(1), big.NewInt(round), big.NewInt(preparedRound), preparedBlock)
 	m.SetSource(from)
 	return &m.SignedRoundChangePayload
 }
