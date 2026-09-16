@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 )
 
@@ -61,6 +62,7 @@ type Backend struct {
 
 	db ethdb.Database
 
+	chainConfig  *params.ChainConfig
 	chain        consensus.ChainHeaderReader
 	currentBlock func() *types.Block
 	hasBadBlock  func(db ethdb.Reader, hash common.Hash) bool
@@ -84,19 +86,20 @@ type Backend struct {
 }
 
 // New creates an Ethereum backend for Istanbul core engine.
-func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, blsSecretKey bls.SecretKey, db ethdb.Database, contractBackend bind.ContractBackend) *Backend {
+func New(config *params.ChainConfig, privateKey *ecdsa.PrivateKey, blsSecretKey bls.SecretKey, db ethdb.Database, contractBackend bind.ContractBackend) *Backend {
 	// Allocate the snapshot caches and create the engine
 	recents := lru.NewCache[common.Hash, *Snapshot](inmemorySnapshots)
 	recentMessages := lru.NewCache[common.Address, *lru.Cache[common.Hash, bool]](inmemoryPeers)
 	knownMessages := lru.NewCache[common.Hash, bool](inmemoryMessages)
 
 	sb := &Backend{
-		config:           config,
+		config:           istanbul.NewConfig(config),
 		istanbulEventMux: new(event.TypeMux),
 		privateKey:       privateKey,
 		address:          crypto.PubkeyToAddress(privateKey.PublicKey),
 		logger:           log.New(),
 		db:               db,
+		chainConfig:      config,
 		commitCh:         make(chan *types.Block, 1),
 		recents:          recents,
 		candidates:       make(map[common.Address]bool),
@@ -500,4 +503,9 @@ func (sb *Backend) IsValidatorAt(chain consensus.ChainHeaderReader, header *type
 		}
 	}
 	return false, nil
+}
+
+// SetChainConfig updates the chain config used for signer selection.
+func (sb *Backend) SetChainConfig(config *params.ChainConfig) {
+	sb.chainConfig = config
 }

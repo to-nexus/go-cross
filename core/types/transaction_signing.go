@@ -40,25 +40,30 @@ type sigCache struct {
 // MakeSigner returns a Signer based on the given chain config and block number.
 func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint64) Signer {
 	var signer Signer
-	switch {
-	case config.IsBreakpoint(blockNumber, blockTime): // ##CROSS: fork breakpoint
-		signer = NewBreakpointSigner(config.ChainID)
-	case config.IsPrague(blockNumber, blockTime):
-		signer = NewPragueSigner(config.ChainID)
-	case config.IsCancun(blockNumber, blockTime):
-		signer = NewCancunSigner(config.ChainID)
-	case config.IsAdventure(blockNumber, blockTime): // ##CROSS: fork adventure
-		signer = NewAdventureSigner(config.ChainID)
-	case config.IsLondon(blockNumber):
-		signer = NewLondonSigner(config.ChainID)
-	case config.IsBerlin(blockNumber):
-		signer = NewEIP2930Signer(config.ChainID)
-	case config.IsEIP155(blockNumber):
-		signer = NewEIP155Signer(config.ChainID)
-	case config.IsHomestead(blockNumber):
-		signer = HomesteadSigner{}
-	default:
-		signer = FrontierSigner{}
+	if config.ChainID != nil && config.ChainID.Sign() > 0 {
+		switch {
+		case config.IsBreakpoint(blockNumber, blockTime): // ##CROSS: fork breakpoint
+			signer = NewBreakpointSigner(config.ChainID)
+		case config.IsPrague(blockNumber, blockTime):
+			signer = NewPragueSigner(config.ChainID)
+		case config.IsCancun(blockNumber, blockTime):
+			signer = NewCancunSigner(config.ChainID)
+		case config.IsAdventure(blockNumber, blockTime): // ##CROSS: fork adventure
+			signer = NewAdventureSigner(config.ChainID)
+		case config.IsLondon(blockNumber):
+			signer = NewLondonSigner(config.ChainID)
+		case config.IsBerlin(blockNumber):
+			signer = NewEIP2930Signer(config.ChainID)
+		case config.IsEIP155(blockNumber):
+			signer = NewEIP155Signer(config.ChainID)
+		}
+	}
+	if signer == nil {
+		if config.IsHomestead(blockNumber) {
+			signer = HomesteadSigner{}
+		} else {
+			signer = FrontierSigner{}
+		}
 	}
 	return signer
 }

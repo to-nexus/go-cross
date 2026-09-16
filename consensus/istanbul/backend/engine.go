@@ -51,7 +51,7 @@ var _ consensus.IstanbulEngine = (*Backend)(nil)
 // IsSystemTransaction checks if the transaction is a system transaction,
 // which is a legacy transaction to a system contract with gas price 0 and sender is the block proposer.
 func (sb *Backend) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	signer := types.MakeSigner(sb.chain.Config(), header.Number, header.Time)
+	signer := types.MakeSigner(sb.chainConfig, header.Number, header.Time)
 	return sb.Engine().IsSystemTransaction(tx, header, signer)
 }
 
