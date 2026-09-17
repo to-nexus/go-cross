@@ -331,8 +331,7 @@ func TestVoting(t *testing.T) {
 		}
 
 		genesis := testutils.Genesis(validators)
-		config := new(istanbul.Config)
-		*config = *istanbul.DefaultConfig
+		config := copyConfig(istanbul.DefaultConfig)
 		if tt.epoch != 0 {
 			config.Epoch = tt.epoch
 		}
@@ -550,7 +549,7 @@ func TestSaveAndLoad(t *testing.T) {
 		require.NoError(t, snap.store(db))
 
 		// Stored JSON does not contain "signers" field.
-		blob, err := db.Get(append([]byte(dbKeySnapshotPrefix), snap.Hash[:]...))
+		blob, err := db.Get(append(dbKeySnapshotPrefix, snap.Hash[:]...))
 		require.NoError(t, err)
 		assert.NotContains(t, string(blob), `"signers"`)
 
