@@ -17,9 +17,13 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -47,6 +52,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/urfave/cli/v2"
 )
 
@@ -85,10 +91,27 @@ if one is set.  Otherwise it prints the genesis from the datadir.`,
 		Action:    makeBreakpointGenesis,
 		Name:      "make-breakpoint-genesis",
 		Usage:     "Builds a custom genesis with Breakpoint active from block one",
-		ArgsUsage: "<inputGenesis> <outputGenesis>",
+		ArgsUsage: "[<inputGenesis> <outputGenesis>]",
+		Flags: []cli.Flag{
+			&cli.UintFlag{
+				Name:  "validators",
+				Usage: "Number of validators to generate without input arguments",
+				Value: 3,
+			},
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "Print generated keys as JSON",
+			},
+			&cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "Overwrite the output file if it already exists",
+			},
+		},
 		Description: `
 The make-breakpoint-genesis command installs and initializes the Breakpoint
-contracts using the Istanbul PoSA configuration in the input genesis.`,
+contracts using the Istanbul PoSA configuration in the input genesis. Without
+arguments, it generates genesis.json and prints all keys.`,
 	}
 	// ##
 	importCommand = &cli.Command{
@@ -259,25 +282,60 @@ var (
 )
 
 // ##CROSS: fork breakpoint
+type (
+	breakpointGenesisKeys struct {
+		admin      *ecdsa.PrivateKey
+		validators []breakpointValidatorKeys
+	}
+	breakpointValidatorKeys struct {
+		validator *ecdsa.PrivateKey
+		operator  *ecdsa.PrivateKey
+		signer    bls.SecretKey
+	}
+)
+
 func makeBreakpointGenesis(ctx *cli.Context) error {
-	if ctx.Args().Len() != 2 {
+	var (
+		genesis    *core.Genesis
+		keys       *breakpointGenesisKeys
+		outputPath string
+	)
+	switch ctx.Args().Len() {
+	case 0:
+		var err error
+		genesis, keys, err = makeDefaultBreakpointGenesis(ctx.Uint("validators"))
+		if err != nil {
+			return err
+		}
+		outputPath = "genesis.json"
+	case 2:
+		if ctx.IsSet("validators") || ctx.Bool("json") {
+			return errors.New("--validators and --json are only available without input arguments")
+		}
+		inputPath := ctx.Args().Get(0)
+		outputPath = ctx.Args().Get(1)
+		input, err := os.Open(inputPath)
+		if err != nil {
+			return fmt.Errorf("open input genesis: %w", err)
+		}
+		defer input.Close()
+
+		genesis = new(core.Genesis)
+		if err := json.NewDecoder(input).Decode(genesis); err != nil {
+			return fmt.Errorf("decode input genesis: %w", err)
+		}
+		if err := core.MakeBreakpointGenesis(genesis); err != nil {
+			return fmt.Errorf("build Breakpoint genesis: %w", err)
+		}
+	default:
 		return fmt.Errorf("usage: %s", ctx.Command.ArgsUsage)
 	}
-	inputPath, outputPath := ctx.Args().Get(0), ctx.Args().Get(1)
-	input, err := os.Open(inputPath)
-	if err != nil {
-		return fmt.Errorf("open input genesis: %w", err)
-	}
-	defer input.Close()
 
-	genesis := new(core.Genesis)
-	if err := json.NewDecoder(input).Decode(genesis); err != nil {
-		return fmt.Errorf("decode input genesis: %w", err)
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if ctx.Bool("force") {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	}
-	if err := core.MakeBreakpointGenesis(genesis); err != nil {
-		return fmt.Errorf("build Breakpoint genesis: %w", err)
-	}
-	output, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	output, err := os.OpenFile(outputPath, flags, 0o644)
 	if err != nil {
 		return fmt.Errorf("create output genesis: %w", err)
 	}
@@ -286,6 +344,117 @@ func makeBreakpointGenesis(ctx *cli.Context) error {
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(genesis); err != nil {
 		return fmt.Errorf("encode output genesis: %w", err)
+	}
+	if keys != nil {
+		if err := printBreakpointGenesisKeys(os.Stdout, keys, ctx.Bool("json")); err != nil {
+			return fmt.Errorf("print generated keys: %w", err)
+		}
+	}
+	return nil
+}
+
+func makeDefaultBreakpointGenesis(validatorCount uint) (*core.Genesis, *breakpointGenesisKeys, error) {
+	if validatorCount == 0 {
+		return nil, nil, errors.New("validator count must be greater than zero")
+	}
+	admin, err := crypto.GenerateKey()
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate PoSA admin key: %w", err)
+	}
+	keys := &breakpointGenesisKeys{admin: admin, validators: make([]breakpointValidatorKeys, validatorCount)}
+	validators := make([]params.PoSAValidator, len(keys.validators))
+	validatorAddrs := make([]common.Address, len(keys.validators))
+	for i := range keys.validators {
+		validator, err := crypto.GenerateKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate validator %d key: %w", i+1, err)
+		}
+		operator, err := crypto.GenerateKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate operator %d key: %w", i+1, err)
+		}
+		signer, err := bls.RandKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate signer %d key: %w", i+1, err)
+		}
+		keys.validators[i] = breakpointValidatorKeys{validator: validator, operator: operator, signer: signer}
+		validatorAddrs[i] = crypto.PubkeyToAddress(validator.PublicKey)
+		validators[i] = params.PoSAValidator{
+			ID:        fmt.Sprintf("validator%d", i+1),
+			Operator:  crypto.PubkeyToAddress(operator.PublicKey),
+			Validator: validatorAddrs[i],
+			Signer:    signer.PublicKey().Marshal(),
+		}
+	}
+
+	config := *params.CrossDev3ChainConfig
+	istanbulConfig := *config.Istanbul
+	posaConfig := *istanbulConfig.PoSA
+	config.Istanbul = &istanbulConfig
+	istanbulConfig.PoSA = &posaConfig
+	istanbulConfig.Validators = validatorAddrs
+	posaConfig.Admin = crypto.PubkeyToAddress(admin.PublicKey)
+	posaConfig.Validators = validators
+
+	adminBalance := new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(params.Ether))
+	genesis := &core.Genesis{
+		Config:     &config,
+		Nonce:      0x90aa,
+		Timestamp:  0x5f1663fc,
+		ExtraData:  hexutil.MustDecode("0xc680c0c080c080"),
+		GasLimit:   105000000,
+		Difficulty: istanbul.DefaultDifficulty,
+		Mixhash:    types.IstanbulDigest,
+		Alloc: types.GenesisAlloc{
+			posaConfig.Admin: {Balance: adminBalance},
+		},
+	}
+	if err := core.MakeBreakpointGenesis(genesis); err != nil {
+		return nil, nil, fmt.Errorf("build default Breakpoint genesis: %w", err)
+	}
+	return genesis, keys, nil
+}
+
+func printBreakpointGenesisKeys(w io.Writer, keys *breakpointGenesisKeys, jsonOutput bool) error {
+	if jsonOutput {
+		validators := make([]map[string]any, len(keys.validators))
+		for i, validatorKeys := range keys.validators {
+			validators[i] = map[string]any{
+				"id": fmt.Sprintf("validator%d", i+1),
+				"validator": map[string]string{
+					"address":    crypto.PubkeyToAddress(validatorKeys.validator.PublicKey).Hex(),
+					"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(validatorKeys.validator)),
+				},
+				"operator": map[string]string{
+					"address":    crypto.PubkeyToAddress(validatorKeys.operator.PublicKey).Hex(),
+					"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(validatorKeys.operator)),
+				},
+				"signer": map[string]string{
+					"publicKey": "0x" + hex.EncodeToString(validatorKeys.signer.PublicKey().Marshal()),
+					"secretKey": "0x" + hex.EncodeToString(validatorKeys.signer.Marshal()),
+				},
+			}
+		}
+		output := map[string]any{
+			"admin": map[string]string{
+				"address":    crypto.PubkeyToAddress(keys.admin.PublicKey).Hex(),
+				"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(keys.admin)),
+			},
+			"validators": validators,
+		}
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(output)
+	}
+	fmt.Fprintf(w, "PoSA admin\n  address: %s\n  private key: 0x%s\n", crypto.PubkeyToAddress(keys.admin.PublicKey), hex.EncodeToString(crypto.FromECDSA(keys.admin)))
+	for i, validatorKeys := range keys.validators {
+		fmt.Fprintf(w, "Validator %d\n", i+1)
+		fmt.Fprintf(w, "  validator address: %s\n", crypto.PubkeyToAddress(validatorKeys.validator.PublicKey))
+		fmt.Fprintf(w, "  validator private key: 0x%s\n", hex.EncodeToString(crypto.FromECDSA(validatorKeys.validator)))
+		fmt.Fprintf(w, "  operator address: %s\n", crypto.PubkeyToAddress(validatorKeys.operator.PublicKey))
+		fmt.Fprintf(w, "  operator private key: 0x%s\n", hex.EncodeToString(crypto.FromECDSA(validatorKeys.operator)))
+		fmt.Fprintf(w, "  signer public key: 0x%s\n", hex.EncodeToString(validatorKeys.signer.PublicKey().Marshal()))
+		fmt.Fprintf(w, "  signer secret key: 0x%s\n", hex.EncodeToString(validatorKeys.signer.Marshal()))
 	}
 	return nil
 }
