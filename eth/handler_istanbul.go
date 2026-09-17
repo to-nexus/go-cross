@@ -65,8 +65,16 @@ func newConsensusLimiter() *consensusLimiter {
 	}
 }
 
-func (l *consensusLimiter) allow(now time.Time, size uint32) bool {
-	return l.messages.AllowN(now, 1) && l.bytes.AllowN(now, int(size))
+func (l *consensusLimiter) reserve(now time.Time, size uint32) (time.Duration, bool) {
+	messages := l.messages.ReserveN(now, 1)
+	bytes := l.bytes.ReserveN(now, int(size))
+	if !messages.OK() || !bytes.OK() {
+		messages.CancelAt(now)
+		bytes.CancelAt(now)
+		return 0, false
+	}
+	delay := max(messages.DelayFrom(now), bytes.DelayFrom(now))
+	return delay, true
 }
 
 // ##
@@ -178,9 +186,11 @@ func (h *istanbulHandler) handleConsensus(p *eth.Peer, protoRW p2p.MsgReadWriter
 	}
 	defer msg.Discard()
 	// ##CROSS: istanbul rate limit
-	if !limiter.allow(time.Now(), msg.Size) {
+	delay, ok := limiter.reserve(time.Now(), msg.Size)
+	if !ok {
 		return errConsensusRateLimit
 	}
+	time.Sleep(delay) // Backpressure bursts without dropping the peer.
 	// ##
 
 	// See if the consensus engine protocol can handle this message, e.g. istanbul will check for message is
