@@ -80,6 +80,17 @@ It expects the genesis file as argument.`,
 The dumpgenesis command prints the genesis configuration of the network preset
 if one is set.  Otherwise it prints the genesis from the datadir.`,
 	}
+	// ##CROSS: fork breakpoint
+	makeBreakpointGenesisCommand = &cli.Command{
+		Action:    makeBreakpointGenesis,
+		Name:      "make-breakpoint-genesis",
+		Usage:     "Builds a custom genesis with Breakpoint active from block one",
+		ArgsUsage: "<inputGenesis> <outputGenesis>",
+		Description: `
+The make-breakpoint-genesis command installs and initializes the Breakpoint
+contracts using the Istanbul PoSA configuration in the input genesis.`,
+	}
+	// ##
 	importCommand = &cli.Command{
 		Action:    importChain,
 		Name:      "import",
@@ -247,6 +258,40 @@ var (
 	}
 )
 
+// ##CROSS: fork breakpoint
+func makeBreakpointGenesis(ctx *cli.Context) error {
+	if ctx.Args().Len() != 2 {
+		return fmt.Errorf("usage: %s", ctx.Command.ArgsUsage)
+	}
+	inputPath, outputPath := ctx.Args().Get(0), ctx.Args().Get(1)
+	input, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("open input genesis: %w", err)
+	}
+	defer input.Close()
+
+	genesis := new(core.Genesis)
+	if err := json.NewDecoder(input).Decode(genesis); err != nil {
+		return fmt.Errorf("decode input genesis: %w", err)
+	}
+	if err := core.MakeBreakpointGenesis(genesis); err != nil {
+		return fmt.Errorf("build Breakpoint genesis: %w", err)
+	}
+	output, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("create output genesis: %w", err)
+	}
+	defer output.Close()
+	encoder := json.NewEncoder(output)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(genesis); err != nil {
+		return fmt.Errorf("encode output genesis: %w", err)
+	}
+	return nil
+}
+
+// ##
+
 // initGenesis will initialise the given JSON format genesis file and writes it as
 // the zero'd block (i.e. genesis) or will fail hard if it can't succeed.
 func initGenesis(ctx *cli.Context) error {
@@ -266,9 +311,9 @@ func initGenesis(ctx *cli.Context) error {
 		genesis = core.DefaultCrossGenesisBlock()
 	case "zonezero":
 		genesis = core.DefaultZoneZeroGenesisBlock()
-	case "crossdev3":
+	case "crossdev3", "onedev3":
 		genesis = core.DefaultCrossDev3GenesisBlock()
-	case "crossdev":
+	case "crossdev", "onedev":
 		genesis = core.DefaultCrossDevGenesisBlock()
 	// ##
 	default:

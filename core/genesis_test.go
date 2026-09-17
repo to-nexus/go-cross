@@ -26,12 +26,16 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	contractpredeploy "github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSetupGenesis(t *testing.T) {
@@ -253,6 +257,73 @@ func TestGenesisCommit(t *testing.T) {
 	}
 	// ##
 }
+
+// ##CROSS: fork breakpoint
+func TestValidateBreakpointAlloc(t *testing.T) {
+	config := *params.CrossDevChainConfig
+	istanbul := *config.Istanbul
+	posa := *istanbul.PoSA
+	config.Istanbul = &istanbul
+	config.Istanbul.PoSA = &posa
+	genesis := &Genesis{Config: &config, Alloc: make(types.GenesisAlloc)}
+
+	t.Run("missing pool code", func(t *testing.T) {
+		require.ErrorContains(t, genesis.validateBreakpointAlloc(), "no delegation pool code")
+	})
+
+	t.Run("missing system contracts", func(t *testing.T) {
+		genesis.Alloc[posa.DelegationPool] = types.Account{Balance: new(big.Int), Code: []byte{1}}
+		require.ErrorContains(t, genesis.validateBreakpointAlloc(), "no system contract code")
+	})
+
+	t.Run("required code present", func(t *testing.T) {
+		for _, address := range []common.Address{contracts.ValidatorSetAddr, contracts.StakeHubAddr, contracts.RewardHubAddr, contracts.ValidatorSlashAddr} {
+			genesis.Alloc[address] = types.Account{Balance: new(big.Int), Code: []byte{1}}
+		}
+		require.NoError(t, genesis.validateBreakpointAlloc())
+	})
+}
+
+func TestBreakpointDevGenesisAlloc(t *testing.T) {
+	crossReserve := common.HexToAddress("0x0000000bAeD5f581DE982F028386eE6d6B11cd83")
+	addresses := []common.Address{
+		common.HexToAddress("0x000000057d121080B6925657e9C6df24D4F8c4Bd"),
+		crossReserve,
+		common.HexToAddress("0x0000000bfAB2fe0C0A64A9C8BED46D7520331689"),
+		contracts.ValidatorSetAddr,
+		contracts.StakeHubAddr,
+		contracts.RewardHubAddr,
+		contracts.ValidatorSlashAddr,
+	}
+	implementationCode := map[common.Address]string{
+		contracts.ValidatorSetImplAddr:   breakpoint.ValidatorSetMetaData.BinRuntime,
+		contracts.StakeHubImplAddr:       breakpoint.StakeHubMetaData.BinRuntime,
+		contracts.RewardHubImplAddr:      breakpoint.RewardHubMetaData.BinRuntime,
+		contracts.ValidatorSlashImplAddr: breakpoint.ValidatorSlashMetaData.BinRuntime,
+	}
+	crossReserveBalance := new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(params.Ether))
+	for name, genesis := range map[string]*Genesis{
+		"dev":  DefaultCrossDevGenesisBlock(),
+		"dev3": DefaultCrossDev3GenesisBlock(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Zero(t, *genesis.Config.BreakpointTime)
+			for _, address := range addresses {
+				require.NotEmpty(t, genesis.Alloc[address].Code, address.Hex())
+			}
+			for _, address := range []common.Address{contracts.ValidatorSetAddr, contracts.StakeHubAddr, contracts.RewardHubAddr, contracts.ValidatorSlashAddr} {
+				require.Equal(t, common.Hex2Bytes(contractpredeploy.ERC1967ProxyCode), genesis.Alloc[address].Code, address.Hex())
+			}
+			for address, code := range implementationCode {
+				require.Equal(t, common.FromHex(code), genesis.Alloc[address].Code, address.Hex())
+			}
+			require.Equal(t, common.FromHex(breakpoint.CrossExCode), genesis.Alloc[contracts.CrossExAddr].Code)
+			require.Equal(t, crossReserveBalance, genesis.Alloc[crossReserve].Balance)
+		})
+	}
+}
+
+// ##
 
 func TestReadWriteGenesisAlloc(t *testing.T) {
 	var (
