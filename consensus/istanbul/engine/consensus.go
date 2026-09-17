@@ -61,7 +61,9 @@ func (e *Engine) verifyValidators(chain consensus.ChainHeaderReader, header *typ
 	// We pre-compute the post-rollover council manually to match what updateValidatorSet will produce in Finalize.
 	if chain != nil {
 		parent := chain.GetHeaderByHash(header.ParentHash)
-		if parent != nil && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+		// Parent block also should be PoSA to check council period rollover
+		if parent != nil && chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) &&
+			e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			validatorList, signerList, err = e.computeNextCouncil(header.Number.Uint64() - 1)
 			log.Warn("New epoch + new council period: computing next council manually",
 				"number", header.Number.Uint64(),
