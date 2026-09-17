@@ -226,7 +226,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if eth.APIBackend.allowUnprotectedTxs {
 		log.Info("Unprotected transactions allowed")
 	}
-	eth.engine, err = ethconfig.CreateConsensusEngine(chainConfig, &config.Istanbul, stack, chainDb)
+	eth.engine, err = ethconfig.CreateConsensusEngine(chainConfig, stack, chainDb)
 	if err != nil {
 		return nil, err
 	}
@@ -307,6 +307,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	ethconfig.SetConsensusEngineChainConfig(eth.engine, eth.blockchain.Config())
 
 	// Initialize filtermaps log index.
 	fmConfig := filtermaps.Config{

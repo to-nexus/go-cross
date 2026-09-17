@@ -40,8 +40,28 @@ import (
 func newBlockchainFromConfig(genesis *core.Genesis, nodeKeys []*ecdsa.PrivateKey, cfg *istanbul.Config) (*core.BlockChain, *Backend) {
 	memDB := rawdb.NewMemoryDatabase()
 
+	config := *params.TestChainConfig
+	if cfg != nil {
+		config.Istanbul = &params.IstanbulConfig{
+			EpochLength:              cfg.Epoch,
+			BlockPeriodSeconds:       cfg.BlockPeriod,
+			EmptyBlockPeriodSeconds:  cfg.EmptyBlockPeriod,
+			RequestTimeoutSeconds:    cfg.RequestTimeout / 1000,
+			Validators:               cfg.Validators,
+			MaxRequestTimeoutSeconds: &cfg.MaxRequestTimeoutSeconds,
+			PoSA: &params.PoSAConfig{
+				CouncilPeriod:        cfg.CouncilPeriod,
+				ValidatorEpochLength: cfg.ValidatorEpochLength,
+			},
+		}
+		if cfg.ProposerPolicy != nil {
+			config.Istanbul.ProposerPolicy = uint64(cfg.ProposerPolicy.Id)
+		}
+		config.Transitions = cfg.Transitions
+	}
+
 	// Use the first key as private key
-	backend := New(cfg, nodeKeys[0], nil, memDB, nil)
+	backend := New(&config, nodeKeys[0], nil, memDB, nil)
 
 	genesis.MustCommit(memDB, triedb.NewDatabase(memDB, triedb.HashDefaults))
 

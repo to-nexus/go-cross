@@ -54,6 +54,7 @@ func TestIsSystemTransaction(t *testing.T) {
 	to := contracts.ValidatorSetAddr
 	header := &types.Header{Coinbase: crypto.PubkeyToAddress(key.PublicKey)}
 	signer := types.LatestSignerForChainID(params.TestChainConfig.ChainID)
+	engine := &Engine{}
 
 	t.Run("legacy tx", func(t *testing.T) {
 		legacyTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
@@ -62,7 +63,7 @@ func TestIsSystemTransaction(t *testing.T) {
 			Gas:      21000,
 			To:       &to,
 		})
-		isSystemTx, err := IsSystemTransaction(legacyTx, header)
+		isSystemTx, err := engine.IsSystemTransaction(legacyTx, header, signer)
 		require.NoError(t, err)
 		assert.True(t, isSystemTx)
 	})
@@ -76,7 +77,7 @@ func TestIsSystemTransaction(t *testing.T) {
 			Gas:       21000,
 			To:        &to,
 		})
-		isSystemTx, err := IsSystemTransaction(dynamicFeeTx, header)
+		isSystemTx, err := engine.IsSystemTransaction(dynamicFeeTx, header, signer)
 		require.NoError(t, err)
 		assert.False(t, isSystemTx)
 	})
@@ -126,7 +127,7 @@ func TestApplySystemTransaction(t *testing.T) {
 		Value:    value,
 		Data:     data,
 	})
-	isSystemTx, err := IsSystemTransaction(tx, header)
+	isSystemTx, err := engine.IsSystemTransaction(tx, header, signer)
 	require.NoError(t, err)
 	require.True(t, isSystemTx)
 

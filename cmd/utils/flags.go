@@ -2524,7 +2524,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	if err != nil {
 		Fatalf("%v", err)
 	}
-	engine, err := ethconfig.CreateConsensusEngine(config, nil, stack, chainDb)
+	engine, err := ethconfig.CreateConsensusEngine(config, stack, chainDb)
 	if err != nil {
 		Fatalf("%v", err)
 	}
@@ -2598,6 +2598,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	if err != nil {
 		Fatalf("Can't create BlockChain: %v", err)
 	}
+	ethconfig.SetConsensusEngineChainConfig(engine, chain.Config())
 
 	return chain, chainDb
 }

@@ -1605,8 +1605,12 @@ func (pool *LegacyPool) demoteUnexecutables() {
 		for _, tx := range list.Flatten() {
 			if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
 				if tx.FeePayer() == nil || pool.currentState.GetBalance(*tx.FeePayer()).ToBig().Cmp(tx.FeePayerCost()) < 0 {
-					list.Remove(tx)
+					removed, cascaded := list.Remove(tx)
+					if !removed {
+						continue
+					}
 					drops = append(drops, tx)
+					invalids = append(invalids, cascaded...)
 					log.Trace("Dropping fee-delegated tx due to insufficient fee payer balance", "method", "demote", "hash", tx.Hash().String())
 				}
 			}
