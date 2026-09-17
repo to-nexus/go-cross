@@ -63,10 +63,8 @@ func (sb *Backend) decode(msg p2p.Msg) ([]byte, common.Hash, error) {
 
 // HandleMsg implements consensus.Handler.HandleMsg
 func (sb *Backend) HandleMsg(addr common.Address, msg p2p.Msg) (bool, error) {
-	sb.coreMu.Lock()
-	defer sb.coreMu.Unlock()
 	if _, ok := protocols.MessageCodes()[msg.Code]; ok || msg.Code == istanbulMsg {
-		if !sb.coreStarted {
+		if !sb.Started() {
 			return true, istanbul.ErrStoppedEngine
 		}
 
@@ -88,7 +86,7 @@ func (sb *Backend) HandleMsg(addr common.Address, msg p2p.Msg) (bool, error) {
 		}
 		sb.knownMessages.Add(hash, true)
 
-		go sb.istanbulEventMux.Post(istanbul.MessageEvent{
+		sb.istanbulEventMux.Post(istanbul.MessageEvent{
 			Code:    msg.Code,
 			Payload: data,
 		})
@@ -96,29 +94,33 @@ func (sb *Backend) HandleMsg(addr common.Address, msg p2p.Msg) (bool, error) {
 	}
 	//https://github.com/ConsenSys/quorum/pull/539
 	//https://github.com/ConsenSys/quorum/issues/389
-	if msg.Code == NewBlockMsg && sb.core != nil && sb.core.IsProposer() { // eth.NewBlockMsg: import cycle
-		// this case is to safeguard the race of similar block which gets propagated from other node while this node is proposing
-		// as p2p.Msg can only be decoded once (get EOF for any subsequence read), we need to make sure the payload is restored after we decode it
-		sb.logger.Debug("Istanbul: received NewBlockMsg", "size", msg.Size, "payload.type", reflect.TypeOf(msg.Payload), "sender", addr)
-		if reader, ok := msg.Payload.(*bytes.Reader); ok {
-			payload, err := io.ReadAll(reader)
-			if err != nil {
-				return true, err
-			}
-			reader.Reset(payload)       // ready to be decoded
-			defer reader.Reset(payload) // restore so main eth/handler can decode
-			var request struct {        // this has to be same as eth/protocol.go#newBlockData as we are reading NewBlockMsg
-				Block *types.Block
-				TD    *big.Int
-			}
-			if err := msg.Decode(&request); err != nil {
-				sb.logger.Error("Istanbul: unable to decode the NewBlockMsg", "error", err)
-				return false, nil
-			}
-			newRequestedBlock := request.Block
-			if types.IsIstanbulDigest(newRequestedBlock.Header().MixDigest) && sb.core.IsCurrentProposal(newRequestedBlock.Hash()) {
-				sb.logger.Debug("Istanbul: block already proposed", "hash", newRequestedBlock.Hash(), "sender", addr)
-				return true, nil
+	if msg.Code == NewBlockMsg { // eth.NewBlockMsg: import cycle
+		sb.coreMu.RLock()
+		defer sb.coreMu.RUnlock()
+		if sb.core != nil && sb.core.IsProposer() {
+			// this case is to safeguard the race of similar block which gets propagated from other node while this node is proposing
+			// as p2p.Msg can only be decoded once (get EOF for any subsequence read), we need to make sure the payload is restored after we decode it
+			sb.logger.Debug("Istanbul: received NewBlockMsg", "size", msg.Size, "payload.type", reflect.TypeOf(msg.Payload), "sender", addr)
+			if reader, ok := msg.Payload.(*bytes.Reader); ok {
+				payload, err := io.ReadAll(reader)
+				if err != nil {
+					return true, err
+				}
+				reader.Reset(payload)       // ready to be decoded
+				defer reader.Reset(payload) // restore so main eth/handler can decode
+				var request struct {        // this has to be same as eth/protocol.go#newBlockData as we are reading NewBlockMsg
+					Block *types.Block
+					TD    *big.Int
+				}
+				if err := msg.Decode(&request); err != nil {
+					sb.logger.Error("Istanbul: unable to decode the NewBlockMsg", "error", err)
+					return false, nil
+				}
+				newRequestedBlock := request.Block
+				if types.IsIstanbulDigest(newRequestedBlock.Header().MixDigest) && sb.core.IsCurrentProposal(newRequestedBlock.Hash()) {
+					sb.logger.Debug("Istanbul: block already proposed", "hash", newRequestedBlock.Hash(), "sender", addr)
+					return true, nil
+				}
 			}
 		}
 	}
@@ -131,10 +133,7 @@ func (sb *Backend) SetBroadcaster(broadcaster consensus.IstanbulBroadcaster) {
 }
 
 func (sb *Backend) NewChainHead() error {
-	sb.coreMu.RLock()
-	defer sb.coreMu.RUnlock()
-
-	if !sb.coreStarted {
+	if !sb.Started() {
 		return istanbul.ErrStoppedEngine
 	}
 	go sb.istanbulEventMux.Post(istanbul.FinalCommittedEvent{})

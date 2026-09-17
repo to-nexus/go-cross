@@ -19,7 +19,6 @@ package ethconfig
 
 import (
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -27,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	istanbulBackend "github.com/ethereum/go-ethereum/consensus/istanbul/backend"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/history"
@@ -151,9 +149,6 @@ type Config struct {
 	// Mining options
 	Miner minerconfig.Config
 
-	// Istanbul options
-	Istanbul istanbul.Config // ##CROSS: istanbul
-
 	// Transaction pool options
 	TxPool   legacypool.Config
 	BlobPool blobpool.Config
@@ -210,7 +205,7 @@ type Config struct {
 // CreateConsensusEngine creates a consensus engine for the given chain config.
 // ClFique is allowed for now to live standalone, but ethash is forbidden and can
 // only exist on already merged networks.
-func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Config, stack *node.Node, db ethdb.Database) (consensus.Engine, error) {
+func CreateConsensusEngine(config *params.ChainConfig, stack *node.Node, db ethdb.Database) (consensus.Engine, error) {
 	if config.TerminalTotalDifficulty == nil {
 		log.Error("Geth only supports PoS networks. Please transition legacy networks using Geth v1.13.x.")
 		return nil, errors.New("'terminalTotalDifficulty' is not set in genesis block")
@@ -222,21 +217,19 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 
 	// ##CROSS: istanbul
 	if config.IsIstanbulConsensus() {
-		if istanbulCfg == nil {
-			istanbulCfg = istanbul.NewConfig(config)
-		} else {
-			*istanbulCfg = *istanbul.NewConfig(config)
-		}
 		ethClient := ethclient.NewClient(stack.Attach())
-		if len(config.Transitions) > 0 {
-			istanbulCfg.Transitions = config.Transitions
-			slices.SortFunc(istanbulCfg.Transitions, func(a, b params.Transition) int {
-				return a.Block.Cmp(b.Block)
-			})
-		}
-		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), stack.Config().BLSSecretKey, db, ethClient)), nil
+		return beacon.New(istanbulBackend.New(config, stack.Config().NodeKey(), stack.Config().BLSSecretKey, db, ethClient)), nil
 	}
 	// ##
 
 	return beacon.New(ethash.NewFaker()), nil
+}
+
+// SetConsensusEngineChainConfig updates the finalized chain config of a consensus engine.
+func SetConsensusEngineChainConfig(engine consensus.Engine, config *params.ChainConfig) {
+	if backend, ok := consensus.ToIstanbulEngine(engine).(interface {
+		SetChainConfig(*params.ChainConfig)
+	}); ok {
+		backend.SetChainConfig(config)
+	}
 }

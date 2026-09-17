@@ -938,7 +938,7 @@ func TestDistributeRewards(t *testing.T) {
 				},
 			}
 
-			err := engine.distributeRewards(tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
+			err := engine.distributeRewards(cx, tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
 
 			require.NoError(t, err)
 			if len(tt.txs) > 0 {

@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 )
 
@@ -61,47 +62,44 @@ type Backend struct {
 
 	db ethdb.Database
 
+	chainConfig  *params.ChainConfig
 	chain        consensus.ChainHeaderReader
 	currentBlock func() *types.Block
 	hasBadBlock  func(db ethdb.Reader, hash common.Hash) bool
 
-	// the channels for istanbul engine notifications
-	commitCh          chan *types.Block
+	commitCh          chan *types.Block // The channels for istanbul engine notifications
 	proposedBlockHash common.Hash
-	sealMu            sync.Mutex
+	sealMu            sync.Mutex // Protects proposedBlockHash field
 	coreStarted       bool
-	coreMu            sync.RWMutex
+	coreMu            sync.RWMutex // Protects coreStarted field
 
-	// Current list of candidates we are pushing
-	candidates map[common.Address]bool
-	// Protects the signer fields
-	candidatesLock sync.RWMutex
-	// Snapshots for recent block to speed up reorgs
-	recents *lru.Cache[common.Hash, *Snapshot]
+	candidates     map[common.Address]bool            // Current list of candidates we are pushing
+	candidatesLock sync.RWMutex                       // Protects candidates field
+	recents        *lru.Cache[common.Hash, *Snapshot] // Snapshots for recent block to speed up reorgs
 
-	// event subscription for ChainHeadEvent event
-	broadcaster consensus.IstanbulBroadcaster
+	broadcaster consensus.IstanbulBroadcaster // Event subscription for ChainHeadEvent event
 
-	recentMessages *lru.Cache[common.Address, *lru.Cache[common.Hash, bool]] // the cache of peer's messages
-	knownMessages  *lru.Cache[common.Hash, bool]                             // the cache of self messages
+	recentMessages *lru.Cache[common.Address, *lru.Cache[common.Hash, bool]] // The cache of peer's messages
+	knownMessages  *lru.Cache[common.Hash, bool]                             // The cache of self messages
 
 	blsSecretKey bls.SecretKey // ##CROSS: bls seal
 }
 
 // New creates an Ethereum backend for Istanbul core engine.
-func New(config *istanbul.Config, privateKey *ecdsa.PrivateKey, blsSecretKey bls.SecretKey, db ethdb.Database, contractBackend bind.ContractBackend) *Backend {
+func New(config *params.ChainConfig, privateKey *ecdsa.PrivateKey, blsSecretKey bls.SecretKey, db ethdb.Database, contractBackend bind.ContractBackend) *Backend {
 	// Allocate the snapshot caches and create the engine
 	recents := lru.NewCache[common.Hash, *Snapshot](inmemorySnapshots)
 	recentMessages := lru.NewCache[common.Address, *lru.Cache[common.Hash, bool]](inmemoryPeers)
 	knownMessages := lru.NewCache[common.Hash, bool](inmemoryMessages)
 
 	sb := &Backend{
-		config:           config,
+		config:           istanbul.NewConfig(config),
 		istanbulEventMux: new(event.TypeMux),
 		privateKey:       privateKey,
 		address:          crypto.PubkeyToAddress(privateKey.PublicKey),
 		logger:           log.New(),
 		db:               db,
+		chainConfig:      config,
 		commitCh:         make(chan *types.Block, 1),
 		recents:          recents,
 		candidates:       make(map[common.Address]bool),
@@ -505,4 +503,9 @@ func (sb *Backend) IsValidatorAt(chain consensus.ChainHeaderReader, header *type
 		}
 	}
 	return false, nil
+}
+
+// SetChainConfig updates the chain config used for signer selection.
+func (sb *Backend) SetChainConfig(config *params.ChainConfig) {
+	sb.chainConfig = config
 }

@@ -93,6 +93,52 @@ func TestRoundChange_RejectsDuplicatedPrepareJustification(t *testing.T) {
 	}
 }
 
+func TestPreprepare_RejectsStaleRoundChangeJustification(t *testing.T) {
+	valSet, keys := generateValidatorSetAndKeys(t, 4)
+	proposerAddr := valSet.GetByIndex(0).Address()
+	validatorAddr := valSet.GetByIndex(1).Address()
+
+	const (
+		sequence     int64 = 1
+		currentRound int64 = 2
+		staleRound   int64 = 1
+	)
+
+	preparedProposal := makeBlockWithTime(sequence, 1)
+	attackerProposal := makeBlockWithTime(sequence, 2)
+	validatorCore, validatorBackend := newRoundChangeTestCore(
+		t, validatorAddr, keys[validatorAddr], valSet, preparedProposal, sequence, currentRound,
+	)
+	validatorCore.current.preparedRound = big.NewInt(staleRound)
+	validatorCore.current.preparedBlock = preparedProposal
+
+	preprepare := protocols.NewPreprepare(big.NewInt(sequence), big.NewInt(currentRound), attackerProposal)
+	preprepare.SetSource(proposerAddr)
+	for i := 0; i < valSet.QuorumSize(); i++ {
+		addr := valSet.GetByIndex(uint64(i)).Address()
+		roundChange := createSignedRoundChangeMessage(t, keys[addr], addr, staleRound, 0, nil)
+		preprepare.JustificationRoundChanges = append(preprepare.JustificationRoundChanges, &roundChange.SignedRoundChangePayload)
+	}
+	signProtocolMessage(t, preprepare, keys[proposerAddr])
+
+	payload, err := rlp.EncodeToBytes(preprepare)
+	if err != nil {
+		t.Fatalf("failed to encode PRE-PREPARE: %v", err)
+	}
+	if err := validatorCore.handleEncodedMsg(protocols.PreprepareCode, payload); err != errInvalidPreparedBlock {
+		t.Fatalf("expected stale ROUND-CHANGE justification to be rejected, got %v", err)
+	}
+	if validatorCore.state != StateAcceptRequest {
+		t.Fatalf("expected validator to remain AcceptRequest, got %v", validatorCore.state)
+	}
+	if validatorCore.current.preparedBlock.Hash() != preparedProposal.Hash() {
+		t.Fatal("expected validator to keep its prepared proposal")
+	}
+	if len(validatorBackend.broadcasts) != 0 {
+		t.Fatalf("expected no PREPARE broadcast, got %d", len(validatorBackend.broadcasts))
+	}
+}
+
 func newRoundChangeTestCore(
 	t *testing.T,
 	addr common.Address,

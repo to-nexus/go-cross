@@ -149,6 +149,12 @@ func (c *Core) handlePreprepareMsg(preprepare *protocols.Preprepare) error {
 			logger.Warn("Istanbul: invalid PRE-PREPARE ROUND-CHANGE sequence", "err", err)
 			return errInvalidPreparedBlock
 		}
+		for _, roundChange := range preprepare.JustificationRoundChanges {
+			if roundChange.Round.Cmp(preprepare.Round) != 0 {
+				logger.Warn("Istanbul: invalid PRE-PREPARE ROUND-CHANGE round", "round", roundChange.Round, "expected", preprepare.Round)
+				return errInvalidPreparedBlock
+			}
+		}
 		if err := validateMessageJustification(preprepare.JustificationRoundChanges, c.valSet, c.valSet.QuorumSize()); err != nil {
 			logger.Warn("Istanbul: invalid PRE-PREPARE ROUND-CHANGE justification", "err", err, "quorum", c.valSet.QuorumSize())
 			return errInvalidPreparedBlock
