@@ -205,7 +205,11 @@ func (qst *IstanbulExtra) DecodeRLP(s *rlp.Stream) error {
 	qst.RandomReveal = extra.RandomReveal
 	// ##CROSS: bls seal
 	qst.SignersBitset = extra.SignersBitset
-	qst.Signers = extra.Signers
+	// Normalize empty signer lists while preserving the encoded BLS fields through SignersBitset.
+	qst.Signers = nil
+	if len(extra.Signers) > 0 {
+		qst.Signers = extra.Signers
+	}
 	// ##
 	return nil
 }

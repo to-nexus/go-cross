@@ -22,7 +22,61 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestIstanbulExtraDecodeRLP(t *testing.T) {
+	for _, bitset := range []struct {
+		name  string
+		value []uint64
+	}{
+		{"nil bitset", nil},
+		{"empty bitset", []uint64{}},
+		{"nonempty bitset", []uint64{1}},
+	} {
+		for _, signers := range []struct {
+			name  string
+			value []BLSPublicKey
+		}{
+			{"nil signers", nil},
+			{"empty signers", []BLSPublicKey{}},
+			{"nonempty signers", []BLSPublicKey{{1}}},
+		} {
+			t.Run(bitset.name+"/"+signers.name, func(t *testing.T) {
+				encoded, err := rlp.EncodeToBytes(&IstanbulExtra{
+					Round: 3, CommittedSeal: [][]byte{{1}},
+					SignersBitset: bitset.value, Signers: signers.value,
+				})
+				require.NoError(t, err)
+				// Reuse a populated value to check that empty input clears old signers.
+				decoded := IstanbulExtra{Signers: []BLSPublicKey{{2}}}
+				require.NoError(t, rlp.DecodeBytes(encoded, &decoded))
+				if len(signers.value) == 0 {
+					assert.Nil(t, decoded.Signers)
+				} else {
+					assert.Equal(t, signers.value, decoded.Signers)
+				}
+				reencoded, err := rlp.EncodeToBytes(&decoded)
+				require.NoError(t, err)
+				assert.Equal(t, encoded, reencoded)
+
+				// Legacy hashes omit both BLS fields and committed seals.
+				header := &Header{MixDigest: IstanbulDigest, Extra: reencoded}
+				for _, round := range []uint32{0, 3} {
+					filtered, err := rlp.EncodeToBytes(&IstanbulExtra{Round: round})
+					require.NoError(t, err)
+					expected := rlpHash(&Header{MixDigest: IstanbulDigest, Extra: filtered})
+					assert.Equal(t, expected, header.IstanbulHashWithRoundNumber(round))
+					if round == 0 {
+						assert.Equal(t, expected, header.Hash())
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestHeaderHash(t *testing.T) {
 	// 0xd848102c76ea4c0a814cd8501ee5e2f243d4d7a0c6a2bba68a4be23ca1f80965

@@ -247,7 +247,7 @@ func TestWriteCommittedSealsBLS(t *testing.T) {
 		CommittedSeal: [][]byte{expectedCommittedSeal},
 		RandomReveal:  []byte{},
 		SignersBitset: []uint64{7},
-		Signers:       []types.BLSPublicKey{},
+		Signers:       nil,
 	}
 
 	h := &types.Header{
