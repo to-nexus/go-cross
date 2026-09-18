@@ -213,6 +213,10 @@ func TestGenesisHashes(t *testing.T) {
 		want    common.Hash
 	}{
 		{DefaultGenesisBlock(), params.MainnetGenesisHash},
+		{DefaultCrossGenesisBlock(), params.CrossGenesisHash},
+		{DefaultZoneZeroGenesisBlock(), params.ZoneZeroGenesisHash},
+		{DefaultCrossDev3GenesisBlock(), params.CrossDev3GenesisHash},
+		{DefaultCrossDevGenesisBlock(), params.CrossDevGenesisHash},
 		{DefaultSepoliaGenesisBlock(), params.SepoliaGenesisHash},
 		{DefaultHoleskyGenesisBlock(), params.HoleskyGenesisHash},
 		{DefaultHoodiGenesisBlock(), params.HoodiGenesisHash},

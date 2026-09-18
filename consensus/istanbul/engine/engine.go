@@ -450,9 +450,12 @@ func (e *Engine) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 // in a batch of parents (ascending order) to avoid looking those up from the
 // database. This is useful for concurrently verifying a batch of new headers.
 func (e *Engine) verifyCascadingFields(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet, parents []*types.Header) error {
-	// The genesis block is the always valid dead-end
+	// Genesis has no parent or signer to verify, but must keep the legacy prefix.
 	number := header.Number.Uint64()
 	if number == 0 {
+		if !bytes.Equal(header.MixDigest[:16], types.IstanbulDigest[:16]) { // ##CROSS: istanbul digest
+			return istanbul.ErrInvalidMixDigest
+		}
 		return nil
 	}
 
@@ -575,7 +578,7 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 	}
 
 	// Verify the mix digest
-	if header.MixDigest != types.MakeIstanbulDigest(mixHash) {
+	if header.MixDigest != istanbulDigest(chain, header, mixHash) {
 		return istanbul.ErrInvalidMixDigest
 	}
 
@@ -743,6 +746,13 @@ func makeMixHashBLS(randomReveal []byte, lastMixHash common.Hash) (mixHash commo
 
 // ##
 
+// ##CROSS: istanbul digest v2
+func istanbulDigest(chain consensus.ChainHeaderReader, header *types.Header, mixHash common.Hash) common.Hash {
+	return types.MakeIstanbulDigest(mixHash, chain.Config().IsOsaka(header.Number, header.Time))
+}
+
+// ##
+
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
@@ -782,7 +792,7 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		mixHash = makeMixHash(randomReveal)
 	}
 
-	header.MixDigest = types.MakeIstanbulDigest(mixHash) // ##CROSS: istanbul digest
+	header.MixDigest = istanbulDigest(chain, header, mixHash) // ##CROSS: istanbul digest
 
 	// use the same difficulty for all blocks
 	header.Difficulty = istanbul.DefaultDifficulty
