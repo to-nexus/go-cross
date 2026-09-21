@@ -57,21 +57,15 @@ var (
 
 	GenesisAllocCrossDev3 = mergeAlloc(types.GenesisAlloc{
 		params.FoundationCrossDev3: {
-			Balance: new(big.Int).Mul(big.NewInt(1_000_000_000_000), big.NewInt(1e18)),
-		},
-		contracts.CrossReserveAddr: {
 			Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
 		},
-	}, crossAlloc, sfAlloc)
+	}, crossAlloc)
 
 	GenesisAllocCrossDev = mergeAlloc(types.GenesisAlloc{
 		params.FoundationCrossDev: {
-			Balance: new(big.Int).Mul(big.NewInt(1_000_000_000_000), big.NewInt(1e18)),
-		},
-		contracts.CrossReserveAddr: {
 			Balance: new(big.Int).Mul(big.NewInt(100_000_000), big.NewInt(1e18)),
 		},
-	}, crossAlloc, sfAlloc)
+	}, crossAlloc)
 )
 
 func mustDecodeAlloc(data []byte) types.GenesisAlloc {

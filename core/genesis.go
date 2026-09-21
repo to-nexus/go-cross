@@ -704,8 +704,8 @@ func DefaultZoneZeroGenesisBlock() *Genesis {
 
 // DefaultCrossDev3GenesisBlock returns the Cross dev net genesis block.
 func DefaultCrossDev3GenesisBlock() *Genesis {
-	genesis := &Genesis{
-		Config:     clonePoSAChainConfig(params.CrossDev3ChainConfig),
+	return &Genesis{
+		Config:     params.CrossDev3ChainConfig,
 		Nonce:      0x90aa,
 		Timestamp:  0x5f1663fc,
 		ExtraData:  hexutil.MustDecode("0xc680c0c080c080"),
@@ -713,18 +713,14 @@ func DefaultCrossDev3GenesisBlock() *Genesis {
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   params.FoundationCrossDev3,
-		Alloc:      cloneAlloc(predeploy.GenesisAllocCrossDev3),
+		Alloc:      predeploy.GenesisAllocCrossDev3,
 	}
-	if err := makeBreakpointGenesis(genesis, nil); err != nil {
-		panic(err)
-	}
-	return genesis
 }
 
 // DefaultCrossDevGenesisBlock returns the Cross dev net genesis block.
 func DefaultCrossDevGenesisBlock() *Genesis {
-	genesis := &Genesis{
-		Config:     clonePoSAChainConfig(params.CrossDevChainConfig),
+	return &Genesis{
+		Config:     params.CrossDevChainConfig,
 		Nonce:      0xabcd,
 		Timestamp:  0x5f1663fc,
 		ExtraData:  hexutil.MustDecode("0xc680c0c080c080"),
@@ -732,12 +728,8 @@ func DefaultCrossDevGenesisBlock() *Genesis {
 		Difficulty: istanbul.DefaultDifficulty,
 		Mixhash:    types.IstanbulDigest,
 		Coinbase:   params.FoundationCrossDev,
-		Alloc:      cloneAlloc(predeploy.GenesisAllocCrossDev),
+		Alloc:      predeploy.GenesisAllocCrossDev,
 	}
-	if err := makeBreakpointGenesis(genesis, params.CrossDev3Validators); err != nil {
-		panic(err)
-	}
-	return genesis
 }
 
 // ##
