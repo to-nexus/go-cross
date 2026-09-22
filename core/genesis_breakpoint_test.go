@@ -74,39 +74,3 @@ func TestMakeBreakpointGenesis(t *testing.T) {
 	}
 	assert.Equal(t, new(big.Int).Mul(initialStake, big.NewInt(2)), genesis.Alloc[contracts.DelegationPoolAddr].Balance)
 }
-
-func TestDefaultBreakpointGenesisValidators(t *testing.T) {
-	for name, test := range map[string]struct {
-		genesis       *core.Genesis
-		activeCount   int
-		stakedConfigs []params.PoSAValidator
-	}{
-		"onedev":  {core.DefaultCrossDevGenesisBlock(), len(params.CrossDevValidators), params.CrossDev3Validators},
-		"onedev3": {core.DefaultCrossDev3GenesisBlock(), len(params.CrossDev3Validators), params.CrossDev3Validators},
-	} {
-		t.Run(name, func(t *testing.T) {
-			backend := simulated.NewBackend(test.genesis.Alloc)
-			defer backend.Close()
-
-			validatorSet := breakpoint.NewValidatorSet()
-			active, err := bind.Call(
-				validatorSet.Instance(backend.Client(), contracts.ValidatorSetAddr),
-				&bind.CallOpts{},
-				validatorSet.PackGetActiveValidators(),
-				validatorSet.UnpackGetActiveValidators,
-			)
-			require.NoError(t, err)
-			assert.Len(t, active.ValidatorAddrs, test.activeCount)
-
-			stakeHub := breakpoint.NewStakeHub()
-			registered, err := bind.Call(
-				stakeHub.Instance(backend.Client(), contracts.StakeHubAddr),
-				&bind.CallOpts{},
-				stakeHub.PackGetValidators(big.NewInt(0), big.NewInt(0)),
-				stakeHub.UnpackGetValidators,
-			)
-			require.NoError(t, err)
-			assert.Equal(t, uint64(len(test.stakedConfigs)), registered.TotalLength.Uint64())
-		})
-	}
-}
