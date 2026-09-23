@@ -120,9 +120,11 @@ func (b *BLSSignature) UnmarshalText(input []byte) error {
 
 var (
 	// ##CROSS: istanbul digest
-	// IstanbulDigest represents a hash of "Cross Istanbul. "
-	// to identify whether the block is from Istanbul consensus engine
+	// IstanbulDigest identifies legacy Istanbul headers with the prefix "Cross Istanbul. ".
 	IstanbulDigest = common.HexToHash("0x43726f737320497374616e62756c2e2000000000000000000000000000000000")
+	// ##CROSS: istanbul digest v2
+	// IstanbulDigestV2 identifies v2 Istanbul headers with the prefix "Cross Istanbul.2".
+	IstanbulDigestV2 = common.HexToHash("0x43726f737320497374616e62756c2e3200000000000000000000000000000000")
 
 	IstanbulExtraVanity  = 32 // Fixed number of extra-data bytes reserved for validator vanity
 	IstanbulExtraSeal    = 65 // Fixed number of extra-data bytes reserved for validator seal
@@ -136,12 +138,17 @@ var (
 )
 
 // ##CROSS: istanbul digest
+// IsIstanbulDigest reports whether the digest has a supported Istanbul prefix.
 func IsIstanbulDigest(digest common.Hash) bool {
-	return bytes.Equal(digest[:16], IstanbulDigest[:16])
+	return bytes.Equal(digest[:16], IstanbulDigestV2[:16]) || bytes.Equal(digest[:16], IstanbulDigest[:16])
 }
 
-func MakeIstanbulDigest(seed common.Hash) common.Hash {
+// MakeIstanbulDigest combines the active Istanbul prefix with the first 16 bytes of the seed.
+func MakeIstanbulDigest(seed common.Hash, isV2 bool) common.Hash {
 	digest := IstanbulDigest
+	if isV2 { // ##CROSS: istanbul digest v2
+		digest = IstanbulDigestV2
+	}
 	copy(digest[16:], seed[:16])
 	return digest
 }
@@ -205,7 +212,11 @@ func (qst *IstanbulExtra) DecodeRLP(s *rlp.Stream) error {
 	qst.RandomReveal = extra.RandomReveal
 	// ##CROSS: bls seal
 	qst.SignersBitset = extra.SignersBitset
-	qst.Signers = extra.Signers
+	// Normalize empty signer lists while preserving the encoded BLS fields through SignersBitset.
+	qst.Signers = nil
+	if len(extra.Signers) > 0 {
+		qst.Signers = extra.Signers
+	}
 	// ##
 	return nil
 }
@@ -269,9 +280,8 @@ func ExtractIstanbulExtra(h *Header) (*IstanbulExtra, error) {
 	return extra, nil
 }
 
-// IstanbulFilteredHeader returns a filtered header which some information (like committed seals, round, validator vote)
-// are clean to fulfill the Istanbul hash rules. It returns nil if the extra-data cannot be
-// decoded/encoded by rlp.
+// IstanbulFilteredHeader returns a copy with seals and signer bits removed and the round set to zero.
+// BLS signer keys are included from Osaka onward. It returns nil if extra-data cannot be decoded or encoded.
 func IstanbulFilteredHeader(h *Header) *Header {
 	return IstanbulFilteredHeaderWithRound(h, 0)
 }
@@ -290,7 +300,9 @@ func IstanbulFilteredHeaderWithRound(h *Header, round uint32) *Header {
 
 	// ##CROSS: bls seal
 	extra.SignersBitset = nil
-	extra.Signers = nil
+	if !bytes.Equal(h.MixDigest[:16], IstanbulDigestV2[:16]) { // ##CROSS: istanbul digest v2
+		extra.Signers = nil
+	}
 	// ##
 
 	payload, err := rlp.EncodeToBytes(&extra)

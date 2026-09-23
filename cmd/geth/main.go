@@ -241,6 +241,7 @@ func init() {
 		removedbCommand,
 		dumpCommand,
 		dumpGenesisCommand,
+		makeBreakpointGenesisCommand, // ##CROSS: fork breakpoint
 		pruneHistoryCommand,
 		downloadEraCommand,
 		// See accountcmd.go:
