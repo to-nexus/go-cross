@@ -18,8 +18,7 @@
 package ethconfig
 
 import (
-	"fmt"
-	"slices"
+	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -27,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	istanbulBackend "github.com/ethereum/go-ethereum/consensus/istanbul/backend"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/history"
@@ -37,7 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/miner"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -54,25 +52,27 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the Ethereum main net.
 var Defaults = Config{
-	HistoryMode:        history.KeepAll,
-	SyncMode:           SnapSync,
-	NetworkId:          0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:      2350000,
-	TransactionHistory: 2350000,
-	LogHistory:         2350000,
-	StateHistory:       params.FullImmutabilityThreshold,
-	DatabaseCache:      512,
-	TrieCleanCache:     154,
-	TrieDirtyCache:     256,
-	TrieTimeout:        60 * time.Minute,
-	SnapshotCache:      102,
-	FilterLogCacheSize: 32,
-	Miner:              miner.DefaultConfig,
-	TxPool:             legacypool.DefaultConfig,
-	BlobPool:           blobpool.DefaultConfig,
-	// RPCGasCap:          50000000,
-	RPCEVMTimeout: 5 * time.Second,
-	GPO:           FullNodeGPO,
+	HistoryMode:          history.KeepAll,
+	SyncMode:             SnapSync,
+	NetworkId:            0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:        2350000,
+	TransactionHistory:   2350000,
+	LogHistory:           2350000,
+	StateHistory:         params.FullImmutabilityThreshold,
+	DatabaseCache:        512,
+	TrieCleanCache:       154,
+	TrieDirtyCache:       256,
+	TrieTimeout:          60 * time.Minute,
+	SnapshotCache:        102,
+	FilterLogCacheSize:   32,
+	LogQueryLimit:        1000,
+	Miner:                minerconfig.DefaultConfig,
+	TxPool:               legacypool.DefaultConfig,
+	BlobPool:             blobpool.DefaultConfig,
+	RPCEVMTimeout:        5 * time.Second,
+	GPO:                  FullNodeGPO,
+	TxSyncDefaultTimeout: 20 * time.Second,
+	TxSyncMaxTimeout:     1 * time.Minute,
 
 	// ##CROSS: basefee
 	RPCTxFeeCap: 0,
@@ -131,6 +131,7 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
+	DatabaseEra        string
 
 	TrieCleanCache int
 	TrieDirtyCache int
@@ -141,11 +142,12 @@ type Config struct {
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int
 
-	// Mining options
-	Miner miner.Config
+	// This is the maximum number of addresses or topics allowed in filter criteria
+	// for eth_getLogs.
+	LogQueryLimit int
 
-	// Istanbul options
-	Istanbul istanbul.Config // ##CROSS: istanbul
+	// Mining options
+	Miner minerconfig.Config
 
 	// Transaction pool options
 	TxPool   legacypool.Config
@@ -157,6 +159,15 @@ type Config struct {
 	// Enables tracking of SHA3 preimages in the VM
 	EnablePreimageRecording bool
 
+	// Enables collection of witness trie access statistics
+	EnableWitnessStats bool
+
+	// Generate execution witnesses and self-check against them (testing purpose)
+	StatelessSelfValidation bool
+
+	// Enables tracking of state size
+	EnableStateSizeTracking bool
+
 	// Enables VM tracing
 	VMTrace           string
 	VMTraceJsonConfig string
@@ -167,15 +178,25 @@ type Config struct {
 	// RPCEVMTimeout is the global timeout for eth-call.
 	RPCEVMTimeout time.Duration
 
-	// RPCTxFeeCap is the global transaction fee(price * gaslimit) cap for
+	// RPCTxFeeCap is the global transaction fee (price * gas limit) cap for
 	// send-transaction variants. The unit is ether.
 	RPCTxFeeCap float64
 
-	// OverridePrague (TODO: remove after the fork)
-	OverridePrague *uint64 `toml:",omitempty"`
+	// OverrideOsaka (TODO: remove after the fork)
+	OverrideOsaka *uint64 `toml:",omitempty"`
+
+	// OverrideBPO1 (TODO: remove after the fork)
+	OverrideBPO1 *uint64 `toml:",omitempty"`
+
+	// OverrideBPO2 (TODO: remove after the fork)
+	OverrideBPO2 *uint64 `toml:",omitempty"`
 
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
+
+	// EIP-7966: eth_sendRawTransactionSync timeouts
+	TxSyncDefaultTimeout time.Duration `toml:",omitempty"`
+	TxSyncMaxTimeout     time.Duration `toml:",omitempty"`
 
 	// blob setting
 	BlobExtraReserve uint64 // ##CROSS: blob sidecars
@@ -184,10 +205,10 @@ type Config struct {
 // CreateConsensusEngine creates a consensus engine for the given chain config.
 // ClFique is allowed for now to live standalone, but ethash is forbidden and can
 // only exist on already merged networks.
-func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Config, stack *node.Node, db ethdb.Database) (consensus.Engine, error) {
+func CreateConsensusEngine(config *params.ChainConfig, stack *node.Node, db ethdb.Database) (consensus.Engine, error) {
 	if config.TerminalTotalDifficulty == nil {
 		log.Error("Geth only supports PoS networks. Please transition legacy networks using Geth v1.13.x.")
-		return nil, fmt.Errorf("'terminalTotalDifficulty' is not set in genesis block")
+		return nil, errors.New("'terminalTotalDifficulty' is not set in genesis block")
 	}
 	// Wrap previously supported consensus engines into their post-merge counterpart
 	if config.Clique != nil {
@@ -195,18 +216,20 @@ func CreateConsensusEngine(config *params.ChainConfig, istanbulCfg *istanbul.Con
 	}
 
 	// ##CROSS: istanbul
-	if config.Istanbul != nil {
-		*istanbulCfg = *istanbul.NewConfig(config)
+	if config.IsIstanbulConsensus() {
 		ethClient := ethclient.NewClient(stack.Attach())
-		return beacon.New(istanbulBackend.New(istanbulCfg, stack.Config().NodeKey(), stack.Config().BLSSecretKey, db, ethClient)), nil
+		return beacon.New(istanbulBackend.New(config, stack.Config().NodeKey(), stack.Config().BLSSecretKey, db, ethClient)), nil
 	}
-
-	if len(config.Transitions) > 0 && istanbulCfg != nil {
-		istanbulCfg.Transitions = config.Transitions
-		slices.SortFunc(istanbulCfg.Transitions, func(a, b params.Transition) int {
-			return a.Block.Cmp(b.Block)
-		})
-	}
+	// ##
 
 	return beacon.New(ethash.NewFaker()), nil
+}
+
+// SetConsensusEngineChainConfig updates the finalized chain config of a consensus engine.
+func SetConsensusEngineChainConfig(engine consensus.Engine, config *params.ChainConfig) {
+	if backend, ok := consensus.ToIstanbulEngine(engine).(interface {
+		SetChainConfig(*params.ChainConfig)
+	}); ok {
+		backend.SetChainConfig(config)
+	}
 }

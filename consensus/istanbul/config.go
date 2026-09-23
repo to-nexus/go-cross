@@ -18,6 +18,7 @@ package istanbul
 
 import (
 	"math/big"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -195,6 +196,11 @@ func NewConfig(config *params.ChainConfig) *Config {
 		c.MaxRequestTimeoutSeconds = *config.Istanbul.MaxRequestTimeoutSeconds
 	}
 	c.Transitions = config.Transitions
+	if len(c.Transitions) > 0 {
+		slices.SortFunc(c.Transitions, func(a, b params.Transition) int {
+			return a.Block.Cmp(b.Block)
+		})
+	}
 
 	// ##CROSS: istanbul posa
 	if config.Istanbul.PoSA != nil {

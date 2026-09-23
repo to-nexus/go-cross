@@ -61,7 +61,9 @@ func (e *Engine) verifyValidators(chain consensus.ChainHeaderReader, header *typ
 	// We pre-compute the post-rollover council manually to match what updateValidatorSet will produce in Finalize.
 	if chain != nil {
 		parent := chain.GetHeaderByHash(header.ParentHash)
-		if parent != nil && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+		// Parent block also should be PoSA to check council period rollover
+		if parent != nil && chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) &&
+			e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			validatorList, signerList, err = e.computeNextCouncil(header.Number.Uint64() - 1)
 			log.Warn("New epoch + new council period: computing next council manually",
 				"number", header.Number.Uint64(),
@@ -303,20 +305,23 @@ const (
 //
 // The result (both eligible/ineligible) is cached per address for eligibilityCacheTTL.
 // minStake is cached separately for minStakeCacheTTL (a global value that changes rarely).
-func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) bool {
+func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) (bool, error) {
 	c := e.validatorCache
 	// eligible is an lru.Cache, so it is self-synchronized (no extra lock needed). The capacity cap also prevents unbounded growth.
 	if ent, ok := c.eligible.Get(addr); ok && time.Now().Before(ent.exp) {
-		return ent.ok
+		return ent.ok, nil
 	}
-	result := e.queryEligibleValidator(addr, number)
+	result, err := e.queryEligibleValidator(addr, number)
+	if err != nil {
+		return false, err
+	}
 	c.eligible.Add(addr, eligibilityEntry{ok: result, exp: time.Now().Add(eligibilityCacheTTL)})
-	return result
+	return result, nil
 }
 
 // queryEligibleValidator performs the actual StakeHub lookups. Per-address eligibility is
 // not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
-func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool {
+func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) (bool, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 
@@ -324,38 +329,38 @@ func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) bool
 	operator, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackValidatorToOperator(addr), e.stakeHub.UnpackValidatorToOperator)
 	if err != nil {
 		log.Warn("Failed to call validatorToOperator", "addr", addr, "number", number, "err", err)
-		return false
+		return false, err
 	}
 	if operator == (common.Address{}) {
-		return false
+		return false, nil
 	}
 
 	// 2) invalid if the operator is on the blacklist. (the blacklist is keyed by operator address)
 	blacklisted, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackIsBlackListed(operator), e.stakeHub.UnpackIsBlackListed)
 	if err != nil {
 		log.Warn("Failed to call isBlackListed", "operator", operator, "number", number, "err", err)
-		return false
+		return false, err
 	}
 	if blacklisted {
-		return false
+		return false, nil
 	}
 
 	// 3) the operator's staked amount. (stake is keyed by operator address, not validator address)
 	staked, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackGetStakedAmount(operator), e.stakeHub.UnpackGetStakedAmount)
 	if err != nil {
 		log.Warn("Failed to call getStakedAmount", "operator", operator, "number", number, "err", err)
-		return false
+		return false, err
 	}
 
 	// 4) minimum validator stake (cached with a separate TTL).
 	minStake, err := e.minValidatorStakeCached(number)
 	if err != nil {
 		log.Warn("Failed to get minValidatorStake", "number", number, "err", err)
-		return false
+		return false, err
 	}
 
 	// A validator is valid only if staked >= minValidatorStake.
-	return staked.Cmp(minStake) >= 0
+	return staked.Cmp(minStake) >= 0, nil
 }
 
 // minValidatorStakeCached returns minValidatorStake, cached for minStakeCacheTTL. It is a
@@ -553,7 +558,7 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 // ##
 
 // ##CROSS: validator reward
-func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+func (e *Engine) distributeRewards(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	coinbase := header.Coinbase
 	if coinbase == (common.Address{}) {
 		coinbase = e.signer
@@ -562,8 +567,9 @@ func (e *Engine) distributeRewards(header *types.Header, state vm.StateDB, cx co
 	// Calculate total tip and total fee by summing up the tip and fee of all transactions
 	totalTip := new(big.Int)
 	totalFee := new(big.Int)
+	signer := types.MakeSigner(chain.Config(), header.Number, header.Time)
 	for i, tx := range *txs {
-		if isSystemTx, err := e.IsSystemTransaction(tx, header); err != nil {
+		if isSystemTx, err := e.IsSystemTransaction(tx, header, signer); err != nil {
 			return err
 		} else if isSystemTx {
 			// All remaining transactions are system transactions

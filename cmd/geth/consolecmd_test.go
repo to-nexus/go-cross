@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	ipcAPIs  = "admin:1.0 cross:1.0 debug:1.0 engine:1.0 eth:1.0 miner:1.0 net:1.0 rpc:1.0 txpool:1.0 web3:1.0"
+	ipcAPIs  = "admin:1.0 cross:1.0 debug:1.0 eth:1.0 miner:1.0 net:1.0 rpc:1.0 txpool:1.0 web3:1.0" // ##CROSS: legacy sync, cross api
 	httpAPIs = "eth:1.0 net:1.0 rpc:1.0 web3:1.0"
 )
 
@@ -39,9 +39,8 @@ const (
 // child g gets a temporary data directory.
 func runMinimalGeth(t *testing.T, args ...string) *testgeth {
 	// --holesky to make the 'writing genesis to disk' faster (no accounts)
-	// --networkid=1337 to avoid cache bump
 	// --syncmode=full to avoid allocating fast sync bloom
-	allArgs := []string{"--holesky", "--networkid", "1337", "--authrpc.port", "0", "--syncmode=full", "--port", "0",
+	allArgs := []string{"--holesky", "--authrpc.port", "0", "--syncmode=full", "--port", "0",
 		"--nat", "none", "--nodiscover", "--maxpeers", "0", "--cache", "64",
 		"--datadir.minfreedisk", "0"}
 	return runGeth(t, append(allArgs, args...)...)
@@ -103,17 +102,17 @@ func TestAttachWelcome(t *testing.T) {
 		"--http", "--http.port", httpPort,
 		"--ws", "--ws.port", wsPort)
 	t.Run("ipc", func(t *testing.T) {
-		waitForEndpoint(t, ipc, 4*time.Second)
+		waitForEndpoint(t, ipc, 2*time.Minute)
 		testAttachWelcome(t, geth, "ipc:"+ipc, ipcAPIs)
 	})
 	t.Run("http", func(t *testing.T) {
 		endpoint := "http://127.0.0.1:" + httpPort
-		waitForEndpoint(t, endpoint, 4*time.Second)
+		waitForEndpoint(t, endpoint, 2*time.Minute)
 		testAttachWelcome(t, geth, endpoint, httpAPIs)
 	})
 	t.Run("ws", func(t *testing.T) {
 		endpoint := "ws://127.0.0.1:" + wsPort
-		waitForEndpoint(t, endpoint, 4*time.Second)
+		waitForEndpoint(t, endpoint, 2*time.Minute)
 		testAttachWelcome(t, geth, endpoint, httpAPIs)
 	})
 	geth.Kill()

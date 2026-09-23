@@ -17,19 +17,27 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math/big"
 	"os"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -39,9 +47,12 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/era"
+	"github.com/ethereum/go-ethereum/internal/era/eradl"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/urfave/cli/v2"
 )
 
@@ -53,7 +64,9 @@ var (
 		ArgsUsage: "<genesisPath>",
 		Flags: slices.Concat([]cli.Flag{
 			utils.CachePreimagesFlag,
-			utils.OverridePrague,
+			utils.OverrideOsaka,
+			utils.OverrideBPO1,
+			utils.OverrideBPO2,
 			utils.OverrideVerkle,
 		}, utils.DatabaseFlags),
 		Description: `
@@ -73,6 +86,34 @@ It expects the genesis file as argument.`,
 The dumpgenesis command prints the genesis configuration of the network preset
 if one is set.  Otherwise it prints the genesis from the datadir.`,
 	}
+	// ##CROSS: fork breakpoint
+	makeBreakpointGenesisCommand = &cli.Command{
+		Action:    makeBreakpointGenesis,
+		Name:      "make-breakpoint-genesis",
+		Usage:     "Builds a custom genesis with Breakpoint active from block one",
+		ArgsUsage: "[<inputGenesis> <outputGenesis>]",
+		Flags: []cli.Flag{
+			&cli.UintFlag{
+				Name:  "validators",
+				Usage: "Number of validators to generate without input arguments",
+				Value: 3,
+			},
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "Print generated keys as JSON",
+			},
+			&cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "Overwrite the output file if it already exists",
+			},
+		},
+		Description: `
+The make-breakpoint-genesis command installs and initializes the Breakpoint
+contracts using the Istanbul PoSA configuration in the input genesis. Without
+arguments, it generates genesis.json and prints all keys.`,
+	}
+	// ##
 	importCommand = &cli.Command{
 		Action:    importChain,
 		Name:      "import",
@@ -103,6 +144,7 @@ if one is set.  Otherwise it prints the genesis from the datadir.`,
 			utils.MetricsInfluxDBTokenFlag,
 			utils.MetricsInfluxDBBucketFlag,
 			utils.MetricsInfluxDBOrganizationFlag,
+			utils.StateSizeTrackingFlag,
 			utils.TxLookupLimitFlag,
 			utils.VMTraceFlag,
 			utils.VMTraceJsonConfigFlag,
@@ -190,7 +232,7 @@ This command dumps out the state for a given block (or latest, if none provided)
 `,
 	}
 
-	pruneCommand = &cli.Command{
+	pruneHistoryCommand = &cli.Command{
 		Action:    pruneHistory,
 		Name:      "prune-history",
 		Usage:     "Prune blockchain history (block bodies and receipts) up to the merge block",
@@ -201,7 +243,223 @@ The prune-history command removes historical block bodies and receipts from the
 blockchain database up to the merge block, while preserving block headers. This
 helps reduce storage requirements for nodes that don't need full historical data.`,
 	}
+
+	downloadEraCommand = &cli.Command{
+		Action:    downloadEra,
+		Name:      "download-era",
+		Usage:     "Fetches era1 files (pre-merge history) from an HTTP endpoint",
+		ArgsUsage: "",
+		Flags: slices.Concat(
+			utils.DatabaseFlags,
+			utils.NetworkFlags,
+			[]cli.Flag{
+				eraBlockFlag,
+				eraEpochFlag,
+				eraAllFlag,
+				eraServerFlag,
+			},
+		),
+	}
 )
+
+var (
+	eraBlockFlag = &cli.StringFlag{
+		Name:  "block",
+		Usage: "Block number to fetch. (can also be a range <start>-<end>)",
+	}
+	eraEpochFlag = &cli.StringFlag{
+		Name:  "epoch",
+		Usage: "Epoch number to fetch (can also be a range <start>-<end>)",
+	}
+	eraAllFlag = &cli.BoolFlag{
+		Name:  "all",
+		Usage: "Download all available era1 files",
+	}
+	eraServerFlag = &cli.StringFlag{
+		Name:  "server",
+		Usage: "era1 server URL",
+	}
+)
+
+// ##CROSS: fork breakpoint
+type (
+	breakpointGenesisKeys struct {
+		admin      *ecdsa.PrivateKey
+		validators []breakpointValidatorKeys
+	}
+	breakpointValidatorKeys struct {
+		validator *ecdsa.PrivateKey
+		operator  *ecdsa.PrivateKey
+		signer    bls.SecretKey
+	}
+)
+
+func makeBreakpointGenesis(ctx *cli.Context) error {
+	var (
+		genesis    *core.Genesis
+		keys       *breakpointGenesisKeys
+		outputPath string
+	)
+	switch ctx.Args().Len() {
+	case 0:
+		var err error
+		genesis, keys, err = makeDefaultBreakpointGenesis(ctx.Uint("validators"))
+		if err != nil {
+			return err
+		}
+		outputPath = "genesis.json"
+	case 2:
+		if ctx.IsSet("validators") || ctx.Bool("json") {
+			return errors.New("--validators and --json are only available without input arguments")
+		}
+		inputPath := ctx.Args().Get(0)
+		outputPath = ctx.Args().Get(1)
+		input, err := os.Open(inputPath)
+		if err != nil {
+			return fmt.Errorf("open input genesis: %w", err)
+		}
+		defer input.Close()
+
+		genesis = new(core.Genesis)
+		if err := json.NewDecoder(input).Decode(genesis); err != nil {
+			return fmt.Errorf("decode input genesis: %w", err)
+		}
+		if err := core.MakeBreakpointGenesis(genesis); err != nil {
+			return fmt.Errorf("build Breakpoint genesis: %w", err)
+		}
+	default:
+		return fmt.Errorf("usage: %s", ctx.Command.ArgsUsage)
+	}
+
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if ctx.Bool("force") {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	}
+	output, err := os.OpenFile(outputPath, flags, 0o644)
+	if err != nil {
+		return fmt.Errorf("create output genesis: %w", err)
+	}
+	defer output.Close()
+	encoder := json.NewEncoder(output)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(genesis); err != nil {
+		return fmt.Errorf("encode output genesis: %w", err)
+	}
+	if keys != nil {
+		if err := printBreakpointGenesisKeys(os.Stdout, keys, ctx.Bool("json")); err != nil {
+			return fmt.Errorf("print generated keys: %w", err)
+		}
+	}
+	return nil
+}
+
+func makeDefaultBreakpointGenesis(validatorCount uint) (*core.Genesis, *breakpointGenesisKeys, error) {
+	if validatorCount == 0 {
+		return nil, nil, errors.New("validator count must be greater than zero")
+	}
+	admin, err := crypto.GenerateKey()
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate PoSA admin key: %w", err)
+	}
+	keys := &breakpointGenesisKeys{admin: admin, validators: make([]breakpointValidatorKeys, validatorCount)}
+	validators := make([]params.PoSAValidator, len(keys.validators))
+	validatorAddrs := make([]common.Address, len(keys.validators))
+	for i := range keys.validators {
+		validator, err := crypto.GenerateKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate validator %d key: %w", i+1, err)
+		}
+		operator, err := crypto.GenerateKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate operator %d key: %w", i+1, err)
+		}
+		signer, err := bls.RandKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate signer %d key: %w", i+1, err)
+		}
+		keys.validators[i] = breakpointValidatorKeys{validator: validator, operator: operator, signer: signer}
+		validatorAddrs[i] = crypto.PubkeyToAddress(validator.PublicKey)
+		validators[i] = params.PoSAValidator{
+			ID:        fmt.Sprintf("validator%d", i+1),
+			Operator:  crypto.PubkeyToAddress(operator.PublicKey),
+			Validator: validatorAddrs[i],
+			Signer:    signer.PublicKey().Marshal(),
+		}
+	}
+
+	config := *params.CrossDev3ChainConfig
+	istanbulConfig := *config.Istanbul
+	posaConfig := *istanbulConfig.PoSA
+	config.Istanbul = &istanbulConfig
+	istanbulConfig.PoSA = &posaConfig
+	istanbulConfig.Validators = validatorAddrs
+	posaConfig.Admin = crypto.PubkeyToAddress(admin.PublicKey)
+	posaConfig.Validators = validators
+
+	adminBalance := new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(params.Ether))
+	genesis := &core.Genesis{
+		Config:     &config,
+		Nonce:      0x90aa,
+		Timestamp:  0x5f1663fc,
+		ExtraData:  hexutil.MustDecode("0xc680c0c080c080"),
+		GasLimit:   105000000,
+		Difficulty: istanbul.DefaultDifficulty,
+		Mixhash:    types.IstanbulDigest,
+		Alloc: types.GenesisAlloc{
+			posaConfig.Admin: {Balance: adminBalance},
+		},
+	}
+	if err := core.MakeBreakpointGenesis(genesis); err != nil {
+		return nil, nil, fmt.Errorf("build default Breakpoint genesis: %w", err)
+	}
+	return genesis, keys, nil
+}
+
+func printBreakpointGenesisKeys(w io.Writer, keys *breakpointGenesisKeys, jsonOutput bool) error {
+	if jsonOutput {
+		validators := make([]map[string]any, len(keys.validators))
+		for i, validatorKeys := range keys.validators {
+			validators[i] = map[string]any{
+				"id": fmt.Sprintf("validator%d", i+1),
+				"validator": map[string]string{
+					"address":    crypto.PubkeyToAddress(validatorKeys.validator.PublicKey).Hex(),
+					"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(validatorKeys.validator)),
+				},
+				"operator": map[string]string{
+					"address":    crypto.PubkeyToAddress(validatorKeys.operator.PublicKey).Hex(),
+					"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(validatorKeys.operator)),
+				},
+				"signer": map[string]string{
+					"publicKey": "0x" + hex.EncodeToString(validatorKeys.signer.PublicKey().Marshal()),
+					"secretKey": "0x" + hex.EncodeToString(validatorKeys.signer.Marshal()),
+				},
+			}
+		}
+		output := map[string]any{
+			"admin": map[string]string{
+				"address":    crypto.PubkeyToAddress(keys.admin.PublicKey).Hex(),
+				"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(keys.admin)),
+			},
+			"validators": validators,
+		}
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(output)
+	}
+	fmt.Fprintf(w, "PoSA admin\n  address: %s\n  private key: 0x%s\n", crypto.PubkeyToAddress(keys.admin.PublicKey), hex.EncodeToString(crypto.FromECDSA(keys.admin)))
+	for i, validatorKeys := range keys.validators {
+		fmt.Fprintf(w, "Validator %d\n", i+1)
+		fmt.Fprintf(w, "  validator address: %s\n", crypto.PubkeyToAddress(validatorKeys.validator.PublicKey))
+		fmt.Fprintf(w, "  validator private key: 0x%s\n", hex.EncodeToString(crypto.FromECDSA(validatorKeys.validator)))
+		fmt.Fprintf(w, "  operator address: %s\n", crypto.PubkeyToAddress(validatorKeys.operator.PublicKey))
+		fmt.Fprintf(w, "  operator private key: 0x%s\n", hex.EncodeToString(crypto.FromECDSA(validatorKeys.operator)))
+		fmt.Fprintf(w, "  signer public key: 0x%s\n", hex.EncodeToString(validatorKeys.signer.PublicKey().Marshal()))
+		fmt.Fprintf(w, "  signer secret key: 0x%s\n", hex.EncodeToString(validatorKeys.signer.Marshal()))
+	}
+	return nil
+}
+
+// ##
 
 // initGenesis will initialise the given JSON format genesis file and writes it as
 // the zero'd block (i.e. genesis) or will fail hard if it can't succeed.
@@ -210,34 +468,33 @@ func initGenesis(ctx *cli.Context) error {
 
 	if ctx.Args().Len() != 1 {
 		utils.Fatalf("need genesis.json file as the only argument")
-	} else {
-		genesisPath := ctx.Args().First()
-		if len(genesisPath) == 0 {
-			utils.Fatalf("invalid path to genesis file")
+	}
+	genesisPath := ctx.Args().First()
+	if len(genesisPath) == 0 {
+		utils.Fatalf("invalid path to genesis file")
+	}
+
+	switch genesisPath {
+	// ##CROSS: config
+	case "cross":
+		genesis = core.DefaultCrossGenesisBlock()
+	case "zonezero":
+		genesis = core.DefaultZoneZeroGenesisBlock()
+	case "crossdev3", "onedev3":
+		genesis = core.DefaultCrossDev3GenesisBlock()
+	case "crossdev", "onedev":
+		genesis = core.DefaultCrossDevGenesisBlock()
+	// ##
+	default:
+		file, err := os.Open(genesisPath)
+		if err != nil {
+			utils.Fatalf("Failed to read genesis file: %v", err)
 		}
+		defer file.Close()
 
-		switch genesisPath {
-		// ##CROSS: config
-		case "cross":
-			genesis = core.DefaultCrossGenesisBlock()
-		case "zonezero":
-			genesis = core.DefaultZoneZeroGenesisBlock()
-		case "crossdev3":
-			genesis = core.DefaultCrossDev3GenesisBlock()
-		case "crossdev":
-			genesis = core.DefaultCrossDevGenesisBlock()
-		// ##
-		default:
-			file, err := os.Open(genesisPath)
-			if err != nil {
-				utils.Fatalf("Failed to read genesis file: %v", err)
-			}
-			defer file.Close()
-
-			genesis = new(core.Genesis)
-			if err := json.NewDecoder(file).Decode(genesis); err != nil {
-				utils.Fatalf("invalid genesis file: %v", err)
-			}
+		genesis = new(core.Genesis)
+		if err := json.NewDecoder(file).Decode(genesis); err != nil {
+			utils.Fatalf("invalid genesis file: %v", err)
 		}
 	}
 	// Open and initialise both full and light databases
@@ -245,22 +502,27 @@ func initGenesis(ctx *cli.Context) error {
 	defer stack.Close()
 
 	var overrides core.ChainOverrides
-	if ctx.IsSet(utils.OverridePrague.Name) {
-		v := ctx.Uint64(utils.OverridePrague.Name)
-		overrides.OverridePrague = &v
+	if ctx.IsSet(utils.OverrideOsaka.Name) {
+		v := ctx.Uint64(utils.OverrideOsaka.Name)
+		overrides.OverrideOsaka = &v
+	}
+	if ctx.IsSet(utils.OverrideBPO1.Name) {
+		v := ctx.Uint64(utils.OverrideBPO1.Name)
+		overrides.OverrideBPO1 = &v
+	}
+	if ctx.IsSet(utils.OverrideBPO2.Name) {
+		v := ctx.Uint64(utils.OverrideBPO2.Name)
+		overrides.OverrideBPO2 = &v
 	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		overrides.OverrideVerkle = &v
 	}
 
-	chaindb, err := stack.OpenDatabaseWithFreezer("chaindata", 0, 0, ctx.String(utils.AncientFlag.Name), "", false)
-	if err != nil {
-		utils.Fatalf("Failed to open database: %v", err)
-	}
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
 	defer triedb.Close()
 
 	_, hash, compatErr, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
@@ -294,7 +556,7 @@ func dumpGenesis(ctx *cli.Context) error {
 	// dump whatever already exists in the datadir
 	stack, _ := makeConfigNode(ctx)
 
-	db, err := stack.OpenDatabase("chaindata", 0, 0, "", true)
+	db, err := stack.OpenDatabaseWithOptions("chaindata", node.DatabaseOptions{ReadOnly: true})
 	if err != nil {
 		return err
 	}
@@ -565,8 +827,8 @@ func parseDumpConfig(ctx *cli.Context, db ethdb.Database) (*state.DumpConfig, co
 		arg := ctx.Args().First()
 		if hashish(arg) {
 			hash := common.HexToHash(arg)
-			if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
-				header = rawdb.ReadHeader(db, hash, *number)
+			if number, ok := rawdb.ReadHeaderNumber(db, hash); ok {
+				header = rawdb.ReadHeader(db, hash, number)
 			} else {
 				return nil, common.Hash{}, fmt.Errorf("block %x not found", hash)
 			}
@@ -624,7 +886,7 @@ func dump(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	triedb := utils.MakeTrieDatabase(ctx, db, true, true, false) // always enable preimage lookup
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, true, true, false) // always enable preimage lookup
 	defer triedb.Close()
 
 	state, err := state.New(root, state.NewDatabase(triedb, nil))
@@ -691,4 +953,94 @@ func pruneHistory(ctx *cli.Context) error {
 	// TODO(s1na): what if there is a crash between the two prune operations?
 
 	return nil
+}
+
+// downloadEra is the era1 file downloader tool.
+func downloadEra(ctx *cli.Context) error {
+	flags.CheckExclusive(ctx, eraBlockFlag, eraEpochFlag, eraAllFlag)
+
+	// Resolve the network.
+	var network = "mainnet"
+	if utils.IsNetworkPreset(ctx) {
+		switch {
+		case ctx.IsSet(utils.MainnetFlag.Name):
+		case ctx.IsSet(utils.SepoliaFlag.Name):
+			network = "sepolia"
+		default:
+			return errors.New("unsupported network, no known era1 checksums")
+		}
+	}
+
+	// Resolve the destination directory.
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	ancients := stack.ResolveAncient("chaindata", "")
+	dir := filepath.Join(ancients, rawdb.ChainFreezerName, "era")
+	if ctx.IsSet(utils.EraFlag.Name) {
+		dir = filepath.Join(ancients, ctx.String(utils.EraFlag.Name))
+	}
+
+	baseURL := ctx.String(eraServerFlag.Name)
+	if baseURL == "" {
+		return fmt.Errorf("need --%s flag to download", eraServerFlag.Name)
+	}
+
+	l, err := eradl.New(baseURL, network)
+	if err != nil {
+		return err
+	}
+	switch {
+	case ctx.IsSet(eraAllFlag.Name):
+		return l.DownloadAll(dir)
+
+	case ctx.IsSet(eraBlockFlag.Name):
+		s := ctx.String(eraBlockFlag.Name)
+		start, end, ok := parseRange(s)
+		if !ok {
+			return fmt.Errorf("invalid block range: %q", s)
+		}
+		return l.DownloadBlockRange(start, end, dir)
+
+	case ctx.IsSet(eraEpochFlag.Name):
+		s := ctx.String(eraEpochFlag.Name)
+		start, end, ok := parseRange(s)
+		if !ok {
+			return fmt.Errorf("invalid epoch range: %q", s)
+		}
+		return l.DownloadEpochRange(start, end, dir)
+
+	default:
+		return fmt.Errorf("specify one of --%s, --%s, or --%s to download", eraAllFlag.Name, eraBlockFlag.Name, eraEpochFlag.Name)
+	}
+}
+
+func parseRange(s string) (start uint64, end uint64, ok bool) {
+	log.Info("Parsing block range", "input", s)
+	if m, _ := regexp.MatchString("^[0-9]+-[0-9]+$", s); m {
+		s1, s2, _ := strings.Cut(s, "-")
+		start, err := strconv.ParseUint(s1, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		end, err = strconv.ParseUint(s2, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		if start > end {
+			return 0, 0, false
+		}
+		log.Info("Parsing block range", "start", start, "end", end)
+		return start, end, true
+	}
+	if m, _ := regexp.MatchString("^[0-9]+$", s); m {
+		start, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		end = start
+		log.Info("Parsing single block range", "block", start)
+		return start, end, true
+	}
+	return 0, 0, false
 }

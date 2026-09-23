@@ -31,10 +31,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // feeDelegatedDynamicFeeTx builds a signed fee-delegated dynamic-fee transaction.
@@ -573,4 +576,46 @@ func TestFeeDelegationPromoteIgnoresGappedQueue(t *testing.T) {
 	if err := validatePoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
+}
+
+func TestLegacyPoolDemoteUnexecutables(t *testing.T) {
+	t.Parallel()
+
+	t.Run("requeues transactions cascaded by an insolvent fee payer", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		senderKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+
+		testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+		testAddBalance(pool, payer, big.NewInt(500_000))
+
+		txs := []*types.Transaction{
+			feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey),
+			feeDelegatedDynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey),
+			transaction(2, 100000, senderKey),
+		}
+		for _, tx := range txs {
+			require.NoError(t, pool.addRemoteSync(tx))
+		}
+		require.Equal(t, 3, pool.all.Count())
+
+		pool.mu.Lock()
+		pool.currentState.SetBalance(payer, uint256.NewInt(0), tracing.BalanceChangeUnspecified)
+		pool.demoteUnexecutables()
+		pool.mu.Unlock()
+
+		pending, queued := pool.Stats()
+		assert.Zero(t, pending)
+		assert.Equal(t, 2, queued)
+		assert.False(t, pool.Has(txs[0].Hash()))
+		assert.True(t, pool.Has(txs[1].Hash()))
+		assert.True(t, pool.Has(txs[2].Hash()))
+		require.NoError(t, validatePoolInternals(pool))
+	})
 }

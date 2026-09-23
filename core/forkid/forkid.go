@@ -27,6 +27,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -60,6 +61,10 @@ type Blockchain interface {
 
 	// CurrentHeader retrieves the current head header of the canonical chain.
 	CurrentHeader() *types.Header
+
+	// GetTd retrieves a block's total difficulty in the canonical chain from the
+	// database by hash and number, caching it if found.
+	GetTd(hash common.Hash, number uint64) *big.Int // ##CROSS: legacy sync
 }
 
 // ID is a fork identifier as defined by EIP-2124.
@@ -241,9 +246,8 @@ func checksumToBytes(hash uint32) [4]byte {
 // them, one for the block number based forks and the second for the timestamps.
 func gatherForks(config *params.ChainConfig, genesis uint64) ([]uint64, []uint64) {
 	// Gather all the fork block numbers via reflection
-	kind := reflect.TypeOf(params.ChainConfig{})
+	kind := reflect.TypeFor[params.ChainConfig]()
 	conf := reflect.ValueOf(config).Elem()
-	x := uint64(0)
 	var (
 		forksByBlock []uint64
 		forksByTime  []uint64
@@ -258,12 +262,12 @@ func gatherForks(config *params.ChainConfig, genesis uint64) ([]uint64, []uint64
 		}
 
 		// Extract the fork rule block number or timestamp and aggregate it
-		if field.Type == reflect.TypeOf(&x) {
+		if field.Type == reflect.TypeFor[*uint64]() {
 			if rule := conf.Field(i).Interface().(*uint64); rule != nil {
 				forksByTime = append(forksByTime, *rule)
 			}
 		}
-		if field.Type == reflect.TypeOf(new(big.Int)) {
+		if field.Type == reflect.TypeFor[*big.Int]() {
 			if rule := conf.Field(i).Interface().(*big.Int); rule != nil {
 				forksByBlock = append(forksByBlock, rule.Uint64())
 			}

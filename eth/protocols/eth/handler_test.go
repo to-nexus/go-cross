@@ -18,7 +18,9 @@ package eth
 
 import (
 	"bytes"
+	rand2 "crypto/rand"
 	"crypto/sha256"
+	"io"
 	"math"
 	"math/big"
 	"math/rand"
@@ -35,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -120,7 +121,7 @@ func newTestBackendWithGenerator(blocks int, shanghai bool, cancun bool, generat
 		Alloc:      types.GenesisAlloc{testAddr: {Balance: big.NewInt(100_000_000_000_000_000)}},
 		Difficulty: common.Big0,
 	}
-	chain, _ := core.NewBlockChain(db, nil, gspec, nil, engine, vm.Config{}, nil)
+	chain, _ := core.NewBlockChain(db, gspec, engine, nil)
 
 	_, bs, _ := core.GenerateChainWithGenesis(gspec, engine, blocks, generator)
 	if _, err := chain.InsertChain(bs); err != nil {
@@ -529,22 +530,23 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 	// Collect the hashes to request, and the response to expect
 	var (
 		hashes   []common.Hash
-		receipts [][]*types.Receipt
+		receipts []*ReceiptList68
 	)
 	for i := uint64(0); i <= backend.chain.CurrentBlock().Number.Uint64(); i++ {
 		block := backend.chain.GetBlockByNumber(i)
-
 		hashes = append(hashes, block.Hash())
-		receipts = append(receipts, backend.chain.GetReceiptsByHash(block.Hash()))
+		trs := backend.chain.GetReceiptsByHash(block.Hash())
+		receipts = append(receipts, NewReceiptList68(trs))
 	}
+
 	// Send the hash request and verify the response
 	p2p.Send(peer.app, GetReceiptsMsg, &GetReceiptsPacket{
 		RequestId:          123,
 		GetReceiptsRequest: hashes,
 	})
-	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket{
-		RequestId:        123,
-		ReceiptsResponse: receipts,
+	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket[*ReceiptList68]{
+		RequestId: 123,
+		List:      receipts,
 	}); err != nil {
 		t.Errorf("receipts mismatch: %v", err)
 	}
@@ -612,15 +614,153 @@ func setup() (*testBackend, *testPeer) {
 }
 
 func FuzzEthProtocolHandlers(f *testing.F) {
-	handlers := eth68
+	handlers := eth69
 	backend, peer := setup()
 	f.Fuzz(func(t *testing.T, code byte, msg []byte) {
-		handler := handlers[uint64(code)%protocolLengths[ETH68]]
+		handler := handlers[uint64(code)%protocolLengths[ETH69]]
 		if handler == nil {
 			return
 		}
 		handler(backend, decoder{msg: msg}, peer.Peer)
 	})
+}
+
+func TestHandleNewBlock(t *testing.T) {
+	t.Parallel()
+
+	gen := func(n int, g *core.BlockGen) {
+		if n%2 == 0 {
+			w := &types.Withdrawal{
+				Address: common.Address{0xaa},
+				Amount:  42,
+			}
+			g.AddWithdrawal(w)
+		}
+	}
+
+	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, false, gen)
+	defer backend.close()
+
+	peer, _ := newTestPeer("peer", ETH68, backend)
+	defer peer.close()
+
+	v := new(uint32)
+	*v = 1
+	genBlobs := makeBlkBlobs(1, 2)
+	tx1 := types.NewTx(&types.BlobTx{
+		ChainID:    new(uint256.Int).SetUint64(1),
+		GasTipCap:  new(uint256.Int),
+		GasFeeCap:  new(uint256.Int),
+		Gas:        0,
+		Value:      new(uint256.Int),
+		Data:       nil,
+		BlobFeeCap: new(uint256.Int),
+		BlobHashes: []common.Hash{common.HexToHash("0x34ec6e64f9cda8fe0451a391e4798085a3ef51a65ed1bfb016e34fc1a2028f8f"), common.HexToHash("0xb9a412e875f29fac436acde234f954e91173c4cf79814f6dcf630d8a6345747f")},
+		Sidecar:    genBlobs[0],
+		V:          new(uint256.Int),
+		R:          new(uint256.Int),
+		S:          new(uint256.Int),
+	})
+	block := types.NewBlockWithHeader(&types.Header{
+		Number:      big.NewInt(0),
+		Extra:       []byte("test block"),
+		UncleHash:   types.EmptyUncleHash,
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+	sidecars := types.BlobSidecars{types.NewBlobSidecarFromTx(tx1)}
+	for _, s := range sidecars {
+		s.BlockNumber = block.Number()
+		s.BlockHash = block.Hash()
+	}
+	dataNil := NewBlockPacket{
+		Block:    block,
+		TD:       big.NewInt(1),
+		Sidecars: nil,
+	}
+	dataNonNil := NewBlockPacket{
+		Block:    block,
+		TD:       big.NewInt(1),
+		Sidecars: sidecars,
+	}
+	sizeNonNil, rNonNil, _ := rlp.EncodeToReader(dataNonNil)
+	sizeNil, rNil, _ := rlp.EncodeToReader(dataNil)
+
+	// Define the test cases
+	testCases := []struct {
+		name string
+		msg  p2p.Msg
+		err  error
+	}{
+		{
+			name: "Valid block",
+			msg: p2p.Msg{
+				Code:    1,
+				Size:    uint32(sizeNonNil),
+				Payload: rNonNil,
+			},
+			err: nil,
+		},
+		{
+			name: "Nil sidecars",
+			msg: p2p.Msg{
+				Code:    2,
+				Size:    uint32(sizeNil),
+				Payload: rNil,
+			},
+			err: nil,
+		},
+	}
+
+	caps := []p2p.Cap{
+		{
+			Name:    "eth",
+			Version: ETH68,
+		},
+		{
+			Name:    "istanbul",
+			Version: 100,
+		},
+	}
+	// Create a source handler to send messages through and a sink peer to receive them
+	p2pEthSrc, p2pEthSink := p2p.MsgPipe()
+	defer p2pEthSrc.Close()
+	defer p2pEthSink.Close()
+
+	localEth := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "", caps), p2pEthSrc, nil)
+
+	// Run the tests
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := handleNewBlock(backend, tc.msg, localEth)
+			if err != tc.err {
+				t.Errorf("expected error %v, got %v", tc.err, err)
+			}
+		})
+	}
+}
+
+func makeBlkBlobs(n, nPerTx int) []*types.BlobTxSidecar {
+	if n <= 0 {
+		return nil
+	}
+	ret := make([]*types.BlobTxSidecar, n)
+	for i := 0; i < n; i++ {
+		blobs := make([]kzg4844.Blob, nPerTx)
+		commitments := make([]kzg4844.Commitment, nPerTx)
+		proofs := make([]kzg4844.Proof, nPerTx)
+		for i := 0; i < nPerTx; i++ {
+			io.ReadFull(rand2.Reader, blobs[i][:])
+			commitments[i], _ = kzg4844.BlobToCommitment(&blobs[i])
+			proofs[i], _ = kzg4844.ComputeBlobProof(&blobs[i], commitments[i])
+		}
+		ret[i] = &types.BlobTxSidecar{
+			Blobs:       blobs,
+			Commitments: commitments,
+			Proofs:      proofs,
+		}
+	}
+	return ret
 }
 
 func TestGetPooledTransaction(t *testing.T) {
@@ -661,11 +801,7 @@ func testGetPooledTransaction(t *testing.T, blobTx bool) {
 			To:         testAddr,
 			BlobHashes: []common.Hash{emptyBlobHash},
 			BlobFeeCap: uint256.MustFromBig(common.Big1),
-			Sidecar: &types.BlobTxSidecar{
-				Blobs:       emptyBlobs,
-				Commitments: []kzg4844.Commitment{emptyBlobCommit},
-				Proofs:      []kzg4844.Proof{emptyBlobProof},
-			},
+			Sidecar:    types.NewBlobTxSidecar(types.BlobSidecarVersion0, emptyBlobs, []kzg4844.Commitment{emptyBlobCommit}, []kzg4844.Proof{emptyBlobProof}),
 		})
 		if err != nil {
 			t.Fatal(err)

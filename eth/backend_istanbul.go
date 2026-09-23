@@ -3,7 +3,6 @@ package eth
 import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
 // quorum_protocol enables the eth service to return two different protocols, one for the eth mainnet "eth" service,
@@ -18,7 +17,7 @@ const (
 	istanbulProtocolLengths = 22  // protocol Length describe the number of messages support by the protocol/version map[uint]uint64{Istanbul64: 18, Istanbul99: 18, Istanbul100: 18}
 )
 
-func (s *Ethereum) istanbulConsensusProtocols(backend eth.Backend, network uint64, dnsdisc enode.Iterator) []p2p.Protocol {
+func (s *Ethereum) istanbulConsensusProtocols(backend eth.Backend, network uint64) []p2p.Protocol {
 	// Set protocol Name/Version
 	// keep `var protocolName = "eth"` as is, and only update the quorum consensus specific protocol
 	// This is used to enable the eth service to return multiple devp2p subprotocols.
@@ -28,5 +27,5 @@ func (s *Ethereum) istanbulConsensusProtocols(backend eth.Backend, network uint6
 	// With this change, support is added so that the "eth" subprotocol remains and optionally a consensus subprotocol
 	// can be added allowing the node to communicate over "eth" and an optional consensus subprotocol, e.g. "eth" and "istanbul/100"
 
-	return []p2p.Protocol{(*istanbulHandler)(s.handler).makeIstanbulConsensusProtocol(istanbulProtocolName, IstanbulProtocolVersion, istanbulProtocolLengths, backend, network, dnsdisc)}
+	return []p2p.Protocol{(*istanbulHandler)(s.handler).makeIstanbulConsensusProtocol(istanbulProtocolName, IstanbulProtocolVersion, istanbulProtocolLengths, backend, network)}
 }

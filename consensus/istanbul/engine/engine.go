@@ -120,7 +120,8 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 
 // IsSystemTransaction checks if the transaction is a system transaction.
 // A system transaction is a transaction to a system contract with gas price 0 and sender is the block proposer.
-func IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
+// If the block coinbase is not set, it uses the engine's signer as the coinbase.
+func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header, signer types.Signer) (bool, error) {
 	if tx.Type() != types.LegacyTxType {
 		return false, nil
 	}
@@ -130,20 +131,15 @@ func IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, err
 	if tx.GasPrice().Sign() != 0 {
 		return false, nil
 	}
-	sender, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	sender, err := types.Sender(signer, tx)
 	if err != nil {
 		return false, err
 	}
-	return sender == header.Coinbase, nil
-}
-
-// IsSystemTransaction checks if the transaction is a system transaction.
-// If the block coinbase is not set, use the engine's signer as the coinbase.
-func (e *Engine) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	if header.Coinbase == (common.Address{}) {
-		return IsSystemTransaction(tx, &types.Header{Coinbase: e.signer})
+	coinbase := header.Coinbase
+	if coinbase == (common.Address{}) {
+		coinbase = e.signer
 	}
-	return IsSystemTransaction(tx, header)
+	return sender == coinbase, nil
 }
 
 func (e *Engine) IsSystemContract(to *common.Address) bool {
@@ -176,7 +172,8 @@ func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, head
 		if chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
 			return systemTxsGasBreakpoint
 		}
-		if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		// Parent block also should be PoSA to check council period rollover
+		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) {
 			if e.cfg.OnNewCouncilPeriod(parent.Time, header.Time) {
 				return systemTxsGasNewPeriod
 			}
@@ -209,6 +206,7 @@ func writeCommittedSeals(chain consensus.ChainHeaderReader, header *types.Header
 			if len(committedSeals) == 0 {
 				return istanbul.ErrInvalidCommittedSeals
 			}
+
 			// aggregate seal signatures
 			bs := bitset.New(uint(len(committedSeals)))
 			sigs := make([][]byte, 0, len(committedSeals))
@@ -248,22 +246,6 @@ func writeCommittedSeals(chain consensus.ChainHeaderReader, header *types.Header
 
 		return nil
 	}
-}
-
-func aggregateCommittedSeals(committedSeals []istanbul.SignedSeal) ([]byte, error) {
-	sigs := make([][]byte, 0, len(committedSeals))
-	for _, seal := range committedSeals {
-		if len(seal.Signature()) != types.IstanbulExtraSealBLS {
-			return nil, istanbul.ErrInvalidCommittedSeals
-		}
-		sigs = append(sigs, seal.Signature())
-	}
-
-	aggSig, err := bls.AggregateCompressedSignatures(sigs)
-	if err != nil {
-		return nil, err
-	}
-	return aggSig.Marshal(), nil
 }
 
 // writeRoundNumber writes the extra-data field of a block header with given round.
@@ -321,7 +303,7 @@ func (e *Engine) verifyProposalTransactions(chain consensus.ChainHeaderReader, b
 
 	var seenSystemTx bool
 	for i, tx := range block.Transactions() {
-		isSystemTx, err := e.IsSystemTransaction(tx, header)
+		isSystemTx, err := e.IsSystemTransaction(tx, header, signer)
 		if err != nil {
 			return fmt.Errorf("invalid system transaction %d [%v]: %w", i, tx.Hash(), err)
 		}
@@ -468,9 +450,12 @@ func (e *Engine) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 // in a batch of parents (ascending order) to avoid looking those up from the
 // database. This is useful for concurrently verifying a batch of new headers.
 func (e *Engine) verifyCascadingFields(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet, parents []*types.Header) error {
-	// The genesis block is the always valid dead-end
+	// Genesis has no parent or signer to verify, but must keep the legacy prefix.
 	number := header.Number.Uint64()
 	if number == 0 {
+		if !bytes.Equal(header.MixDigest[:16], types.IstanbulDigest[:16]) { // ##CROSS: istanbul digest
+			return istanbul.ErrInvalidMixDigest
+		}
 		return nil
 	}
 
@@ -593,7 +578,7 @@ func (e *Engine) verifySigner(chain consensus.ChainHeaderReader, header *types.H
 	}
 
 	// Verify the mix digest
-	if header.MixDigest != types.MakeIstanbulDigest(mixHash) {
+	if header.MixDigest != istanbulDigest(chain, header, mixHash) {
 		return istanbul.ErrInvalidMixDigest
 	}
 
@@ -687,10 +672,25 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 				validSeal++
 				continue
 			}
+			log.Error("Istanbul: unknown committer",
+				"number", header.Number.Uint64(),
+				"addr", addr,
+				"committers", committers,
+				"validators", validators.List(),
+				"extra", hexutil.Encode(header.Extra),
+			)
 			return istanbul.ErrInvalidCommittedSeals
 		}
 
 		if validSeal < validators.QuorumSize() {
+			log.Error("Istanbul: not enough quorum",
+				"number", header.Number.Uint64(),
+				"validSeal", validSeal,
+				"quorum", validators.QuorumSize(),
+				"committers", committers,
+				"validators", validators.List(),
+				"extra", hexutil.Encode(header.Extra),
+			)
 			return istanbul.ErrInvalidCommittedSeals
 		}
 	}
@@ -746,6 +746,13 @@ func makeMixHashBLS(randomReveal []byte, lastMixHash common.Hash) (mixHash commo
 
 // ##
 
+// ##CROSS: istanbul digest v2
+func istanbulDigest(chain consensus.ChainHeaderReader, header *types.Header, mixHash common.Hash) common.Hash {
+	return types.MakeIstanbulDigest(mixHash, chain.Config().IsOsaka(header.Number, header.Time))
+}
+
+// ##
+
 func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header, validators istanbul.ValidatorSet) error {
 	header.Coinbase = common.Address{}
 	header.Nonce = istanbul.EmptyBlockNonce
@@ -785,7 +792,7 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		mixHash = makeMixHash(randomReveal)
 	}
 
-	header.MixDigest = types.MakeIstanbulDigest(mixHash) // ##CROSS: istanbul digest
+	header.MixDigest = istanbulDigest(chain, header, mixHash) // ##CROSS: istanbul digest
 
 	// use the same difficulty for all blocks
 	header.Difficulty = istanbul.DefaultDifficulty
@@ -827,7 +834,9 @@ func (e *Engine) prepareValidators(chain consensus.ChainHeaderReader, header *ty
 	// Reading the contract at parent here would return the pre-rollover council.
 	// We pre-compute the post-rollover council manually to match what updateValidatorSet will produce in Finalize.
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-	if parent != nil && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+	if parent != nil && chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) &&
+		// Parent block also should be PoSA to check council period rollover
+		e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 		validatorList, signerList, err = e.computeNextCouncil(header.Number.Uint64() - 1)
 		log.Warn("New epoch + new council period: computing next council manually",
 			"number", header.Number.Uint64(),
@@ -955,14 +964,14 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		// ##
 
 		// ##CROSS: validator reward
-		if err := e.distributeRewards(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+		if err := e.distributeRewards(chain, header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 			log.Error("Finalize: failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", header.Coinbase, "usedGas", *usedGas)
 			return err
 		}
 		// ##
 
 		// At the beginning of a new council period
-		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
 				mitigateSystemTxSkippedMeter.Mark(1)
@@ -1040,14 +1049,14 @@ func (e *Engine) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		// ##
 
 		// ##CROSS: validator reward
-		if err := e.distributeRewards(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
+		if err := e.distributeRewards(chain, header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 			log.Error("FinalizeAndAssemble: failed to distribute rewards", "error", err, "number", header.Number.Uint64(), "validator", e.signer, "usedGas", header.GasUsed)
 			return nil, nil, err
 		}
 		// ##
 
 		// At the beginning of a new council period
-		if e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
+		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, &body.Transactions, &receipts, nil, &header.GasUsed, tracer); err != nil {
 				mitigateSystemTxSkippedMeter.Mark(1)
@@ -1129,7 +1138,7 @@ func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSe
 		return nil, nil, istanbul.ErrEmptySigners
 	}
 
-	expected := bitset.New(uint(signerCount)) // build expected signers bitset
+	expected := bitset.New(signerCount) // build expected signers bitset
 	addrs := make([]common.Address, 0, signerCount)
 	pubkeys := make([]types.BLSPublicKey, 0, signerCount)
 	// SignersBitset is encoded against byte-sorted validators
@@ -1450,7 +1459,7 @@ func executeSystemTransaction(evm *vm.EVM, msg *core.Message, tx *types.Transact
 	receipt = types.NewReceipt(root, false, *usedGas)
 	receipt.TxHash = tx.Hash()
 	receipt.GasUsed = gasUsed
-	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
+	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash(), header.Time)
 	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockHash = header.Hash()
 	receipt.BlockNumber = header.Number

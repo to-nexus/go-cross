@@ -20,7 +20,6 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"maps"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -41,25 +40,30 @@ type sigCache struct {
 // MakeSigner returns a Signer based on the given chain config and block number.
 func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint64) Signer {
 	var signer Signer
-	switch {
-	case config.IsBreakpoint(blockNumber, blockTime): // ##CROSS: fork breakpoint
-		signer = NewBreakpointSigner(config.ChainID)
-	case config.IsPrague(blockNumber, blockTime):
-		signer = NewPragueSigner(config.ChainID)
-	case config.IsCancun(blockNumber, blockTime):
-		signer = NewCancunSigner(config.ChainID)
-	case config.IsAdventure(blockNumber, blockTime): // ##CROSS: fork adventure
-		signer = NewAdventureSigner(config.ChainID)
-	case config.IsLondon(blockNumber):
-		signer = NewLondonSigner(config.ChainID)
-	case config.IsBerlin(blockNumber):
-		signer = NewEIP2930Signer(config.ChainID)
-	case config.IsEIP155(blockNumber):
-		signer = NewEIP155Signer(config.ChainID)
-	case config.IsHomestead(blockNumber):
-		signer = HomesteadSigner{}
-	default:
-		signer = FrontierSigner{}
+	if config.ChainID != nil && config.ChainID.Sign() > 0 {
+		switch {
+		case config.IsBreakpoint(blockNumber, blockTime): // ##CROSS: fork breakpoint
+			signer = NewBreakpointSigner(config.ChainID)
+		case config.IsPrague(blockNumber, blockTime):
+			signer = NewPragueSigner(config.ChainID)
+		case config.IsCancun(blockNumber, blockTime):
+			signer = NewCancunSigner(config.ChainID)
+		case config.IsAdventure(blockNumber, blockTime): // ##CROSS: fork adventure
+			signer = NewAdventureSigner(config.ChainID)
+		case config.IsLondon(blockNumber):
+			signer = NewLondonSigner(config.ChainID)
+		case config.IsBerlin(blockNumber):
+			signer = NewEIP2930Signer(config.ChainID)
+		case config.IsEIP155(blockNumber):
+			signer = NewEIP155Signer(config.ChainID)
+		}
+	}
+	if signer == nil {
+		if config.IsHomestead(blockNumber) {
+			signer = HomesteadSigner{}
+		} else {
+			signer = FrontierSigner{}
+		}
 	}
 	return signer
 }
@@ -73,7 +77,7 @@ func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint
 // have the current block number available, use MakeSigner instead.
 func LatestSigner(config *params.ChainConfig) Signer {
 	var signer Signer
-	if config.ChainID != nil {
+	if config.ChainID != nil && config.ChainID.Sign() > 0 {
 		switch {
 		case config.BreakpointTime != nil: // ##CROSS: fork breakpoint
 			signer = NewBreakpointSigner(config.ChainID)
@@ -107,7 +111,7 @@ func LatestSigner(config *params.ChainConfig) Signer {
 // If you have a ChainConfig and know the current block number, use MakeSigner instead.
 func LatestSignerForChainID(chainID *big.Int) Signer {
 	var signer Signer
-	if chainID != nil {
+	if chainID != nil && chainID.Sign() > 0 {
 		signer = NewBreakpointSigner(chainID) // ##CROSS: fork breakpoint
 	} else {
 		signer = HomesteadSigner{}
@@ -260,9 +264,23 @@ func (s feeDelegationSigner) Hash(tx *Transaction) common.Hash {
 // modernSigner is the signer implementation that handles non-legacy transaction types.
 // For legacy transactions, it defers to one of the legacy signers (frontier, homestead, eip155).
 type modernSigner struct {
-	txtypes map[byte]struct{}
+	txtypes txtypeSet
 	chainID *big.Int
 	legacy  Signer
+}
+
+// txtypeSet is a bitmap for transaction types.
+type txtypeSet [2]uint64
+
+func (v *txtypeSet) set(txType byte) {
+	v[txType/64] |= 1 << (txType % 64)
+}
+
+func (v *txtypeSet) has(txType byte) bool {
+	if txType >= byte(len(v)*64) {
+		return false
+	}
+	return v[txType/64]&(1<<(txType%64)) != 0
 }
 
 func newModernSigner(chainID *big.Int, fork forks.Fork) Signer {
@@ -271,7 +289,6 @@ func newModernSigner(chainID *big.Int, fork forks.Fork) Signer {
 	}
 	s := &modernSigner{
 		chainID: chainID,
-		txtypes: make(map[byte]struct{}, 4),
 	}
 	// configure legacy signer
 	switch {
@@ -282,22 +299,22 @@ func newModernSigner(chainID *big.Int, fork forks.Fork) Signer {
 	default:
 		s.legacy = FrontierSigner{}
 	}
-	s.txtypes[LegacyTxType] = struct{}{}
+	s.txtypes.set(LegacyTxType)
 	// configure tx types
 	if fork >= forks.Berlin {
-		s.txtypes[AccessListTxType] = struct{}{}
+		s.txtypes.set(AccessListTxType)
 	}
 	if fork >= forks.London {
-		s.txtypes[DynamicFeeTxType] = struct{}{}
+		s.txtypes.set(DynamicFeeTxType)
 	}
 	if fork >= forks.Adventure { // ##CROSS: fork adventure
-		s.txtypes[FeeDelegatedDynamicFeeTxType] = struct{}{}
+		s.txtypes.set(FeeDelegatedDynamicFeeTxType)
 	}
 	if fork >= forks.Cancun {
-		s.txtypes[BlobTxType] = struct{}{}
+		s.txtypes.set(BlobTxType)
 	}
 	if fork >= forks.Prague {
-		s.txtypes[SetCodeTxType] = struct{}{}
+		s.txtypes.set(SetCodeTxType)
 	}
 	return s
 }
@@ -308,7 +325,7 @@ func (s *modernSigner) ChainID() *big.Int {
 
 func (s *modernSigner) Equal(s2 Signer) bool {
 	other, ok := s2.(*modernSigner)
-	return ok && s.chainID.Cmp(other.chainID) == 0 && maps.Equal(s.txtypes, other.txtypes) && s.legacy.Equal(other.legacy)
+	return ok && s.chainID.Cmp(other.chainID) == 0 && s.txtypes == other.txtypes && s.legacy.Equal(other.legacy)
 }
 
 func (s *modernSigner) Hash(tx *Transaction) common.Hash {
@@ -316,8 +333,7 @@ func (s *modernSigner) Hash(tx *Transaction) common.Hash {
 }
 
 func (s *modernSigner) supportsType(txtype byte) bool {
-	_, ok := s.txtypes[txtype]
-	return ok
+	return s.txtypes.has(txtype)
 }
 
 func (s *modernSigner) Sender(tx *Transaction) (common.Address, error) {

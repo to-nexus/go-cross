@@ -756,7 +756,7 @@ func TestSlashValidatorsRevert(t *testing.T) {
 	triedb := triedb.NewDatabase(memdb, nil)
 	sdb := state.NewDatabase(triedb, nil)
 	statedb, _ := state.New(types.EmptyRootHash, sdb)
-	statedb.SetCode(contracts.ValidatorSlashAddr, revertCode)
+	statedb.SetCode(contracts.ValidatorSlashAddr, revertCode, tracing.CodeChangeUnspecified)
 
 	mockChain := &mockChainHeaderReader{
 		headers: headers,
@@ -938,7 +938,7 @@ func TestDistributeRewards(t *testing.T) {
 				},
 			}
 
-			err := engine.distributeRewards(tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
+			err := engine.distributeRewards(cx, tt.header, statedb, cx, &txs, &receipts, nil, &usedGas, nil)
 
 			require.NoError(t, err)
 			if len(tt.txs) > 0 {
@@ -1264,6 +1264,10 @@ func TestVerifyValidatorsBoundaryCoincidence(t *testing.T) {
 		parentTime    = councilPeriod - 1 // last second of OLD council period
 		headerTime    = councilPeriod     // first second of NEW council period
 	)
+	posaConfig := *params.TestChainConfig
+	breakpointTime := uint64(0)
+	posaConfig.BreakpointTime = &breakpointTime
+	posaConfig.Istanbul = &params.IstanbulConfig{PoSA: &params.PoSAConfig{}}
 
 	// Parent header registered in chain so verifyValidators can detect the coincident boundary.
 	parentHeader := &types.Header{
@@ -1339,7 +1343,7 @@ func TestVerifyValidatorsBoundaryCoincidence(t *testing.T) {
 			if tt.registerParent {
 				headers[parentHash] = parentHeader
 			}
-			chain := &mockChainHeaderReader{headers: headers, config: params.TestChainConfig}
+			chain := &mockChainHeaderReader{headers: headers, config: &posaConfig}
 
 			err := engine.verifyValidators(chain, header)
 			if tt.expectedErr != nil {

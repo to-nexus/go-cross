@@ -1,3 +1,19 @@
+// Copyright 2025 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
 package contracts
 
 import "github.com/ethereum/go-ethereum/common"
@@ -6,12 +22,16 @@ import "github.com/ethereum/go-ethereum/common"
 
 var (
 	// predeploy
-	BridgeImplSlot = common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
+	ProxyImplSlot = common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
 
 	CrossExAddr    = common.HexToAddress("0xfeed00000000000000000000000000000000C0DE")
 	BridgeAddr     = common.HexToAddress("0xb81d6e000000000000000000000000000000C0de")
 	BridgeImplAddr = common.HexToAddress("0xB81D6e000000000000000000000000000000AAaA")
 	Multicall3Addr = common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11")
+	// ##CROSS: predeploys singleton factory
+	SingletonFactoryAddr  = common.HexToAddress("0x4e59b44847b379578588920cA78FbF26c0B4956C")
+	SingletonFactory2Addr = common.HexToAddress("0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7")
+	// ##
 
 	// breakpoint
 	// ##CROSS: consensus system contract
@@ -23,6 +43,13 @@ var (
 	StakeHubImplAddr       = common.HexToAddress("0x000000000000000000000000000000000000A002")
 	RewardHubImplAddr      = common.HexToAddress("0x000000000000000000000000000000000000A003")
 	ValidatorSlashImplAddr = common.HexToAddress("0x000000000000000000000000000000000000A004")
+
+	DelegationPoolAddr      = common.HexToAddress("0x000000057d121080B6925657e9C6df24D4F8c4Bd")
+	CrossReserveAddr        = common.HexToAddress("0x0000000bAeD5f581DE982F028386eE6d6B11cd83")
+	ProtocolReserveAddr     = common.HexToAddress("0x0000000bfAB2fe0C0A64A9C8BED46D7520331689")
+	CrossReserveImplAddr    = common.HexToAddress("0x111111110e8cB1332C9d9846FFA3525e1d0D23dF")
+	ProtocolReserveImplAddr = common.HexToAddress("0x11111116B6e88594585E4a9BaA6477208Cb8a262")
+	DelegationPoolImplAddr  = common.HexToAddress("0x1111111ce67040AfeDcc6BF5F3E93b06E710F823")
 	// ##
 )
 

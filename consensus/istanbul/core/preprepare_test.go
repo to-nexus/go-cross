@@ -234,7 +234,6 @@ func generateValidatorSetAndKeys(t *testing.T, n int) (istanbul.ValidatorSet, ma
 		addr := crypto.PubkeyToAddress(privateKey.PublicKey)
 		vals[i] = addr
 		keys[addr] = privateKey
-
 	}
 	valSet := validator.NewSet(vals, signers, istanbul.NewRoundRobinProposerPolicy())
 	return valSet, keys

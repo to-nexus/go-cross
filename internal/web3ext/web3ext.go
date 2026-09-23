@@ -220,11 +220,6 @@ web3._extend({
 			params: 1
 		}),
 		new web3._extend.Method({
-			name: 'seedHash',
-			call: 'debug_seedHash',
-			params: 1
-		}),
-		new web3._extend.Method({
 			name: 'dumpBlock',
 			call: 'debug_dumpBlock',
 			params: 1,
@@ -248,11 +243,6 @@ web3._extend({
 			name: 'vmodule',
 			call: 'debug_vmodule',
 			params: 1
-		}),
-		new web3._extend.Method({
-			name: 'backtraceAt',
-			call: 'debug_backtraceAt',
-			params: 1,
 		}),
 		new web3._extend.Method({
 			name: 'stacks',
@@ -475,6 +465,17 @@ web3._extend({
 			call: 'debug_getTrieFlushInterval',
 			params: 0
 		}),
+		new web3._extend.Method({
+			name: 'sync',
+			call: 'debug_sync',
+			params: 1
+		}),
+		new web3._extend.Method({
+			name: 'stateSize',
+			call: 'debug_stateSize',
+			params: 1,
+			inputFormatter: [null],
+		}),
 	],
 	properties: []
 });
@@ -602,6 +603,11 @@ web3._extend({
 			call: 'eth_getBlockReceipts',
 			params: 1,
 		}),
+		new web3._extend.Method({
+			name: 'config',
+			call: 'eth_config',
+			params: 0,
+		}),
 		// ##CROSS: blob sidecars
 		new web3._extend.Method({
 			name: 'getBlobSidecars',
@@ -643,7 +649,7 @@ web3._extend({
 `
 
 // ##CROSS: legacy sync
-const MinerJs = ` 
+const MinerJs = `
 web3._extend({
 	property: 'miner',
 	methods: [

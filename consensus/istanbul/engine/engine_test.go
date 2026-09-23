@@ -3,26 +3,28 @@ package engine
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"fmt"
 	"math"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,6 +34,148 @@ var validators = []common.Address{
 	common.BytesToAddress(hexutil.MustDecode("0x294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212")),
 	common.BytesToAddress(hexutil.MustDecode("0x6beaaed781d2d2ab6350f5c4566a2c6eaac407a6")),
 	common.BytesToAddress(hexutil.MustDecode("0x8be76812f765c24641ec63dc2852b378aba2b440")),
+}
+
+func TestEnginePrepare(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	blsKey, err := bls.RandKey()
+	require.NoError(t, err)
+	address := crypto.PubkeyToAddress(key.PublicKey)
+	// Keep the parent ahead of the wall clock so Prepare picks a deterministic timestamp.
+	parent := &types.Header{Number: big.NewInt(0), Time: uint64(time.Now().Unix()) + 30, GasLimit: 10_000_000, BaseFee: big.NewInt(1_000_000_000), MixDigest: types.IstanbulDigest}
+	for _, test := range []struct {
+		name   string
+		fork   *uint64
+		digest common.Hash
+		posa   bool
+	}{
+		{"disabled", nil, types.IstanbulDigest, true},
+		{"before osaka", newUint64(parent.Time + 2), types.IstanbulDigest, true},
+		{"at osaka", newUint64(parent.Time + 1), types.IstanbulDigestV2, true},
+		{"after osaka", newUint64(parent.Time), types.IstanbulDigestV2, true},
+		{"osaka at genesis", newUint64(0), types.IstanbulDigestV2, true},
+		{"osaka without posa", newUint64(0), types.IstanbulDigestV2, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0), OsakaTime: test.fork, Istanbul: &params.IstanbulConfig{}}
+			if test.posa {
+				config.BreakpointTime = newUint64(0)
+				config.Istanbul.PoSA = &params.PoSAConfig{}
+			}
+			chain := &mockChainHeaderReader{config: config, headers: map[common.Hash]*types.Header{parent.Hash(): parent}}
+			cfg := istanbul.NewConfig(config)
+			cfg.AllowedFutureBlockTime = 120
+			engine := NewEngine(cfg, address, func(data []byte) ([]byte, error) {
+				return crypto.Sign(crypto.Keccak256(data), key)
+			}, nil, func(data []byte) ([]byte, error) {
+				return blsKey.Sign(data).Marshal(), nil
+			}, nil, nil)
+			valSet := validator.NewSet([]common.Address{address}, []types.BLSPublicKey{types.BytesToBLSPublicKey(blsKey.PublicKey().Marshal())}, cfg.ProposerPolicy)
+			header := &types.Header{Number: big.NewInt(1), ParentHash: parent.Hash(), GasLimit: parent.GasLimit, UncleHash: types.EmptyUncleHash}
+			header.BaseFee = eip1559.CalcBaseFee(config, parent)
+			// Prepare must overwrite a stale version and use its final timestamp.
+			header.MixDigest[15] = 0xff
+			require.NoError(t, engine.Prepare(chain, header, valSet))
+			assert.Equal(t, parent.Time+1, header.Time)
+			assert.Equal(t, test.digest[:16], header.MixDigest[:16])
+			header.Coinbase = address
+			assert.ErrorIs(t, engine.VerifyHeader(chain, header, nil, valSet), istanbul.ErrEmptyCommittedSeals)
+			hash := header.Hash()
+			seal, err := crypto.Sign(PrepareCommittedSeal(header, 0), key)
+			require.NoError(t, err)
+			if test.posa {
+				seal = blsKey.Sign(PrepareCommittedSeal(header, 0)).Marshal()
+			}
+			require.NoError(t, engine.CommitHeader(chain, header, []istanbul.SignedSeal{signedSeal{0, seal}}, big.NewInt(0)))
+			assert.Equal(t, hash, header.Hash())
+			require.NoError(t, engine.VerifyHeader(chain, header, nil, valSet))
+			for _, version := range []byte{0x20, 0x32, 0xff} {
+				if version == test.digest[15] {
+					continue
+				}
+				bad := types.CopyHeader(header)
+				bad.MixDigest[15] = version
+				assert.ErrorIs(t, engine.VerifyHeader(chain, bad, nil, valSet), istanbul.ErrInvalidMixDigest)
+			}
+			bad := types.CopyHeader(header)
+			bad.MixDigest[31] ^= 1
+			assert.ErrorIs(t, engine.VerifyHeader(chain, bad, nil, valSet), istanbul.ErrInvalidMixDigest)
+			// PREVRANDAO includes the prefix as well as the random seed.
+			random := core.NewEVMBlockContext(header, &chainMock{config: config}, &address).Random
+			require.NotNil(t, random)
+			assert.Equal(t, crypto.Keccak256Hash(header.MixDigest[:]), *random)
+			other := types.CopyHeader(header)
+			other.MixDigest[15] ^= 0x20 ^ 0x32
+			otherRandom := core.NewEVMBlockContext(other, &chainMock{config: config}, &address).Random
+			assert.NotEqual(t, *random, *otherRandom)
+			// Verify the next block with a versioned parent, including a legacy-to-v2 transition.
+			chain.headers[header.Hash()] = header
+			next := &types.Header{Number: big.NewInt(2), ParentHash: header.Hash(), GasLimit: header.GasLimit, UncleHash: types.EmptyUncleHash}
+			next.BaseFee = eip1559.CalcBaseFee(config, header)
+			require.NoError(t, engine.Prepare(chain, next, valSet))
+			next.Coinbase = address
+			assert.ErrorIs(t, engine.VerifyHeader(chain, next, nil, valSet), istanbul.ErrEmptyCommittedSeals)
+			genesis := &types.Header{Number: big.NewInt(0), Time: parent.Time, MixDigest: types.IstanbulDigest, UncleHash: types.EmptyUncleHash, Difficulty: istanbul.DefaultDifficulty}
+			require.NoError(t, ApplyHeaderIstanbulExtra(genesis))
+			require.NoError(t, engine.VerifyHeader(chain, genesis, nil, nil))
+			genesis.MixDigest = types.IstanbulDigestV2
+			assert.ErrorIs(t, engine.VerifyHeader(chain, genesis, nil, nil), istanbul.ErrInvalidMixDigest)
+		})
+	}
+}
+
+func TestMakeMixHashBLS(t *testing.T) {
+	seed := common.Hash{1, 2, 3}
+	legacy := types.MakeIstanbulDigest(seed, false)
+	v2 := types.MakeIstanbulDigest(seed, true)
+	// The random seed chain must not depend on the parent's version byte.
+	assert.Equal(t, makeMixHashBLS([]byte{4, 5, 6}, legacy), makeMixHashBLS([]byte{4, 5, 6}, v2))
+}
+
+func TestEngineVerifyCommittedSeals(t *testing.T) {
+	key, err := bls.RandKey()
+	require.NoError(t, err)
+	var (
+		address   = common.Address{1}
+		publicKey = types.BytesToBLSPublicKey(key.PublicKey().Marshal())
+		config    = &params.ChainConfig{LondonBlock: big.NewInt(0), BreakpointTime: newUint64(0), Istanbul: &params.IstanbulConfig{PoSA: &params.PoSAConfig{ValidatorEpochLength: 10}}}
+		chain     = &chainMock{config: config}
+		engine    = NewEngine(istanbul.NewConfig(config), address, nil, nil, nil, nil, nil)
+		valSet    = validator.NewSet([]common.Address{address}, []types.BLSPublicKey{publicKey}, istanbul.NewRoundRobinProposerPolicy())
+	)
+	for _, digest := range []common.Hash{types.IstanbulDigest, types.IstanbulDigestV2} {
+		for _, number := range []int64{9, 10} {
+			for _, round := range []int64{0, 3} {
+				t.Run(fmt.Sprintf("version %x/block %d/round %d", digest[15], number, round), func(t *testing.T) {
+					header := &types.Header{Number: big.NewInt(number), Time: 100, MixDigest: digest}
+					require.NoError(t, ApplyHeaderIstanbulExtra(header, func(extra *types.IstanbulExtra) error {
+						if number == 10 {
+							extra.Validators = []common.Address{address}
+							extra.Signers = []types.BLSPublicKey{publicKey}
+						}
+						return nil
+					}))
+					hash, commitHash := header.Hash(), PrepareCommittedSeal(header, uint32(round))
+					assert.Equal(t, hash, sigHash(header))
+					seal := key.Sign(commitHash).Marshal()
+					require.NoError(t, engine.CommitHeader(chain, header, []istanbul.SignedSeal{signedSeal{0, seal}}, big.NewInt(round)))
+					assert.Equal(t, hash, header.Hash())
+					assert.Equal(t, commitHash, PrepareCommittedSeal(header, uint32(round)))
+					require.NoError(t, engine.verifyCommittedSeals(chain, header, nil, valSet))
+					if number == 10 {
+						require.NoError(t, ApplyHeaderIstanbulExtra(header, WriteSigners([]types.BLSPublicKey{{1}})))
+						err := engine.verifyCommittedSeals(chain, header, nil, valSet)
+						if digest == types.IstanbulDigestV2 {
+							assert.ErrorIs(t, err, istanbul.ErrInvalidCommittedSeals)
+						} else {
+							assert.NoError(t, err)
+						}
+					}
+				})
+			}
+		}
+	}
 }
 
 func TestPrepareExtra(t *testing.T) {
@@ -48,42 +192,47 @@ func TestPrepareExtra(t *testing.T) {
 
 // ##CROSS: consensus system contract
 func TestIsSystemTransaction(t *testing.T) {
+	t.Parallel()
+
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
 	to := contracts.ValidatorSetAddr
 	header := &types.Header{Coinbase: crypto.PubkeyToAddress(key.PublicKey)}
 	signer := types.LatestSignerForChainID(params.TestChainConfig.ChainID)
+	engine := &Engine{}
 
-	legacyTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
-		Nonce:    0,
-		GasPrice: big.NewInt(0),
-		Gas:      21000,
-		To:       &to,
+	t.Run("legacy tx", func(t *testing.T) {
+		legacyTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+			Nonce:    0,
+			GasPrice: big.NewInt(0),
+			Gas:      21000,
+			To:       &to,
+		})
+		isSystemTx, err := engine.IsSystemTransaction(legacyTx, header, signer)
+		require.NoError(t, err)
+		assert.True(t, isSystemTx)
 	})
-	isSystemTx, err := IsSystemTransaction(legacyTx, header)
-	require.NoError(t, err)
-	assert.True(t, isSystemTx)
 
-	dynamicFeeTx := types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
-		ChainID:   params.TestChainConfig.ChainID,
-		Nonce:     1,
-		GasTipCap: big.NewInt(0),
-		GasFeeCap: big.NewInt(0),
-		Gas:       21000,
-		To:        &to,
+	t.Run("dynamic fee tx", func(t *testing.T) {
+		dynamicFeeTx := types.MustSignNewTx(key, signer, &types.DynamicFeeTx{
+			ChainID:   params.TestChainConfig.ChainID,
+			Nonce:     1,
+			GasTipCap: big.NewInt(0),
+			GasFeeCap: big.NewInt(0),
+			Gas:       21000,
+			To:        &to,
+		})
+		isSystemTx, err := engine.IsSystemTransaction(dynamicFeeTx, header, signer)
+		require.NoError(t, err)
+		assert.False(t, isSystemTx)
 	})
-	isSystemTx, err = IsSystemTransaction(dynamicFeeTx, header)
-	require.NoError(t, err)
-	assert.False(t, isSystemTx)
 }
 
 // newTestStateDB creates an empty in-memory state database for testing.
 func newTestStateDB(t *testing.T) *state.StateDB {
 	t.Helper()
-	memdb := rawdb.NewMemoryDatabase()
-	tdb := triedb.NewDatabase(memdb, nil)
-	sdb := state.NewDatabase(tdb, nil)
+	sdb := state.NewDatabaseForTesting()
 	statedb, err := state.New(types.EmptyRootHash, sdb)
 	require.NoError(t, err)
 	return statedb
@@ -92,6 +241,8 @@ func newTestStateDB(t *testing.T) *state.StateDB {
 // TestApplySystemTransaction verifies that replaying a system transaction keeps
 // consensus execution semantics and results in the same state as the consensus path.
 func TestApplySystemTransaction(t *testing.T) {
+	t.Parallel()
+
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
@@ -103,6 +254,7 @@ func TestApplySystemTransaction(t *testing.T) {
 		chainConfig = params.TestChainConfig
 		signer      = types.LatestSignerForChainID(chainConfig.ChainID)
 		funds       = uint256.NewInt(1_000_000)
+		engine      = &Engine{}
 	)
 	header := &types.Header{
 		Number:     big.NewInt(100),
@@ -112,6 +264,7 @@ func TestApplySystemTransaction(t *testing.T) {
 		Difficulty: big.NewInt(0),
 		Time:       1_000_000_000,
 	}
+	deleteEmptyObjects := chainConfig.IsEIP158(header.Number)
 	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
 		Nonce:    0,
 		GasPrice: big.NewInt(0),
@@ -120,39 +273,47 @@ func TestApplySystemTransaction(t *testing.T) {
 		Value:    value,
 		Data:     data,
 	})
-	isSystemTx, err := IsSystemTransaction(tx, header)
+	isSystemTx, err := engine.IsSystemTransaction(tx, header, signer)
 	require.NoError(t, err)
 	require.True(t, isSystemTx)
 
-	// Replay the transaction with consensus execution semantics
-	replayDB := newTestStateDB(t)
-	replayDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
-	blockCtx := core.NewEVMBlockContext(header, &chainMock{config: chainConfig}, &header.Coinbase)
-	evm := vm.NewEVM(blockCtx, replayDB, chainConfig, vm.Config{})
+	var replayRoot, consensusRoot common.Hash
 
-	engine := &Engine{}
-	require.NoError(t, engine.ApplySystemTransaction(evm, header, tx, 0))
+	t.Run("replay path", func(t *testing.T) {
+		// Replay the transaction with consensus execution semantics
+		stateDB := newTestStateDB(t)
+		stateDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
+		blockCtx := core.NewEVMBlockContext(header, &chainMock{config: chainConfig}, &header.Coinbase)
+		evm := vm.NewEVM(blockCtx, stateDB, chainConfig, vm.Config{})
 
-	// No intrinsic gas or fee is charged; only the value is transferred
-	assert.Equal(t, uint64(1), replayDB.GetNonce(sender))
-	assert.Equal(t, uint256.NewInt(100), replayDB.GetBalance(to))
-	assert.Equal(t, new(uint256.Int).Sub(funds, uint256.NewInt(100)), replayDB.GetBalance(sender))
+		require.NoError(t, engine.ApplySystemTransaction(evm, header, tx, 0))
 
-	// Apply the same transaction through the consensus path and compare the state
-	consensusDB := newTestStateDB(t)
-	consensusDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
-	var (
-		txs      []*types.Transaction
-		receipts []*types.Receipt
-		usedGas  uint64
-	)
-	msg := newSystemMessage(sender, to, data, value)
-	err = engine.applySystemTransaction(msg, tx, consensusDB, header, &chainMock{config: chainConfig}, header.Coinbase, &txs, &receipts, &usedGas, nil)
-	require.NoError(t, err)
+		// No intrinsic gas or fee is charged; only the value is transferred
+		assert.Equal(t, uint64(1), stateDB.GetNonce(sender))
+		assert.Equal(t, uint256.NewInt(100), stateDB.GetBalance(to))
+		assert.Equal(t, new(uint256.Int).Sub(funds, uint256.NewInt(100)), stateDB.GetBalance(sender))
+
+		replayRoot = stateDB.IntermediateRoot(deleteEmptyObjects)
+	})
+
+	t.Run("consensus path", func(t *testing.T) {
+		// Apply the same transaction through the consensus path and compare the state
+		stateDB := newTestStateDB(t)
+		stateDB.AddBalance(sender, funds, tracing.BalanceChangeUnspecified)
+		var (
+			txs      []*types.Transaction
+			receipts []*types.Receipt
+			usedGas  uint64
+		)
+		msg := newSystemMessage(sender, to, data, value)
+		err = engine.applySystemTransaction(msg, tx, stateDB, header, &chainMock{config: chainConfig}, header.Coinbase, &txs, &receipts, &usedGas, nil)
+		require.NoError(t, err)
+
+		consensusRoot = stateDB.IntermediateRoot(deleteEmptyObjects)
+	})
 
 	// Both state should be equal
-	deleteEmptyObjects := chainConfig.IsEIP158(header.Number)
-	assert.Equal(t, consensusDB.IntermediateRoot(deleteEmptyObjects), replayDB.IntermediateRoot(deleteEmptyObjects))
+	assert.Equal(t, replayRoot, consensusRoot)
 }
 
 // ##
@@ -232,7 +393,7 @@ func TestWriteCommittedSealsBLS(t *testing.T) {
 		CommittedSeal: [][]byte{expectedCommittedSeal},
 		RandomReveal:  []byte{},
 		SignersBitset: []uint64{7},
-		Signers:       []types.BLSPublicKey{},
+		Signers:       nil,
 	}
 
 	h := &types.Header{
@@ -299,6 +460,8 @@ func TestWriteSigners(t *testing.T) {
 }
 
 func TestBLSSigners(t *testing.T) {
+	t.Parallel()
+
 	t.Run("uses byte sorted validator order", func(t *testing.T) {
 		addrs := []common.Address{
 			common.HexToAddress("0xc53f2189bf6d7bf56722731787127f90d319e112"),
@@ -484,6 +647,8 @@ func TestWriteValidatorVote(t *testing.T) {
 
 // ##CROSS: istanbul validation
 func TestVerifyProposalTransactions(t *testing.T) {
+	t.Parallel()
+
 	chainConfig := &params.ChainConfig{
 		ChainID:        big.NewInt(612088),
 		HomesteadBlock: big.NewInt(0),
