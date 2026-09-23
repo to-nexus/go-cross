@@ -3,15 +3,18 @@ package engine
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"fmt"
 	"math"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -21,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +34,148 @@ var validators = []common.Address{
 	common.BytesToAddress(hexutil.MustDecode("0x294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212")),
 	common.BytesToAddress(hexutil.MustDecode("0x6beaaed781d2d2ab6350f5c4566a2c6eaac407a6")),
 	common.BytesToAddress(hexutil.MustDecode("0x8be76812f765c24641ec63dc2852b378aba2b440")),
+}
+
+func TestEnginePrepare(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	blsKey, err := bls.RandKey()
+	require.NoError(t, err)
+	address := crypto.PubkeyToAddress(key.PublicKey)
+	// Keep the parent ahead of the wall clock so Prepare picks a deterministic timestamp.
+	parent := &types.Header{Number: big.NewInt(0), Time: uint64(time.Now().Unix()) + 30, GasLimit: 10_000_000, BaseFee: big.NewInt(1_000_000_000), MixDigest: types.IstanbulDigest}
+	for _, test := range []struct {
+		name   string
+		fork   *uint64
+		digest common.Hash
+		posa   bool
+	}{
+		{"disabled", nil, types.IstanbulDigest, true},
+		{"before osaka", newUint64(parent.Time + 2), types.IstanbulDigest, true},
+		{"at osaka", newUint64(parent.Time + 1), types.IstanbulDigestV2, true},
+		{"after osaka", newUint64(parent.Time), types.IstanbulDigestV2, true},
+		{"osaka at genesis", newUint64(0), types.IstanbulDigestV2, true},
+		{"osaka without posa", newUint64(0), types.IstanbulDigestV2, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0), OsakaTime: test.fork, Istanbul: &params.IstanbulConfig{}}
+			if test.posa {
+				config.BreakpointTime = newUint64(0)
+				config.Istanbul.PoSA = &params.PoSAConfig{}
+			}
+			chain := &mockChainHeaderReader{config: config, headers: map[common.Hash]*types.Header{parent.Hash(): parent}}
+			cfg := istanbul.NewConfig(config)
+			cfg.AllowedFutureBlockTime = 120
+			engine := NewEngine(cfg, address, func(data []byte) ([]byte, error) {
+				return crypto.Sign(crypto.Keccak256(data), key)
+			}, nil, func(data []byte) ([]byte, error) {
+				return blsKey.Sign(data).Marshal(), nil
+			}, nil, nil)
+			valSet := validator.NewSet([]common.Address{address}, []types.BLSPublicKey{types.BytesToBLSPublicKey(blsKey.PublicKey().Marshal())}, cfg.ProposerPolicy)
+			header := &types.Header{Number: big.NewInt(1), ParentHash: parent.Hash(), GasLimit: parent.GasLimit, UncleHash: types.EmptyUncleHash}
+			header.BaseFee = eip1559.CalcBaseFee(config, parent)
+			// Prepare must overwrite a stale version and use its final timestamp.
+			header.MixDigest[15] = 0xff
+			require.NoError(t, engine.Prepare(chain, header, valSet))
+			assert.Equal(t, parent.Time+1, header.Time)
+			assert.Equal(t, test.digest[:16], header.MixDigest[:16])
+			header.Coinbase = address
+			assert.ErrorIs(t, engine.VerifyHeader(chain, header, nil, valSet), istanbul.ErrEmptyCommittedSeals)
+			hash := header.Hash()
+			seal, err := crypto.Sign(PrepareCommittedSeal(header, 0), key)
+			require.NoError(t, err)
+			if test.posa {
+				seal = blsKey.Sign(PrepareCommittedSeal(header, 0)).Marshal()
+			}
+			require.NoError(t, engine.CommitHeader(chain, header, []istanbul.SignedSeal{signedSeal{0, seal}}, big.NewInt(0)))
+			assert.Equal(t, hash, header.Hash())
+			require.NoError(t, engine.VerifyHeader(chain, header, nil, valSet))
+			for _, version := range []byte{0x20, 0x32, 0xff} {
+				if version == test.digest[15] {
+					continue
+				}
+				bad := types.CopyHeader(header)
+				bad.MixDigest[15] = version
+				assert.ErrorIs(t, engine.VerifyHeader(chain, bad, nil, valSet), istanbul.ErrInvalidMixDigest)
+			}
+			bad := types.CopyHeader(header)
+			bad.MixDigest[31] ^= 1
+			assert.ErrorIs(t, engine.VerifyHeader(chain, bad, nil, valSet), istanbul.ErrInvalidMixDigest)
+			// PREVRANDAO includes the prefix as well as the random seed.
+			random := core.NewEVMBlockContext(header, &chainMock{config: config}, &address).Random
+			require.NotNil(t, random)
+			assert.Equal(t, crypto.Keccak256Hash(header.MixDigest[:]), *random)
+			other := types.CopyHeader(header)
+			other.MixDigest[15] ^= 0x20 ^ 0x32
+			otherRandom := core.NewEVMBlockContext(other, &chainMock{config: config}, &address).Random
+			assert.NotEqual(t, *random, *otherRandom)
+			// Verify the next block with a versioned parent, including a legacy-to-v2 transition.
+			chain.headers[header.Hash()] = header
+			next := &types.Header{Number: big.NewInt(2), ParentHash: header.Hash(), GasLimit: header.GasLimit, UncleHash: types.EmptyUncleHash}
+			next.BaseFee = eip1559.CalcBaseFee(config, header)
+			require.NoError(t, engine.Prepare(chain, next, valSet))
+			next.Coinbase = address
+			assert.ErrorIs(t, engine.VerifyHeader(chain, next, nil, valSet), istanbul.ErrEmptyCommittedSeals)
+			genesis := &types.Header{Number: big.NewInt(0), Time: parent.Time, MixDigest: types.IstanbulDigest, UncleHash: types.EmptyUncleHash, Difficulty: istanbul.DefaultDifficulty}
+			require.NoError(t, ApplyHeaderIstanbulExtra(genesis))
+			require.NoError(t, engine.VerifyHeader(chain, genesis, nil, nil))
+			genesis.MixDigest = types.IstanbulDigestV2
+			assert.ErrorIs(t, engine.VerifyHeader(chain, genesis, nil, nil), istanbul.ErrInvalidMixDigest)
+		})
+	}
+}
+
+func TestMakeMixHashBLS(t *testing.T) {
+	seed := common.Hash{1, 2, 3}
+	legacy := types.MakeIstanbulDigest(seed, false)
+	v2 := types.MakeIstanbulDigest(seed, true)
+	// The random seed chain must not depend on the parent's version byte.
+	assert.Equal(t, makeMixHashBLS([]byte{4, 5, 6}, legacy), makeMixHashBLS([]byte{4, 5, 6}, v2))
+}
+
+func TestEngineVerifyCommittedSeals(t *testing.T) {
+	key, err := bls.RandKey()
+	require.NoError(t, err)
+	var (
+		address   = common.Address{1}
+		publicKey = types.BytesToBLSPublicKey(key.PublicKey().Marshal())
+		config    = &params.ChainConfig{LondonBlock: big.NewInt(0), BreakpointTime: newUint64(0), Istanbul: &params.IstanbulConfig{PoSA: &params.PoSAConfig{ValidatorEpochLength: 10}}}
+		chain     = &chainMock{config: config}
+		engine    = NewEngine(istanbul.NewConfig(config), address, nil, nil, nil, nil, nil)
+		valSet    = validator.NewSet([]common.Address{address}, []types.BLSPublicKey{publicKey}, istanbul.NewRoundRobinProposerPolicy())
+	)
+	for _, digest := range []common.Hash{types.IstanbulDigest, types.IstanbulDigestV2} {
+		for _, number := range []int64{9, 10} {
+			for _, round := range []int64{0, 3} {
+				t.Run(fmt.Sprintf("version %x/block %d/round %d", digest[15], number, round), func(t *testing.T) {
+					header := &types.Header{Number: big.NewInt(number), Time: 100, MixDigest: digest}
+					require.NoError(t, ApplyHeaderIstanbulExtra(header, func(extra *types.IstanbulExtra) error {
+						if number == 10 {
+							extra.Validators = []common.Address{address}
+							extra.Signers = []types.BLSPublicKey{publicKey}
+						}
+						return nil
+					}))
+					hash, commitHash := header.Hash(), PrepareCommittedSeal(header, uint32(round))
+					assert.Equal(t, hash, sigHash(header))
+					seal := key.Sign(commitHash).Marshal()
+					require.NoError(t, engine.CommitHeader(chain, header, []istanbul.SignedSeal{signedSeal{0, seal}}, big.NewInt(round)))
+					assert.Equal(t, hash, header.Hash())
+					assert.Equal(t, commitHash, PrepareCommittedSeal(header, uint32(round)))
+					require.NoError(t, engine.verifyCommittedSeals(chain, header, nil, valSet))
+					if number == 10 {
+						require.NoError(t, ApplyHeaderIstanbulExtra(header, WriteSigners([]types.BLSPublicKey{{1}})))
+						err := engine.verifyCommittedSeals(chain, header, nil, valSet)
+						if digest == types.IstanbulDigestV2 {
+							assert.ErrorIs(t, err, istanbul.ErrInvalidCommittedSeals)
+						} else {
+							assert.NoError(t, err)
+						}
+					}
+				})
+			}
+		}
+	}
 }
 
 func TestPrepareExtra(t *testing.T) {
@@ -247,7 +393,7 @@ func TestWriteCommittedSealsBLS(t *testing.T) {
 		CommittedSeal: [][]byte{expectedCommittedSeal},
 		RandomReveal:  []byte{},
 		SignersBitset: []uint64{7},
-		Signers:       []types.BLSPublicKey{},
+		Signers:       nil,
 	}
 
 	h := &types.Header{

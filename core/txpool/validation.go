@@ -96,8 +96,6 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 		switch tx.Type() {
 		case types.BlobTxType: // ##CROSS: istanbul blob tx
 			return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support blob transactions", core.ErrTxTypeNotSupported, tx.Type())
-		case types.SetCodeTxType: // ##CROSS: istanbul set code tx
-			return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support set code transactions", core.ErrTxTypeNotSupported, tx.Type())
 		}
 	}
 	// ##

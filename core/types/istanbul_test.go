@@ -22,7 +22,143 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestIstanbulExtraDecodeRLP(t *testing.T) {
+	for _, bitset := range []struct {
+		name  string
+		value []uint64
+	}{
+		{"nil bitset", nil},
+		{"empty bitset", []uint64{}},
+		{"nonempty bitset", []uint64{1}},
+	} {
+		for _, signers := range []struct {
+			name  string
+			value []BLSPublicKey
+		}{
+			{"nil signers", nil},
+			{"empty signers", []BLSPublicKey{}},
+			{"nonempty signers", []BLSPublicKey{{1}}},
+		} {
+			t.Run(bitset.name+"/"+signers.name, func(t *testing.T) {
+				encoded, err := rlp.EncodeToBytes(&IstanbulExtra{
+					Round: 3, CommittedSeal: [][]byte{{1}},
+					SignersBitset: bitset.value, Signers: signers.value,
+				})
+				require.NoError(t, err)
+				// Reuse a populated value to check that empty input clears old signers.
+				decoded := IstanbulExtra{Signers: []BLSPublicKey{{2}}}
+				require.NoError(t, rlp.DecodeBytes(encoded, &decoded))
+				if len(signers.value) == 0 {
+					assert.Nil(t, decoded.Signers)
+				} else {
+					assert.Equal(t, signers.value, decoded.Signers)
+				}
+				reencoded, err := rlp.EncodeToBytes(&decoded)
+				require.NoError(t, err)
+				assert.Equal(t, encoded, reencoded)
+
+				// Legacy hashes omit both BLS fields and committed seals.
+				header := &Header{MixDigest: IstanbulDigest, Extra: reencoded}
+				for _, round := range []uint32{0, 3} {
+					filtered, err := rlp.EncodeToBytes(&IstanbulExtra{Round: round})
+					require.NoError(t, err)
+					expected := rlpHash(&Header{MixDigest: IstanbulDigest, Extra: filtered})
+					assert.Equal(t, expected, header.IstanbulHashWithRoundNumber(round))
+					if round == 0 {
+						assert.Equal(t, expected, header.Hash())
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestMakeIstanbulDigest(t *testing.T) {
+	seed := common.HexToHash("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	for _, test := range []struct {
+		prefix string
+		v2     bool
+	}{
+		{"Cross Istanbul. ", false},
+		{"Cross Istanbul.2", true},
+	} {
+		t.Run(test.prefix, func(t *testing.T) {
+			digest := MakeIstanbulDigest(seed, test.v2)
+			assert.Equal(t, test.prefix, string(digest[:16]))
+			assert.Equal(t, seed[:16], digest[16:])
+			assert.True(t, IsIstanbulDigest(digest))
+		})
+	}
+	assert.Equal(t, byte(0x20), IstanbulDigest[15])
+	assert.Equal(t, byte(0x32), IstanbulDigestV2[15])
+}
+
+func TestIsIstanbulDigest(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		digest common.Hash
+		want   bool
+	}{
+		{"legacy", IstanbulDigest, true},
+		{"v2", IstanbulDigestV2, true},
+		{"zero", common.Hash{}, false},
+		{"unknown version", common.BytesToHash(append([]byte("Cross Istanbul.3"), make([]byte, 16)...)), false},
+		{"wrong prefix", common.BytesToHash(append([]byte("Other Istanbul.2"), make([]byte, 16)...)), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, IsIstanbulDigest(test.digest))
+		})
+	}
+}
+
+func TestIstanbulFilteredHeaderWithRound(t *testing.T) {
+	for _, version := range []struct {
+		name  string
+		value common.Hash
+	}{
+		{"legacy", IstanbulDigest},
+		{"v2", IstanbulDigestV2},
+	} {
+		t.Run(version.name, func(t *testing.T) {
+			extra := &IstanbulExtra{Signers: []BLSPublicKey{{1}, {2}}}
+			encoded, err := rlp.EncodeToBytes(extra)
+			require.NoError(t, err)
+			header := &Header{MixDigest: version.value, Extra: encoded}
+			blockHash, commitHash := header.Hash(), header.IstanbulHashWithRoundNumber(3)
+			assert.NotEqual(t, blockHash, commitHash)
+			assert.Equal(t, encoded, header.Extra, "hashing must not mutate the input")
+			if version.value == IstanbulDigest {
+				// The legacy hash input has exactly six extra-data fields.
+				assert.Equal(t, rlpHash(&Header{MixDigest: IstanbulDigest, Extra: hexutil.MustDecode("0xc680c0c080c080")}), blockHash)
+			}
+			for _, signers := range [][]BLSPublicKey{{{2}, {1}}, {{1}, {3}}, nil} {
+				extra.Signers = signers
+				header.Extra, err = rlp.EncodeToBytes(extra)
+				require.NoError(t, err)
+				assert.Equal(t, version.value == IstanbulDigest, header.Hash() == blockHash)
+				assert.Equal(t, version.value == IstanbulDigest, header.IstanbulHashWithRoundNumber(3) == commitHash)
+			}
+			for _, signers := range [][]BLSPublicKey{nil, {}, {{1}, {2}}} {
+				extra.Signers = signers
+				header.Extra, err = rlp.EncodeToBytes(extra)
+				require.NoError(t, err)
+				blockHash, commitHash = header.Hash(), header.IstanbulHashWithRoundNumber(3)
+				committed := *extra
+				committed.CommittedSeal, committed.SignersBitset, committed.Round = [][]byte{{1}}, []uint64{3}, 3
+				header.Extra, err = rlp.EncodeToBytes(&committed)
+				require.NoError(t, err)
+				assert.Equal(t, blockHash, header.Hash())
+				assert.Equal(t, commitHash, header.IstanbulHashWithRoundNumber(3))
+				assert.NotEqual(t, commitHash, header.IstanbulHashWithRoundNumber(4))
+			}
+		})
+	}
+}
 
 func TestHeaderHash(t *testing.T) {
 	// 0xd848102c76ea4c0a814cd8501ee5e2f243d4d7a0c6a2bba68a4be23ca1f80965
