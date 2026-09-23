@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -176,14 +177,23 @@ func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database) (common.Hash, e
 		return common.Hash{}, err
 	}
 	for addr, account := range *ga {
+		logger := log.New("addr", addr.Hex())
+		logger.Debug("Processing genesis allocation for address")
 		if account.Balance != nil {
+			if account.Balance.Sign() != 0 {
+				logger.Debug("Adding balance for genesis allocation", "balance", account.Balance.String())
+			}
 			// This is not actually logged via tracer because OnGenesisBlock
 			// already captures the allocations.
 			statedb.AddBalance(addr, uint256.MustFromBig(account.Balance), tracing.BalanceIncreaseGenesisBalance)
 		}
+		if len(account.Code) > 0 {
+			logger.Debug("Setting code for genesis allocation", "codeSize", len(account.Code))
+		}
 		statedb.SetCode(addr, account.Code, tracing.CodeChangeGenesis)
 		statedb.SetNonce(addr, account.Nonce, tracing.NonceChangeGenesis)
 		for key, value := range account.Storage {
+			logger.Debug("Setting storage for genesis allocation", "key", key.Hex(), "value", value.Hex())
 			statedb.SetState(addr, key, value)
 		}
 	}
@@ -568,6 +578,11 @@ func (g *Genesis) Commit(db ethdb.Database, triedb *triedb.Database) (*types.Blo
 	if config == nil {
 		return nil, errors.New("invalid genesis without chain config")
 	}
+	// ##CROSS: fork breakpoint
+	if err := g.validateBreakpointAlloc(); err != nil {
+		return nil, err
+	}
+	// ##
 	if err := config.CheckConfigForkOrder(); err != nil {
 		return nil, err
 	}
@@ -598,6 +613,30 @@ func (g *Genesis) Commit(db ethdb.Database, triedb *triedb.Database) (*types.Blo
 	rawdb.WriteChainConfig(batch, block.Hash(), config)
 	return block, batch.Write()
 }
+
+// ##CROSS: fork breakpoint
+func (g *Genesis) validateBreakpointAlloc() error {
+	config := g.Config
+	if config == nil || config.BreakpointTime == nil || *config.BreakpointTime != 0 || config.Istanbul == nil || config.Istanbul.PoSA == nil ||
+		len(config.Istanbul.PoSA.Validators) == 0 {
+		return nil
+	}
+	pool := config.Istanbul.PoSA.DelegationPool
+	if pool == (common.Address{}) {
+		return errors.New("breakpoint genesis has no delegation pool configured")
+	}
+	if account, ok := g.Alloc[pool]; !ok || len(account.Code) == 0 {
+		return fmt.Errorf("breakpoint genesis has no delegation pool code at %s", pool)
+	}
+	for _, address := range []common.Address{contracts.ValidatorSetAddr, contracts.StakeHubAddr, contracts.RewardHubAddr, contracts.ValidatorSlashAddr} {
+		if account, ok := g.Alloc[address]; !ok || len(account.Code) == 0 {
+			return fmt.Errorf("breakpoint genesis has no system contract code at %s", address)
+		}
+	}
+	return nil
+}
+
+// ##
 
 // MustCommit writes the genesis block and state to db, panicking on error.
 // The block is committed as the canonical head block.

@@ -26,12 +26,14 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSetupGenesis(t *testing.T) {
@@ -209,6 +211,10 @@ func TestGenesisHashes(t *testing.T) {
 		want    common.Hash
 	}{
 		{DefaultGenesisBlock(), params.MainnetGenesisHash},
+		{DefaultCrossGenesisBlock(), params.CrossGenesisHash},
+		{DefaultZoneZeroGenesisBlock(), params.ZoneZeroGenesisHash},
+		{DefaultCrossDev3GenesisBlock(), params.CrossDev3GenesisHash},
+		{DefaultCrossDevGenesisBlock(), params.CrossDevGenesisHash},
 		{DefaultSepoliaGenesisBlock(), params.SepoliaGenesisHash},
 		{DefaultHoleskyGenesisBlock(), params.HoleskyGenesisHash},
 		{DefaultHoodiGenesisBlock(), params.HoodiGenesisHash},
@@ -253,6 +259,25 @@ func TestGenesisCommit(t *testing.T) {
 	}
 	// ##
 }
+
+// ##CROSS: fork breakpoint
+func TestValidateBreakpointAlloc(t *testing.T) {
+	config := *params.CrossDevChainConfig
+	istanbul := *config.Istanbul
+	posa := *istanbul.PoSA
+	config.Istanbul = &istanbul
+	config.Istanbul.PoSA = &posa
+	genesis := &Genesis{Config: &config, Alloc: make(types.GenesisAlloc)}
+
+	t.Run("required code present", func(t *testing.T) {
+		for _, address := range []common.Address{contracts.ValidatorSetAddr, contracts.StakeHubAddr, contracts.RewardHubAddr, contracts.ValidatorSlashAddr} {
+			genesis.Alloc[address] = types.Account{Balance: new(big.Int), Code: []byte{1}}
+		}
+		require.NoError(t, genesis.validateBreakpointAlloc())
+	})
+}
+
+// ##
 
 func TestReadWriteGenesisAlloc(t *testing.T) {
 	var (

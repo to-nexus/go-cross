@@ -17,11 +17,21 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var customGenesisTests = []struct {
@@ -70,6 +80,90 @@ var customGenesisTests = []struct {
 		query:  "eth.getBlock(0).nonce",
 		result: "0x0000000000001339",
 	},
+}
+
+func TestMakeDefaultBreakpointGenesis(t *testing.T) {
+	t.Run("reject zero validators", func(t *testing.T) {
+		_, _, err := makeDefaultBreakpointGenesis(0)
+		require.ErrorContains(t, err, "greater than zero")
+	})
+
+	t.Run("generate requested validators", func(t *testing.T) {
+		testMakeDefaultBreakpointGenesis(t, 5)
+	})
+
+	t.Run("print keys as JSON", func(t *testing.T) {
+		_, keys, err := makeDefaultBreakpointGenesis(2)
+		require.NoError(t, err)
+
+		var output bytes.Buffer
+		require.NoError(t, printBreakpointGenesisKeys(&output, keys, true))
+
+		var decoded struct {
+			Admin      map[string]string `json:"admin"`
+			Validators []struct {
+				ID        string            `json:"id"`
+				Validator map[string]string `json:"validator"`
+				Operator  map[string]string `json:"operator"`
+				Signer    map[string]string `json:"signer"`
+			} `json:"validators"`
+		}
+
+		require.NoError(t, json.Unmarshal(output.Bytes(), &decoded))
+		assert.Equal(t, crypto.PubkeyToAddress(keys.admin.PublicKey).Hex(), decoded.Admin["address"])
+		assert.Len(t, decoded.Validators, 2)
+		assert.Equal(t, "validator1", decoded.Validators[0].ID)
+		assert.NotEmpty(t, decoded.Validators[0].Validator["privateKey"])
+		assert.NotEmpty(t, decoded.Validators[0].Operator["privateKey"])
+		assert.NotEmpty(t, decoded.Validators[0].Signer["secretKey"])
+	})
+}
+
+func testMakeDefaultBreakpointGenesis(t *testing.T, validatorCount uint) {
+	originalAdmin := params.CrossDev3ChainConfig.Istanbul.PoSA.Admin
+	genesis, keys, err := makeDefaultBreakpointGenesis(validatorCount)
+
+	require.NoError(t, err)
+	assert.Len(t, keys.validators, int(validatorCount))
+	assert.Len(t, genesis.Config.Istanbul.Validators, int(validatorCount))
+	assert.Len(t, genesis.Config.Istanbul.PoSA.Validators, int(validatorCount))
+	assert.Equal(t, originalAdmin, params.CrossDev3ChainConfig.Istanbul.PoSA.Admin)
+
+	expectedConfig := *params.CrossDev3ChainConfig
+	zero := uint64(0)
+	expectedConfig.ShanghaiTime = &zero
+	expectedConfig.AdventureTime = &zero
+	expectedConfig.CancunTime = &zero
+	expectedConfig.PragueTime = &zero
+	expectedConfig.BreakpointTime = &zero
+	expectedConfig.Istanbul = genesis.Config.Istanbul
+	assert.Equal(t, &expectedConfig, genesis.Config)
+
+	expectedIstanbul := *params.CrossDev3ChainConfig.Istanbul
+	expectedPoSA := *expectedIstanbul.PoSA
+	expectedIstanbul.PoSA = &expectedPoSA
+	expectedIstanbul.Validators = genesis.Config.Istanbul.Validators
+	expectedPoSA.Admin = genesis.Config.Istanbul.PoSA.Admin
+	expectedPoSA.Validators = genesis.Config.Istanbul.PoSA.Validators
+	expectedPoSA.DelegationPool = contracts.DelegationPoolAddr
+	expectedPoSA.RewardStartBlock = big.NewInt(1)
+	assert.Equal(t, &expectedIstanbul, genesis.Config.Istanbul)
+
+	admin := crypto.PubkeyToAddress(keys.admin.PublicKey)
+	assert.Equal(t, admin, genesis.Config.Istanbul.PoSA.Admin)
+	assert.Equal(t, new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(params.Ether)), genesis.Alloc[admin].Balance)
+
+	addresses := make(map[common.Address]struct{})
+	for i, validatorKeys := range keys.validators {
+		validator := genesis.Config.Istanbul.PoSA.Validators[i]
+		assert.Equal(t, crypto.PubkeyToAddress(validatorKeys.validator.PublicKey), validator.Validator)
+		assert.Equal(t, crypto.PubkeyToAddress(validatorKeys.operator.PublicKey), validator.Operator)
+		assert.Equal(t, validatorKeys.signer.PublicKey().Marshal(), []byte(validator.Signer))
+		assert.Equal(t, validator.Validator, genesis.Config.Istanbul.Validators[i])
+		addresses[validator.Validator] = struct{}{}
+		addresses[validator.Operator] = struct{}{}
+	}
+	assert.Len(t, addresses, int(validatorCount*2))
 }
 
 // Tests that initializing Geth with a custom genesis block and chain definitions
