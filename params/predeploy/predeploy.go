@@ -34,6 +34,7 @@ var (
 	}
 
 	// ##CROSS: predeploys singleton factory
+	//nolint:unused
 	sfAlloc = types.GenesisAlloc{
 		contracts.SingletonFactoryAddr:  {Nonce: 1, Code: common.Hex2Bytes(predeploy.SingletonFactoryCode)},
 		contracts.SingletonFactory2Addr: {Nonce: 1, Code: common.Hex2Bytes(predeploy.SingletonFactoryCode)},

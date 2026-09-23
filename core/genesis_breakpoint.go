@@ -49,6 +49,7 @@ func MakeBreakpointGenesis(genesis *Genesis) error {
 	return makeBreakpointGenesis(genesis, nil)
 }
 
+//nolint:unused
 func clonePoSAChainConfig(config *params.ChainConfig) *params.ChainConfig {
 	cloned := *config
 	if config.Istanbul != nil {
@@ -63,6 +64,7 @@ func clonePoSAChainConfig(config *params.ChainConfig) *params.ChainConfig {
 	return &cloned
 }
 
+//nolint:unused
 func cloneAlloc(alloc types.GenesisAlloc) types.GenesisAlloc {
 	cloned := make(types.GenesisAlloc, len(alloc))
 	for addr, account := range alloc {
