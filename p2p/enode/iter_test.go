@@ -17,6 +17,7 @@
 package enode
 
 import (
+	"context"
 	"encoding/binary"
 	"runtime"
 	"slices"
@@ -337,3 +338,18 @@ func (it *callCountIter) Next() bool {
 	it.count++
 	return it.Iterator.Next()
 }
+
+// ##CROSS: discovery filter
+func TestAsyncFilter_Close(t *testing.T) {
+	pass := func(ctx context.Context, n *Node) *Node { return n }
+
+	// Close must not race with the start of the producer goroutine.
+	t.Run("close right after creation", func(t *testing.T) {
+		for range 10000 {
+			it := AsyncFilter(IterNodes(nil), pass, 1)
+			it.Close()
+		}
+	})
+}
+
+// ##

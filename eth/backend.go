@@ -307,7 +307,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	ethconfig.SetConsensusEngineChainConfig(eth.engine, eth.blockchain.Config())
+
+	ethconfig.SetConsensusEngineChainConfig(eth.engine, eth.blockchain.Config()) // ##CROSS: istanbul
+	eth.setupDiscoveryTableFilter()                                              // ##CROSS: discovery filter
 
 	// Initialize filtermaps log index.
 	fmConfig := filtermaps.Config{
@@ -699,6 +701,15 @@ func (s *Ethereum) setupDiscovery() error {
 
 	return nil
 }
+
+// ##CROSS: discovery filter
+// setupDiscoveryTableFilter makes the discovery tables drop nodes that advertise an incompatible forkid.
+// It must be called before the p2p server starts.
+func (s *Ethereum) setupDiscoveryTableFilter() {
+	s.p2pServer.DiscoveryTableFilter = eth.NewTableFilter(s.blockchain)
+}
+
+// ##
 
 // Stop implements node.Lifecycle, terminating all internal goroutines used by the
 // Ethereum protocol.

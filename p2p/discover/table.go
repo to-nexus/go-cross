@@ -520,8 +520,20 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	n, _ := tab.bumpInBucket(b, req.node, req.isInbound)
 	if n != nil {
 		// Already in bucket.
+		// ##CROSS: discovery filter
+		// Check the stored record again, because it may have been updated.
+		if !tab.allowNode(n.Node) {
+			tab.deleteInBucket(b, n.ID())
+		}
+		// ##
 		return false
 	}
+	// ##CROSS: discovery filter
+	// Rejected nodes are not added to the bucket or to the replacements.
+	if !tab.allowNode(req.node) {
+		return false
+	}
+	// ##
 	if len(b.entries) >= bucketSize {
 		// Bucket full, maybe add as replacement.
 		tab.addReplacement(b, req.node)
@@ -543,6 +555,14 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	tab.nodeAdded(b, wn)
 	return true
 }
+
+// ##CROSS: discovery filter
+// allowNode reports whether n passes the table filter.
+func (tab *Table) allowNode(n *enode.Node) bool {
+	return tab.cfg.TableFilter == nil || tab.cfg.TableFilter(n)
+}
+
+// ##
 
 // addReplacement adds n to the replacement cache of bucket b.
 func (tab *Table) addReplacement(b *bucket, n *enode.Node) {
@@ -708,6 +728,41 @@ func (tab *Table) deleteNode(n *enode.Node) {
 
 // waitForNodes blocks until the table contains at least n nodes.
 func (tab *Table) waitForNodes(ctx context.Context, n int) error {
+	// Wrap ctx so the forwarder goroutine exits when waitForNodes returns,
+	// regardless of whether the caller's ctx is canceled.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Set up a notification channel that gets unblocked when there was any activity on
+	// the table. Ultimately this reads from the table's nodeFeed, but can't use the feed
+	// directly on the same goroutine that takes Table.mutex, it would deadlock.
+	var notify chan struct{}
+	var notifyErr error
+	initsub := func() event.Subscription {
+		notify = make(chan struct{}, 1)
+		newnode := make(chan *enode.Node, 1)
+		sub := tab.nodeFeed.Subscribe(newnode)
+		go func() {
+			defer close(notify)
+			for {
+				select {
+				case <-newnode:
+					select {
+					case notify <- struct{}{}:
+					default:
+					}
+				case <-ctx.Done():
+					notifyErr = ctx.Err()
+					return
+				case <-tab.closeReq:
+					notifyErr = errClosed
+					return
+				}
+			}
+		}()
+		return sub
+	}
+
 	getlength := func() (count int) {
 		for _, b := range &tab.buckets {
 			count += len(b.entries)
@@ -715,28 +770,24 @@ func (tab *Table) waitForNodes(ctx context.Context, n int) error {
 		return count
 	}
 
-	var ch chan *enode.Node
 	for {
 		tab.mutex.Lock()
 		if getlength() >= n {
 			tab.mutex.Unlock()
 			return nil
 		}
-		if ch == nil {
-			// Init subscription.
-			ch = make(chan *enode.Node)
-			sub := tab.nodeFeed.Subscribe(ch)
+		if notify == nil {
+			// Lazily init the subscription. Do this while holding the
+			// lock so we don't miss any events that change the node count.
+			sub := initsub()
 			defer sub.Unsubscribe()
 		}
 		tab.mutex.Unlock()
 
-		// Wait for a node add event.
-		select {
-		case <-ch:
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-tab.closeReq:
-			return errClosed
+		// Wait for table event.
+		if _, ok := <-notify; !ok {
+			break
 		}
 	}
+	return notifyErr
 }

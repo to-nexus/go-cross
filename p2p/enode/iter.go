@@ -188,12 +188,11 @@ func AsyncFilter(it Iterator, check AsyncFilterFunc, workers int) Iterator {
 	ctx, cancel := context.WithCancel(context.Background())
 	f.cancel = cancel
 
+	// Take the producer's slot before the goroutine starts, so Close always waits for the producer to end.
+	// If the goroutine took it, Close could close f.slots first, and the producer would panic when it gives the slot back.
+	<-f.slots // ##CROSS: discovery filter
+
 	go func() {
-		select {
-		case <-ctx.Done():
-			return
-		case <-f.slots:
-		}
 		defer func() {
 			f.slots <- struct{}{} // the iterator has ended
 		}()
