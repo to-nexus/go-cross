@@ -17,6 +17,7 @@
 package discover
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"math/rand"
@@ -34,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTable_pingReplace(t *testing.T) {
@@ -490,6 +492,45 @@ func quickcfg() *quick.Config {
 	}
 }
 
+// This test checks that waitForNodes does not block addFoundNode.
+// See https://github.com/ethereum/go-ethereum/issues/34881.
+func TestTable_waitForNodesLocking(t *testing.T) {
+	transport := newPingRecorder()
+	tab, db := newTestTable(transport, Config{})
+	defer db.Close()
+	defer tab.close()
+	<-tab.initDone
+
+	// waitForNodes will never reach this count, so it stays subscribed
+	// to nodeFeed and looping for the duration of the test.
+	waitCtx, cancelWait := context.WithCancel(context.Background())
+	defer cancelWait()
+	waitDone := make(chan struct{})
+	go func() {
+		defer close(waitDone)
+		tab.waitForNodes(waitCtx, 1<<20)
+	}()
+
+	// Call addFoundNode in loop to send to the feed.
+	addDone := make(chan struct{})
+	go func() {
+		defer close(addDone)
+		for i := range 10000 {
+			d := 240 + (i % 17)
+			n := nodeAtDistance(tab.self().ID(), d, intIP(i))
+			tab.addFoundNode(n, true)
+		}
+	}()
+
+	select {
+	case <-addDone:
+		cancelWait()
+		<-waitDone
+	case <-time.After(10 * time.Second):
+		t.Fatal("deadlock detected: add loop did not finish within 10s")
+	}
+}
+
 func newkey() *ecdsa.PrivateKey {
 	key, err := crypto.GenerateKey()
 	if err != nil {
@@ -497,3 +538,118 @@ func newkey() *ecdsa.PrivateKey {
 	}
 	return key
 }
+
+// ##CROSS: discovery filter
+func TestTable_TableFilter(t *testing.T) {
+	// rejectOther rejects nodes that have the "other" entry, like nodes of another chain.
+	rejectOther := func(n *enode.Node) bool {
+		return n.Load(enr.WithEntry("other", new(bool))) != nil
+	}
+	// withOther returns a newer record of n with the "other" entry.
+	withOther := func(n *enode.Node) *enode.Node {
+		r := n.Record()
+		r.Set(enr.WithEntry("other", true))
+		return enode.SignNull(r, n.ID())
+	}
+
+	t.Run("new node is rejected", func(t *testing.T) {
+		tab, db := newInactiveTestTable(newPingRecorder(), Config{TableFilter: rejectOther})
+		defer db.Close()
+
+		good := nodeAtDistance(tab.self().ID(), 255, net.IP{10, 0, 0, 1})
+		bad := withOther(nodeAtDistance(tab.self().ID(), 255, net.IP{10, 1, 0, 1}))
+		require.True(t, tab.handleAddNode(addNodeOp{node: good}))
+		require.False(t, tab.handleAddNode(addNodeOp{node: bad}))
+		require.NotNil(t, tab.getNode(good.ID()))
+		require.Nil(t, tab.getNode(bad.ID()))
+	})
+
+	t.Run("rejected node is not added as replacement", func(t *testing.T) {
+		tab, db := newInactiveTestTable(newPingRecorder(), Config{TableFilter: rejectOther})
+		defer db.Close()
+
+		for i := 0; i < bucketSize; i++ {
+			n := nodeAtDistance(tab.self().ID(), 255, net.IP{10, byte(i), 0, 1})
+			require.True(t, tab.handleAddNode(addNodeOp{node: n}))
+		}
+		good := nodeAtDistance(tab.self().ID(), 255, net.IP{10, 100, 0, 1})
+		bad := withOther(nodeAtDistance(tab.self().ID(), 255, net.IP{10, 101, 0, 1}))
+		tab.handleAddNode(addNodeOp{node: good})
+		tab.handleAddNode(addNodeOp{node: bad})
+
+		b := tab.bucket(good.ID())
+		require.True(t, containsID(b.replacements, good.ID()))
+		require.False(t, containsID(b.replacements, bad.ID()))
+	})
+
+	t.Run("stored node is removed by rejected update", func(t *testing.T) {
+		tab, db := newInactiveTestTable(newPingRecorder(), Config{TableFilter: rejectOther})
+		defer db.Close()
+
+		node := nodeAtDistance(tab.self().ID(), 255, net.IP{10, 0, 0, 1})
+		require.True(t, tab.handleAddNode(addNodeOp{node: node}))
+
+		nodev2 := withOther(node)
+		require.Greater(t, nodev2.Seq(), node.Seq())
+		tab.handleAddNode(addNodeOp{node: nodev2})
+		require.Nil(t, tab.getNode(node.ID()))
+	})
+
+	t.Run("node is removed when revalidation fetches rejected record", func(t *testing.T) {
+		var (
+			clock     mclock.Simulated
+			transport = newPingRecorder()
+			tab, db   = newInactiveTestTable(transport, Config{Clock: &clock, TableFilter: rejectOther})
+		)
+		defer db.Close()
+
+		// The table only knows the v4 node without ENR, the remote has a newer record.
+		node := nodeAtDistance(tab.self().ID(), 255, net.IP{10, 0, 0, 1})
+		require.True(t, tab.handleAddNode(addNodeOp{node: node}))
+		transport.updateRecord(withOther(node))
+
+		revalidateOnce(t, tab, &clock)
+		require.Nil(t, tab.getNode(node.ID()))
+		require.False(t, tab.revalidation.fast.contains(node.ID()))
+		require.False(t, tab.revalidation.slow.contains(node.ID()))
+	})
+
+	t.Run("node is removed on revalidation when filter result changes", func(t *testing.T) {
+		var (
+			clock   mclock.Simulated
+			reject  bool
+			filter  = func(*enode.Node) bool { return !reject }
+			tab, db = newInactiveTestTable(newPingRecorder(), Config{Clock: &clock, TableFilter: filter})
+		)
+		defer db.Close()
+
+		node := nodeAtDistance(tab.self().ID(), 255, net.IP{10, 0, 0, 1})
+		require.True(t, tab.handleAddNode(addNodeOp{node: node}))
+
+		// e.g. the local chain passed a fork which the node does not support.
+		reject = true
+		revalidateOnce(t, tab, &clock)
+		require.Nil(t, tab.getNode(node.ID()))
+	})
+}
+
+// revalidateOnce starts one revalidation request and handles its response.
+func revalidateOnce(t *testing.T, tab *Table, clock *mclock.Simulated) {
+	tr := &tab.revalidation
+
+	// Schedule once to get the next start time, then advance the clock to that point and schedule
+	// again to start.
+	next := tr.run(tab, clock.Now())
+	clock.Run(time.Duration(next + 1))
+	tr.run(tab, clock.Now())
+	require.Len(t, tr.activeReq, 1)
+
+	select {
+	case resp := <-tab.revalResponseCh:
+		tr.handleResponse(tab, resp)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for revalidation")
+	}
+}
+
+// ##

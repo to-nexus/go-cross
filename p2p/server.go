@@ -475,6 +475,7 @@ func (srv *Server) setupDiscovery() error {
 			Bootnodes:   srv.BootstrapNodes,
 			Unhandled:   unhandled,
 			Log:         srv.log,
+			TableFilter: srv.DiscoveryTableFilter, // ##CROSS: discovery filter
 		}
 		ntab, err := discover.ListenV4(conn, srv.localnode, cfg)
 		if err != nil {
@@ -488,6 +489,7 @@ func (srv *Server) setupDiscovery() error {
 			NetRestrict: srv.NetRestrict,
 			Bootnodes:   srv.BootstrapNodesV5,
 			Log:         srv.log,
+			TableFilter: srv.DiscoveryTableFilter, // ##CROSS: discovery filter
 		}
 		srv.discv5, err = discover.ListenV5(sconn, srv.localnode, cfg)
 		if err != nil {
@@ -500,24 +502,29 @@ func (srv *Server) setupDiscovery() error {
 		}
 	}
 
-	// Add protocol-specific discovery sources. Sources are deduplicated by iterator as well
-	// as by protocol name: an enode.Iterator holds a single cursor, so adding the same one
-	// twice would let two mixer goroutines consume it concurrently and corrupt its state.
+	// Add protocol-specific discovery sources.
+	// Sources are deduplicated by iterator as well as by protocol name:
+	// an enode.Iterator holds a single cursor, so adding the same one twice would
+	// let two mixer goroutines consume it concurrently and corrupt its state.
 	added := make(map[string]bool)
-	addedIters := make(map[enode.Iterator]bool)
+	addedIters := make(map[enode.Iterator]bool) // ##CROSS: istanbul
 	for _, proto := range srv.Protocols {
 		if proto.DialCandidates == nil || added[proto.Name] {
 			continue
 		}
+		// ##CROSS: istanbul
 		canDedup := reflect.TypeOf(proto.DialCandidates).Comparable()
 		if canDedup && addedIters[proto.DialCandidates] {
 			continue
 		}
+		// ##
 		srv.discmix.AddSource(proto.DialCandidates)
 		added[proto.Name] = true
+		// ##CROSS: istanbul
 		if canDedup {
 			addedIters[proto.DialCandidates] = true
 		}
+		// ##
 	}
 
 	// Set up default non-protocol-specific discovery feeds if no protocol

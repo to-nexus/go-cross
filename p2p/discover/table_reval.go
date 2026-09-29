@@ -147,8 +147,9 @@ func (tr *tableRevalidation) handleResponse(tab *Table, resp revalidationRespons
 
 	// Store potential seeds in database.
 	// This is done via defer to avoid holding Table lock while writing to DB.
+	var rejected bool // ##CROSS: discovery filter
 	defer func() {
-		if n.isValidatedLive && n.livenessChecks > 5 {
+		if !rejected && n.isValidatedLive && n.livenessChecks > 5 {
 			tab.db.UpdateNode(resp.n.Node)
 		}
 	}()
@@ -176,6 +177,17 @@ func (tr *tableRevalidation) handleResponse(tab *Table, resp revalidationRespons
 	if resp.newRecord != nil {
 		_, endpointChanged = tab.bumpInBucket(b, resp.newRecord, false)
 	}
+
+	// ##CROSS: discovery filter
+	// Remove the node if its record is rejected, e.g. the node is on another chain.
+	// The record is checked on every revalidation, because the filter result can change after a fork.
+	if !tab.allowNode(n.Node) {
+		rejected = true
+		tab.log.Debug("Removed filtered node", "b", b.index, "id", n.ID(), "ip", n.IPAddr())
+		tab.deleteInBucket(b, n.ID())
+		return
+	}
+	// ##
 
 	// Node moves to slow list if it passed and hasn't changed.
 	if !endpointChanged {

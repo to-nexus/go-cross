@@ -225,6 +225,7 @@ func CreateConsensusEngine(config *params.ChainConfig, stack *node.Node, db ethd
 	return beacon.New(ethash.NewFaker()), nil
 }
 
+// ##CROSS: istanbul
 // SetConsensusEngineChainConfig updates the finalized chain config of a consensus engine.
 func SetConsensusEngineChainConfig(engine consensus.Engine, config *params.ChainConfig) {
 	if backend, ok := consensus.ToIstanbulEngine(engine).(interface {
@@ -233,3 +234,5 @@ func SetConsensusEngineChainConfig(engine consensus.Engine, config *params.Chain
 		backend.SetChainConfig(config)
 	}
 }
+
+// ##
