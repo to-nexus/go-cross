@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -79,3 +80,21 @@ func NewNodeFilter(chain *core.BlockChain) func(*enode.Node) bool {
 		return err == nil
 	}
 }
+
+// ##CROSS: discovery filter
+// NewTableFilter returns a filter for the discovery node tables.
+// Unlike NewNodeFilter, it keeps nodes without an `eth` entry,
+// such as bootnodes or v4 nodes whose record is not fetched yet.
+// It rejects only nodes that advertise a forkid which is not compatible with the current chain.
+func NewTableFilter(chain *core.BlockChain) func(*enode.Node) bool {
+	filter := forkid.NewFilter(chain)
+	return func(n *enode.Node) bool {
+		var entry enrEntry
+		if err := n.Load(&entry); err != nil {
+			return enr.IsNotFound(err) // keep nodes without an `eth` entry, reject broken ones
+		}
+		return filter(entry.ForkID) == nil
+	}
+}
+
+// ##

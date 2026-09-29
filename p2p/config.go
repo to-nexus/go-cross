@@ -60,6 +60,10 @@ type Config struct {
 	// protocol should be started or not.
 	DiscoveryV5 bool `toml:",omitempty"`
 
+	// DiscoveryTableFilter reports whether a node may stay in the discovery node tables.
+	// Nodes it rejects are removed from the tables. If nil, all nodes are kept.
+	DiscoveryTableFilter NodeFilter `toml:"-"` // ##CROSS: discovery filter
+
 	// Name sets the node name of this server.
 	Name string `toml:"-"`
 
@@ -127,6 +131,9 @@ type Config struct {
 
 	clock mclock.Clock
 }
+
+// NodeFilter reports whether a node is accepted.
+type NodeFilter func(*enode.Node) bool // ##CROSS: discovery filter
 
 type configMarshaling struct {
 	NAT configNAT

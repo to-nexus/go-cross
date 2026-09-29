@@ -17,8 +17,10 @@
 package enode
 
 import (
+	"context"
 	"encoding/binary"
 	"runtime"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -44,7 +46,7 @@ func TestReadNodesCycle(t *testing.T) {
 	nodes := ReadNodes(iter, 10)
 	checkNodes(t, nodes, 3)
 	if iter.count != 10 {
-		t.Fatalf("%d calls to Next, want %d", iter.count, 100)
+		t.Fatalf("%d calls to Next, want %d", iter.count, 10)
 	}
 }
 
@@ -183,6 +185,53 @@ func TestFairMixRemoveSource(t *testing.T) {
 	}
 }
 
+// This checks that FairMix correctly returns the name of the source that produced the node.
+func TestFairMixSourceName(t *testing.T) {
+	nodes := make([]*Node, 6)
+	for i := range nodes {
+		nodes[i] = testNode(uint64(i), uint64(i))
+	}
+	mix := NewFairMix(-1)
+	mix.AddSource(WithSourceName("s1", IterNodes(nodes[0:2])))
+	mix.AddSource(WithSourceName("s2", IterNodes(nodes[2:4])))
+	mix.AddSource(WithSourceName("s3", IterNodes(nodes[4:6])))
+
+	var names []string
+	for range nodes {
+		mix.Next()
+		names = append(names, mix.NodeSource())
+	}
+	want := []string{"s2", "s3", "s1", "s2", "s3", "s1"}
+	if !slices.Equal(names, want) {
+		t.Fatalf("wrong names: %v", names)
+	}
+}
+
+// This checks that FairMix returns the name of the source that produced the node,
+// even when FairMix instances are nested.
+func TestFairMixNestedSourceName(t *testing.T) {
+	nodes := make([]*Node, 6)
+	for i := range nodes {
+		nodes[i] = testNode(uint64(i), uint64(i))
+	}
+	mix := NewFairMix(-1)
+	mix.AddSource(WithSourceName("s1", IterNodes(nodes[0:2])))
+	submix := NewFairMix(-1)
+	submix.AddSource(WithSourceName("s2", IterNodes(nodes[2:4])))
+	submix.AddSource(WithSourceName("s3", IterNodes(nodes[4:6])))
+	mix.AddSource(submix)
+
+	var names []string
+	for range nodes {
+		mix.Next()
+		names = append(names, mix.NodeSource())
+	}
+	want := []string{"s3", "s1", "s2", "s1", "s3", "s2"}
+	if !slices.Equal(names, want) {
+		t.Fatalf("wrong names: %v", names)
+	}
+}
+
 type blockingIter chan struct{}
 
 func (it blockingIter) Next() bool {
@@ -289,3 +338,18 @@ func (it *callCountIter) Next() bool {
 	it.count++
 	return it.Iterator.Next()
 }
+
+// ##CROSS: discovery filter
+func TestAsyncFilter_Close(t *testing.T) {
+	pass := func(ctx context.Context, n *Node) *Node { return n }
+
+	// Close must not race with the start of the producer goroutine.
+	t.Run("close right after creation", func(t *testing.T) {
+		for range 10000 {
+			it := AsyncFilter(IterNodes(nil), pass, 1)
+			it.Close()
+		}
+	})
+}
+
+// ##

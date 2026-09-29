@@ -32,6 +32,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -53,9 +54,8 @@ const (
 	bucketIPLimit, bucketSubnet = 2, 24 // at most 2 addresses from the same /24
 	tableIPLimit, tableSubnet   = 10, 24
 
-	seedMinTableTime = 5 * time.Minute
-	seedCount        = 30
-	seedMaxAge       = 5 * 24 * time.Hour
+	seedCount  = 30
+	seedMaxAge = 5 * 24 * time.Hour
 )
 
 // Table is the 'node table', a Kademlia-like index of neighbor nodes. The table keeps
@@ -84,6 +84,7 @@ type Table struct {
 	closeReq        chan struct{}
 	closed          chan struct{}
 
+	nodeFeed        event.FeedOf[*enode.Node]
 	nodeAddedHook   func(*bucket, *tableNode)
 	nodeRemovedHook func(*bucket, *tableNode)
 }
@@ -519,8 +520,20 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	n, _ := tab.bumpInBucket(b, req.node, req.isInbound)
 	if n != nil {
 		// Already in bucket.
+		// ##CROSS: discovery filter
+		// Check the stored record again, because it may have been updated.
+		if !tab.allowNode(n.Node) {
+			tab.deleteInBucket(b, n.ID())
+		}
+		// ##
 		return false
 	}
+	// ##CROSS: discovery filter
+	// Rejected nodes are not added to the bucket or to the replacements.
+	if !tab.allowNode(req.node) {
+		return false
+	}
+	// ##
 	if len(b.entries) >= bucketSize {
 		// Bucket full, maybe add as replacement.
 		tab.addReplacement(b, req.node)
@@ -543,6 +556,14 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	return true
 }
 
+// ##CROSS: discovery filter
+// allowNode reports whether n passes the table filter.
+func (tab *Table) allowNode(n *enode.Node) bool {
+	return tab.cfg.TableFilter == nil || tab.cfg.TableFilter(n)
+}
+
+// ##
+
 // addReplacement adds n to the replacement cache of bucket b.
 func (tab *Table) addReplacement(b *bucket, n *enode.Node) {
 	if containsID(b.replacements, n.ID()) {
@@ -562,11 +583,13 @@ func (tab *Table) addReplacement(b *bucket, n *enode.Node) {
 }
 
 func (tab *Table) nodeAdded(b *bucket, n *tableNode) {
-	if n.addedToTable == (time.Time{}) {
+	if n.addedToTable.IsZero() {
 		n.addedToTable = time.Now()
 	}
 	n.addedToBucket = time.Now()
 	tab.revalidation.nodeAdded(tab, n)
+
+	tab.nodeFeed.Send(n.Node)
 	if tab.nodeAddedHook != nil {
 		tab.nodeAddedHook(b, n)
 	}
@@ -701,4 +724,70 @@ func (tab *Table) deleteNode(n *enode.Node) {
 	defer tab.mutex.Unlock()
 	b := tab.bucket(n.ID())
 	tab.deleteInBucket(b, n.ID())
+}
+
+// waitForNodes blocks until the table contains at least n nodes.
+func (tab *Table) waitForNodes(ctx context.Context, n int) error {
+	// Wrap ctx so the forwarder goroutine exits when waitForNodes returns,
+	// regardless of whether the caller's ctx is canceled.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Set up a notification channel that gets unblocked when there was any activity on
+	// the table. Ultimately this reads from the table's nodeFeed, but can't use the feed
+	// directly on the same goroutine that takes Table.mutex, it would deadlock.
+	var notify chan struct{}
+	var notifyErr error
+	initsub := func() event.Subscription {
+		notify = make(chan struct{}, 1)
+		newnode := make(chan *enode.Node, 1)
+		sub := tab.nodeFeed.Subscribe(newnode)
+		go func() {
+			defer close(notify)
+			for {
+				select {
+				case <-newnode:
+					select {
+					case notify <- struct{}{}:
+					default:
+					}
+				case <-ctx.Done():
+					notifyErr = ctx.Err()
+					return
+				case <-tab.closeReq:
+					notifyErr = errClosed
+					return
+				}
+			}
+		}()
+		return sub
+	}
+
+	getlength := func() (count int) {
+		for _, b := range &tab.buckets {
+			count += len(b.entries)
+		}
+		return count
+	}
+
+	for {
+		tab.mutex.Lock()
+		if getlength() >= n {
+			tab.mutex.Unlock()
+			return nil
+		}
+		if notify == nil {
+			// Lazily init the subscription. Do this while holding the
+			// lock so we don't miss any events that change the node count.
+			sub := initsub()
+			defer sub.Unsubscribe()
+		}
+		tab.mutex.Unlock()
+
+		// Wait for table event.
+		if _, ok := <-notify; !ok {
+			break
+		}
+	}
+	return notifyErr
 }
