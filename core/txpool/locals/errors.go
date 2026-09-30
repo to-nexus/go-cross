@@ -23,6 +23,12 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 )
 
+// ##CROSS: journal readiness
+// ErrNotReady indicates that the local transaction journal cannot accept submissions yet.
+var ErrNotReady = errors.New("local transaction journal is not ready; retry later")
+
+// ##
+
 // IsTemporaryReject determines whether the given error indicates a temporary
 // reason to reject a transaction from being included in the txpool. The result
 // may change if the txpool's state changes later.
