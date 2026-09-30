@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
 )
 
 var bindTests = []struct {
@@ -2137,6 +2138,39 @@ func TestBindings(t *testing.T) {
 			}
 		})
 	}
+	testBindingPackage(t, pkg) // ##CROSS: library deployment
+}
+
+// ##CROSS: library deployment
+func TestBindings_LibraryDeployment(t *testing.T) {
+	// Each creation program returns the runtime bytes following its 12-byte prefix.
+	// Parent links two libraries; First also links Leaf.
+	first, second, leaf := strings.Repeat("1", 34), strings.Repeat("2", 34), strings.Repeat("3", 34)
+	code, err := Bind(
+		[]string{"Parent", "First", "Second", "Leaf"},
+		[]string{"[]", "[]", "[]", "[]"},
+		[]string{
+			"6029600c60003960296000f300__$" + first + "$____$" + second + "$__",
+			"6015600c60003960156000f300__$" + leaf + "$__",
+			"600a600c600039600a6000f3600260005260206000f3",
+			"600a600c600039600a6000f3600160005260206000f3",
+		}, nil, nil, "bindtest", map[string]string{first: "First", second: "Second", leaf: "Leaf"}, nil,
+	)
+	require.NoError(t, err)
+	pkg := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(pkg, "binding.go"), []byte(code), 0600))
+	tests, err := os.ReadFile("testdata/library_deployment.go.txt")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(pkg, "binding_test.go"), tests, 0600))
+	testBindingPackage(t, pkg, "-race")
+}
+
+// ##
+
+func testBindingPackage(t *testing.T, pkg string, flags ...string) {
+	t.Helper()
+	gocmd := filepath.Join(runtime.GOROOT(), "bin", "go")
+
 	// Convert the package to go modules and use the current source for go-ethereum
 	moder := exec.Command(gocmd, "mod", "init", "bindtest")
 	moder.Dir = pkg
@@ -2155,7 +2189,7 @@ func TestBindings(t *testing.T) {
 		t.Fatalf("failed to tidy Go module file: %v\n%s", err, out)
 	}
 	// Test the entire package and report any failures
-	cmd := exec.Command(gocmd, "test", "-v", "-count", "1")
+	cmd := exec.Command(gocmd, append([]string{"test", "-v", "-count", "1"}, flags...)...) // ##CROSS: library deployment
 	cmd.Dir = pkg
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("failed to run binding test: %v\n%s", err, out)
