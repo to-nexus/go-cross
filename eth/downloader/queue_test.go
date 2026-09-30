@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/stretchr/testify/require"
 )
 
 // makeChain creates a chain of n blocks starting at and including parent.
@@ -473,3 +474,143 @@ func (n *network) headers(from int) []*types.Header {
 	}
 	return hdrs
 }
+
+// ##CROSS: fix upstream
+func TestQueue_Deliver(t *testing.T) {
+	for _, receipts := range []bool{false, true} {
+		kind := "body"
+		invalid := errInvalidBody
+		if receipts {
+			kind, invalid = "receipt", errInvalidReceipt
+		}
+		for _, tc := range []struct {
+			name         string
+			results      int
+			invalidIndex int
+			stale        bool
+			sidecar      bool
+		}{
+			{name: "valid", results: 3, invalidIndex: -1},
+			{name: "empty", invalidIndex: -1},
+			{name: "incomplete", results: 1, invalidIndex: -1},
+			{name: "invalid first", results: 3, invalidIndex: 0},
+			{name: "invalid suffix", results: 3, invalidIndex: 2},
+			{name: "stale and invalid", results: 3, invalidIndex: 2, stale: true},
+			{name: "stale and valid", results: 3, invalidIndex: -1, stale: true},
+			{name: "invalid sidecar", results: 3, invalidIndex: 1, sidecar: true},
+		} {
+			if receipts && tc.sidecar {
+				continue
+			}
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				q := newQueue(3, 3)
+				q.Prepare(1, SnapSync)
+				var (
+					headers       []*types.Header
+					hashes        []common.Hash
+					txs           [][]*types.Transaction
+					txHashes      []common.Hash
+					receiptLists  []types.Receipts
+					receiptHashes []common.Hash
+					uncleHashes   []common.Hash
+					sidecars      = make([]types.BlobSidecars, 3)
+				)
+				hasher := trie.NewStackTrie(nil)
+				for i := 0; i < 3; i++ {
+					tx := types.NewTx(&types.LegacyTx{Nonce: uint64(i)})
+					txs = append(txs, []*types.Transaction{tx})
+					txHashes = append(txHashes, types.DeriveSha(types.Transactions{tx}, hasher))
+					rs := types.Receipts{{Status: 1, CumulativeGasUsed: uint64(i + 1)}}
+					receiptLists = append(receiptLists, rs)
+					receiptHashes = append(receiptHashes, types.DeriveSha(rs, hasher))
+					uncleHashes = append(uncleHashes, types.EmptyUncleHash)
+					header := &types.Header{
+						Number: big.NewInt(int64(i + 1)), TxHash: txHashes[i],
+						ReceiptHash: receiptHashes[i], UncleHash: types.EmptyUncleHash,
+					}
+					if i > 0 {
+						header.ParentHash = hashes[i-1]
+					}
+					headers = append(headers, header)
+					hashes = append(hashes, header.Hash())
+				}
+				require.Len(t, q.Schedule(headers, hashes, 1), 3)
+				peer := dummyPeer("peer")
+				reserve := q.ReserveBodies
+				pool, tasks, pending := q.blockTaskPool, q.blockTaskQueue, q.blockPendPool
+				if receipts {
+					reserve = q.ReserveReceipts
+					pool, tasks, pending = q.receiptTaskPool, q.receiptTaskQueue, q.receiptPendPool
+				}
+				req, _, _ := reserve(peer, 3)
+				require.NotNil(t, req)
+				require.Len(t, req.Headers, 3)
+				if tc.stale {
+					// Model a result consumed before this response arrives.
+					res, _, err := q.resultCache.GetDeliverySlot(1)
+					require.NoError(t, err)
+					res.SetBodyDone()
+					res.SetReceiptsDone()
+					require.Len(t, q.resultCache.GetCompleted(1), 1)
+				}
+				valid := tc.results
+				var want error
+				if tc.invalidIndex >= 0 {
+					valid, want = tc.invalidIndex, invalid
+					switch {
+					case tc.sidecar:
+						sidecars[tc.invalidIndex] = types.BlobSidecars{{BlockNumber: big.NewInt(99)}}
+					case receipts:
+						receiptHashes[tc.invalidIndex] = common.Hash{0xff}
+					default:
+						txHashes[tc.invalidIndex] = common.Hash{0xff}
+					}
+				} else if tc.stale {
+					want = errStaleDelivery
+				}
+				encoded := types.EncodeBlockReceiptLists(receiptLists)
+				var accepted int
+				var err error
+				if receipts {
+					accepted, err = q.DeliverReceipts(peer.id, encoded[:tc.results], receiptHashes[:tc.results])
+				} else {
+					accepted, err = q.DeliverBodies(peer.id, txs[:tc.results], txHashes[:tc.results],
+						make([][]*types.Header, tc.results), uncleHashes[:tc.results],
+						make([][]*types.Withdrawal, tc.results), nil, sidecars[:tc.results])
+				}
+				require.ErrorIs(t, err, want)
+				expected := valid
+				if tc.stale {
+					expected--
+				}
+				require.Equal(t, expected, accepted)
+				require.Len(t, pool, 3-valid)
+				require.Equal(t, 3-valid, tasks.Size())
+				require.NotContains(t, pending, peer.id)
+				for i := 0; i < valid; i++ {
+					if tc.stale && i == 0 {
+						continue
+					}
+					res, stale, err := q.resultCache.GetDeliverySlot(uint64(i + 1))
+					require.NoError(t, err)
+					require.False(t, stale)
+					if receipts {
+						require.Equal(t, encoded[i], res.Receipts)
+					} else {
+						require.Equal(t, types.Transactions(txs[i]), res.Transactions)
+					}
+				}
+				// Failed and missing items remain available for a different peer.
+				retry, _, _ := reserve(dummyPeer("honest"), 3)
+				if valid == 3 {
+					require.Nil(t, retry)
+				} else {
+					require.NotNil(t, retry)
+					require.Equal(t, headers[valid:], retry.Headers)
+				}
+			})
+		}
+	}
+}
+
+// ##
