@@ -17,11 +17,15 @@
 package locals
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math/big"
 	"math/rand"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -192,11 +197,14 @@ func TestJournal(t *testing.T) {
 	env.tracker.recheck(true) // manually rejournal the tracker
 
 	// Make sure all the transactions are properly journalled
-	trackerB := New(journalPath, time.Minute, gspec.Config, env.pool)
-	trackerB.journal.load(func(transactions []*types.Transaction) []error {
+	// ##CROSS: journal readiness
+	trackerB := New("", time.Minute, gspec.Config, env.pool)
+	newTxJournal(journalPath).load(func(transactions []*types.Transaction) []error {
 		trackerB.TrackAll(transactions)
 		return nil
 	})
+
+	// ##
 
 	trackerB.mu.Lock()
 	allCopy := maps.Clone(trackerB.all)
@@ -206,3 +214,146 @@ func TestJournal(t *testing.T) {
 		t.Fatalf("Unexpected transactions being tracked, got: %d, want: %d", len(allCopy), len(txs))
 	}
 }
+
+// ##CROSS: journal readiness
+func TestTxTracker_Start(t *testing.T) {
+	t.Run("replay and concurrent tracking", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "transactions.rlp")
+		env := newTestEnv(t, 0, 0, "")
+		defer env.close()
+		defer env.pool.Close()
+		config := *gspec.Config
+		config.AdventureTime = new(uint64)
+		tracker := New(path, time.Hour, &config, env.pool)
+
+		txs := env.makeTxs(1058)
+		seed := newTxJournal(path)
+		require.NoError(t, seed.setupWriter())
+		for _, tx := range txs[:1026] {
+			require.NoError(t, seed.insert(tx))
+		}
+		require.NoError(t, seed.close())
+		require.False(t, tracker.Ready())
+		require.ErrorIs(t, tracker.Track(txs[1026]), ErrNotReady)
+		require.Empty(t, tracker.all)
+
+		// Include a fee-delegated transaction in the live submissions.
+		inner := types.DynamicFeeTx{
+			ChainID: config.ChainID, Nonce: uint64(len(txs)), To: &address,
+			Gas: params.TxGas, GasTipCap: big.NewInt(params.GWei), GasFeeCap: big.NewInt(params.GWei),
+			Value: new(big.Int),
+		}
+		senderTx, err := types.SignTx(types.NewTx(&inner), signer, key)
+		require.NoError(t, err)
+		inner.V, inner.R, inner.S = senderTx.RawSignatureValues()
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		feeTx, err := types.SignTx(types.NewTx(types.NewFeeDelegatedDynamicFeeTx(&payer, inner)), types.NewFeeDelegationSigner(config.ChainID), payerKey)
+		require.NoError(t, err)
+		txs = append(txs, feeTx)
+
+		live := txs[1026:]
+		start := make(chan struct{})
+		started := make(chan error, 1)
+		go func() { <-start; started <- tracker.Start() }()
+		errs := make([]error, len(live))
+		var wg sync.WaitGroup
+		for i, tx := range live {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				errs[i] = tracker.Track(tx)
+			}()
+		}
+		close(start)
+		startErr := <-started
+		wg.Wait()
+		require.NoError(t, startErr)
+		require.True(t, tracker.Ready())
+		for i, err := range errs {
+			if errors.Is(err, ErrNotReady) {
+				err = tracker.Track(live[i])
+			}
+			require.NoError(t, err)
+		}
+		require.NoError(t, tracker.Stop())
+		require.False(t, tracker.Ready())
+		require.ErrorIs(t, tracker.Track(txs[0]), ErrNotReady)
+
+		// Restart before any rotation. Both replayed and live transactions must survive.
+		restored := New(path, time.Hour, &config, env.pool)
+		require.NoError(t, restored.Start())
+		defer restored.Stop()
+		restored.mu.Lock()
+		defer restored.mu.Unlock()
+		require.Len(t, restored.all, len(txs))
+		for _, tx := range txs {
+			got := restored.all[tx.Hash()]
+			require.NotNil(t, got)
+			wantRaw, err := tx.MarshalBinary()
+			require.NoError(t, err)
+			gotRaw, err := got.MarshalBinary()
+			require.NoError(t, err)
+			require.Equal(t, wantRaw, gotRaw)
+		}
+	})
+	t.Run("writer setup error", func(t *testing.T) {
+		tracker := New(filepath.Join(t.TempDir(), "missing", "transactions.rlp"), time.Hour, gspec.Config, nil)
+		require.ErrorIs(t, tracker.Start(), os.ErrNotExist)
+		require.False(t, tracker.Ready())
+		require.Nil(t, tracker.journal.writer)
+	})
+	t.Run("replay error", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "transactions.rlp")
+		tx := types.MustSignNewTx(key, signer, &types.LegacyTx{GasPrice: big.NewInt(params.GWei)})
+		seed := newTxJournal(path)
+		require.NoError(t, seed.setupWriter())
+		require.NoError(t, seed.insert(tx))
+		_, err := seed.writer.Write([]byte{0xff})
+		require.NoError(t, err)
+		require.NoError(t, seed.close())
+		before, err := os.ReadFile(path)
+		require.NoError(t, err)
+		tracker := New(path, time.Hour, gspec.Config, nil)
+		require.Error(t, tracker.Start())
+		require.False(t, tracker.Ready())
+		require.Nil(t, tracker.journal.writer)
+		require.Contains(t, tracker.all, tx.Hash())
+		after, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Equal(t, before, after)
+	})
+}
+
+type failingJournalWriter struct {
+	io.WriteCloser
+	err error
+}
+
+// Write simulates a journal write failure.
+func (w *failingJournalWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// Close releases the writer and simulates a journal close failure.
+func (w *failingJournalWriter) Close() error {
+	w.WriteCloser.Close()
+	return w.err
+}
+
+func TestTxTracker_JournalErrors(t *testing.T) {
+	tracker := New(filepath.Join(t.TempDir(), "transactions.rlp"), time.Hour, gspec.Config, nil)
+	require.NoError(t, tracker.Start())
+	failure := errors.New("journal I/O failure")
+	tracker.mu.Lock()
+	tracker.journal.writer = &failingJournalWriter{tracker.journal.writer, failure}
+	tracker.mu.Unlock()
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{GasPrice: big.NewInt(params.GWei)})
+	require.NoError(t, tracker.Track(tx))
+	require.ErrorIs(t, tracker.Stop(), failure)
+	require.Contains(t, tracker.all, tx.Hash())
+	require.False(t, tracker.Ready())
+	require.Nil(t, tracker.journal.writer)
+}
+
+// ##

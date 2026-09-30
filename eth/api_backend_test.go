@@ -22,6 +22,8 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -37,7 +39,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -180,3 +184,27 @@ func testSendTx(t *testing.T, withLocal bool) {
 		}
 	}
 }
+
+// ##CROSS: journal readiness
+func TestEthAPIBackend_SendTxJournal(t *testing.T) {
+	b := initBackend(false)
+	defer b.eth.blockchain.Stop()
+	defer b.eth.txPool.Close()
+	path := filepath.Join(t.TempDir(), "transactions.rlp")
+	tracker := locals.New(path, time.Hour, gspec.Config, b.eth.txPool)
+	b.eth.localTxTracker = tracker
+	tx := makeTx(0, nil, nil, key)
+	require.ErrorIs(t, b.SendTx(context.Background(), tx), locals.ErrNotReady)
+	require.False(t, b.eth.txPool.Has(tx.Hash()))
+	require.NoError(t, tracker.Start())
+	defer tracker.Stop()
+	require.NoError(t, b.SendTx(context.Background(), tx))
+	require.True(t, b.eth.txPool.Has(tx.Hash()))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var restored types.Transaction
+	require.NoError(t, rlp.DecodeBytes(data, &restored))
+	require.Equal(t, tx.Hash(), restored.Hash())
+}
+
+// ##

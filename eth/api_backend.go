@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -335,6 +336,11 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 }
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
+	// ##CROSS: journal readiness
+	if b.eth.localTxTracker != nil && !b.eth.localTxTracker.Ready() {
+		return locals.ErrNotReady
+	}
+	// ##
 	err := b.eth.txPool.Add([]*types.Transaction{signedTx}, false)[0]
 
 	// If the local transaction tracker is not configured, returns whatever
@@ -352,7 +358,14 @@ func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 	// No error will be returned to user if the transaction fails with a temporary
 	// error and might be accepted later (e.g., the transaction pool is full).
 	// Locally submitted transactions will be resubmitted later via the local tracker.
-	b.eth.localTxTracker.Track(signedTx)
+	// ##CROSS: journal readiness
+	if trackErr := b.eth.localTxTracker.Track(signedTx); trackErr != nil {
+		if err != nil {
+			return trackErr
+		}
+		log.Warn("Failed to track local transaction", "hash", signedTx.Hash(), "err", trackErr)
+	}
+	// ##
 	return nil
 }
 
