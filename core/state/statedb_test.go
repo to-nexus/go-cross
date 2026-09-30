@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -43,6 +44,7 @@ import (
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 // Tests that updating a state trie does not leak any database writes prior to
@@ -1368,3 +1370,45 @@ func TestStorageDirtiness(t *testing.T) {
 	state.RevertToSnapshot(snap)
 	checkDirty(common.Hash{0x1}, common.Hash{0x1}, true)
 }
+
+// ##CROSS: fix upstream
+func TestWitnessIncludesAbsentAccountReads(t *testing.T) {
+	db := NewDatabaseForTesting()
+	defer db.TrieDB().Close()
+	state, err := New(types.EmptyRootHash, db)
+	require.NoError(t, err)
+	for i := byte(0); i < 3; i++ {
+		state.SetBalance(common.Address{i + 1}, uint256.NewInt(uint64(i+1)), tracing.BalanceChangeUnspecified)
+	}
+	root, err := state.Commit(0, false, false)
+	require.NoError(t, err)
+	state, err = New(root, db)
+	require.NoError(t, err)
+	witness := &stateless.Witness{
+		Codes: make(map[string]struct{}),
+		State: make(map[string]struct{}),
+	}
+	state.StartPrefetcher("test", witness, nil)
+	defer state.StopPrefetcher()
+	// Share the first hashed nibble with common.Address{1} so the lookup needs a child node.
+	missing := common.Address{0xff, 0x14}
+	require.Zero(t, state.GetBalance(missing).Sign())
+	require.NoError(t, state.Error())
+	require.Equal(t, root, state.IntermediateRoot(false))
+	require.NoError(t, state.Error())
+
+	// Verify non-existence using only witness nodes, without the original database.
+	witnessDB := witness.MakeHashDB()
+	defer witnessDB.Close()
+	trieDB := triedb.NewDatabase(witnessDB, triedb.HashDefaults)
+	defer trieDB.Close()
+	witnessTrie, err := trie.NewStateTrie(trie.StateTrieID(root), trieDB)
+	require.NoError(t, err)
+	account, err := witnessTrie.GetAccount(missing)
+	require.NoError(t, err)
+	require.Nil(t, account)
+	// The root is prefetched unconditionally; this lookup must also require a child node.
+	require.Greater(t, len(witness.State), 1)
+}
+
+// ##

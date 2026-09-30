@@ -501,6 +501,7 @@ ListenAddr = ":30001"
 MaxPeers = 50
 NoDiscovery = false
 DiscoveryV4 = true
+DiscoveryV5 = false
 StaticNodes = []
 
 [Node.HTTPTimeouts]

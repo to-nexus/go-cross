@@ -18,6 +18,7 @@ package ethclient_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -28,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
@@ -39,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 )
 
 // Verify that Client implements the ethereum interfaces.
@@ -1009,3 +1012,52 @@ func TestSimulateV1WithBlockNumberOrHash(t *testing.T) {
 		t.Fatalf("expected 1 block result, got %d", len(results))
 	}
 }
+
+// ##CROSS: fix upstream
+type txSyncTestAPI struct {
+	raw     hexutil.Bytes
+	timeout json.RawMessage
+}
+
+// SendRawTransactionSync records the JSON arguments sent by the client.
+func (api *txSyncTestAPI) SendRawTransactionSync(raw hexutil.Bytes, timeout json.RawMessage) (*types.Receipt, error) {
+	api.raw, api.timeout = raw, timeout
+	return &types.Receipt{Logs: []*types.Log{}}, nil
+}
+
+func TestClient_SendRawTransactionSync(t *testing.T) {
+	api := new(txSyncTestAPI)
+	server := rpc.NewServer()
+	defer server.Stop()
+	require.NoError(t, server.RegisterName("eth", api))
+	client := ethclient.NewClient(rpc.DialInProc(server))
+	defer client.Close()
+	raw, err := testTx1.MarshalBinary()
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name    string
+		timeout time.Duration
+		omit    bool
+		want    string
+	}{
+		{name: "positive", timeout: 200 * time.Millisecond, want: "200"},
+		{name: "omitted", omit: true, want: "null"},
+		{name: "zero", want: "null"},
+		{name: "negative", timeout: -time.Millisecond, want: "null"},
+		{name: "submillisecond", timeout: time.Microsecond, want: "null"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			timeout := &tc.timeout
+			if tc.omit {
+				timeout = nil
+			}
+			receipt, err := client.SendRawTransactionSync(context.Background(), raw, timeout)
+			require.NoError(t, err)
+			require.NotNil(t, receipt)
+			require.Equal(t, hexutil.Bytes(raw), api.raw)
+			require.Equal(t, tc.want, string(api.timeout))
+		})
+	}
+}
+
+// ##
