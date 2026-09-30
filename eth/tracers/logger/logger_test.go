@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -41,6 +42,25 @@ func (*dummyStatedb) SetState(_ common.Address, _ common.Hash, _ common.Hash) co
 
 func (*dummyStatedb) GetStateAndCommittedState(common.Address, common.Hash) (common.Hash, common.Hash) {
 	return common.Hash{}, common.Hash{}
+}
+
+func TestStructLogger_Stop(t *testing.T) {
+	logger := NewStructLogger(nil)
+	stopErr := errors.New("execution timeout")
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		logger.Stop(stopErr)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = logger.GetResult()
+	}()
+	wg.Wait()
+	if _, err := logger.GetResult(); !errors.Is(err, stopErr) {
+		t.Fatalf("interruption reason: got %v, want %v", err, stopErr)
+	}
 }
 
 func TestStoreCapture(t *testing.T) {
