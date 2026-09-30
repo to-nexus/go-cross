@@ -23,6 +23,7 @@ import (
 	"math/rand"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -2328,6 +2329,41 @@ func containsAnnounce(slice []announce, ann announce) bool {
 		}
 	}
 	return false
+}
+
+func TestTxFetcher_Enqueue(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		rejected int
+		delay    time.Duration
+	}{
+		{"quarter rejected", 8, 0},
+		{"over quarter rejected", 9, 200 * time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				txs := make([]*types.Transaction, 32)
+				for i := range txs {
+					txs[i] = types.NewTx(&types.LegacyTx{Nonce: uint64(i)})
+				}
+				fetcher := NewTxFetcher(nil, func(batch []*types.Transaction) []error {
+					errs := make([]error, len(batch))
+					for i := 0; i < tc.rejected; i++ {
+						errs[i] = errors.New("invalid transaction")
+					}
+					return errs
+				}, nil, nil)
+				fetcher.cleanup = make(chan *txDelivery, 1)
+				start := time.Now()
+				if err := fetcher.Enqueue("peer", txs, false); err != nil {
+					t.Fatal(err)
+				}
+				if elapsed := time.Since(start); elapsed != tc.delay {
+					t.Fatalf("backoff duration: got %v, want %v", elapsed, tc.delay)
+				}
+			})
+		})
+	}
 }
 
 // containsHashInAnnounces returns whether a hash is contained within a slice
