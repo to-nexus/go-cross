@@ -79,11 +79,25 @@ var (
 		  if parsed == nil {
 			return common.Address{}, nil, nil, errors.New("GetABI returned nil")
 		  }
+		  {{if .Libraries}}
+		  // ##CROSS: library deployment
+		  deployOpts := *auth
+		  linkedBin := {{.Type}}Bin
 		  {{range $pattern, $name := .Libraries}}
-			{{decapitalise $name}}Addr, _, _, _ := Deploy{{capitalise $name}}(auth, backend)
-			{{$contract.Type}}Bin = strings.ReplaceAll({{$contract.Type}}Bin, "__${{$pattern}}$__", {{decapitalise $name}}Addr.String()[2:])
+			{{decapitalise $name}}Addr, {{decapitalise $name}}Tx, _, err := Deploy{{capitalise $name}}(&deployOpts, backend)
+			if err != nil {
+				return common.Address{}, nil, nil, err
+			}
+			// Advance past all nested dependencies without changing the caller's nonce.
+			deployOpts.Nonce = new(big.Int).SetUint64({{decapitalise $name}}Tx.Nonce() + 1)
+			linkedBin = strings.ReplaceAll(linkedBin, "__${{$pattern}}$__", {{decapitalise $name}}Addr.String()[2:])
 		  {{end}}
+		  auth = &deployOpts
+		  address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(linkedBin), backend {{range .Constructor.Inputs}}, {{.Name}}{{end}})
+		  // ##
+		  {{else}}
 		  address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex({{.Type}}Bin), backend {{range .Constructor.Inputs}}, {{.Name}}{{end}})
+		  {{end}}
 		  if err != nil {
 		    return common.Address{}, nil, nil, err
 		  }

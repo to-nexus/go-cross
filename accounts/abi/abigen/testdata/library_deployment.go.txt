@@ -1,0 +1,212 @@
+// ##CROSS: library deployment
+package bindtest
+
+import (
+	"context"
+	"errors"
+	"math/big"
+	"sync"
+	"testing"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/require"
+)
+
+type delayedBackend struct {
+	bind.ContractBackend
+	nonce    uint64
+	queries  int
+	sent     []*types.Transaction
+	nonceErr error
+	sendErr  error
+	failAt   int
+	ctx      context.Context
+}
+
+// PendingNonceAt keeps reporting the same nonce even after successful submissions.
+func (b *delayedBackend) PendingNonceAt(ctx context.Context, _ common.Address) (uint64, error) {
+	b.queries++
+	b.ctx = ctx
+	return b.nonce, b.nonceErr
+}
+
+// SendTransaction records submissions and optionally forwards them to a simulated chain.
+func (b *delayedBackend) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+	b.sent = append(b.sent, tx)
+	if b.sendErr != nil && len(b.sent)-1 == b.failAt {
+		return b.sendErr
+	}
+	if b.ContractBackend != nil {
+		return b.ContractBackend.SendTransaction(ctx, tx)
+	}
+	return nil
+}
+
+func deploymentAuth(t *testing.T) *bind.TransactOpts {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	auth, err := bind.NewKeyedTransactorWithChainID(key, big.NewInt(1337))
+	require.NoError(t, err)
+	auth.GasLimit = 300000
+	auth.GasPrice = big.NewInt(2000000000)
+	return auth
+}
+
+func checkDeployment(t *testing.T, from common.Address, nonce uint64, txs []*types.Transaction) {
+	t.Helper()
+	require.Len(t, txs, 4)
+	leaf := crypto.CreateAddress(from, nonce)
+	first := crypto.CreateAddress(from, nonce+1)
+	second := crypto.CreateAddress(from, nonce+2)
+	wantData := [][]byte{
+		common.FromHex(LeafBin),
+		append(common.FromHex("6015600c60003960156000f300"), leaf.Bytes()...),
+		common.FromHex(SecondBin),
+		append(append(common.FromHex("6029600c60003960296000f300"), first.Bytes()...), second.Bytes()...),
+	}
+	for i, tx := range txs {
+		require.Equal(t, nonce+uint64(i), tx.Nonce())
+		require.Equal(t, wantData[i], tx.Data())
+	}
+}
+
+func TestLibraryDeployment(t *testing.T) {
+	parentBin, firstBin := ParentBin, FirstBin
+	for _, tc := range []struct {
+		name   string
+		nonce  *big.Int
+		noSend bool
+	}{
+		{name: "pending"},
+		{name: "explicit zero", nonce: big.NewInt(0)},
+		{name: "explicit", nonce: big.NewInt(19)},
+		{name: "large nonce", nonce: new(big.Int).SetUint64(1 << 63)},
+		{name: "NoSend pending", noSend: true},
+		{name: "NoSend explicit", nonce: big.NewInt(19), noSend: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			auth := deploymentAuth(t)
+			auth.Nonce, auth.NoSend = tc.nonce, tc.noSend
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			auth.Context = ctx
+			backend := &delayedBackend{nonce: 7}
+			start, queries := backend.nonce, 1
+			if auth.Nonce != nil {
+				start, queries = auth.Nonce.Uint64(), 0
+			}
+			var signed []*types.Transaction
+			signer := auth.Signer
+			auth.Signer = func(address common.Address, tx *types.Transaction) (*types.Transaction, error) {
+				tx, err := signer(address, tx)
+				signed = append(signed, tx)
+				return tx, err
+			}
+			addr, tx, contract, err := DeployParent(auth, backend)
+			require.NoError(t, err)
+			require.NotNil(t, contract)
+			require.Equal(t, crypto.CreateAddress(auth.From, start+3), addr)
+			checkDeployment(t, auth.From, start, signed)
+			require.Same(t, signed[3], tx)
+			require.Equal(t, queries, backend.queries)
+			if queries != 0 {
+				require.Same(t, ctx, backend.ctx)
+			}
+			if tc.noSend {
+				require.Empty(t, backend.sent)
+			} else {
+				require.Equal(t, signed, backend.sent)
+			}
+			if tc.nonce == nil {
+				require.Nil(t, auth.Nonce)
+			} else {
+				require.Same(t, tc.nonce, auth.Nonce)
+				require.Equal(t, start, auth.Nonce.Uint64())
+			}
+			require.Equal(t, parentBin, ParentBin)
+			require.Equal(t, firstBin, FirstBin)
+		})
+	}
+	for _, stage := range []int{-1, 0, 1, 2} {
+		name := []string{"nonce error", "leaf error", "nested library error", "second library error"}[stage+1]
+		t.Run(name, func(t *testing.T) {
+			failure := errors.New("deployment failure")
+			backend := &delayedBackend{sendErr: failure, failAt: stage}
+			if stage == -1 {
+				backend.nonceErr = failure
+			}
+			addr, tx, contract, err := DeployParent(deploymentAuth(t), backend)
+			require.ErrorIs(t, err, failure)
+			require.Zero(t, addr)
+			require.Nil(t, tx)
+			require.Nil(t, contract)
+			require.Len(t, backend.sent, stage+1)
+			require.Equal(t, parentBin, ParentBin)
+			require.Equal(t, firstBin, FirstBin)
+		})
+	}
+	t.Run("repeat deployment and deployed code", func(t *testing.T) {
+		auth := deploymentAuth(t)
+		sim := backends.NewSimulatedBackend(types.GenesisAlloc{auth.From: {Balance: big.NewInt(1000000000000000000)}}, 10000000)
+		defer sim.Close()
+		backend := &delayedBackend{ContractBackend: sim}
+		for round := uint64(0); round < 2; round++ {
+			backend.nonce, backend.sent = round*4, nil
+			_, _, _, err := DeployParent(auth, backend)
+			require.NoError(t, err)
+			checkDeployment(t, auth.From, backend.nonce, backend.sent)
+			sim.Commit()
+			for _, tx := range backend.sent {
+				receipt, err := sim.TransactionReceipt(context.Background(), tx.Hash())
+				require.NoError(t, err)
+				require.Equal(t, uint64(types.ReceiptStatusSuccessful), receipt.Status)
+				addr := crypto.CreateAddress(auth.From, tx.Nonce())
+				code, err := sim.CodeAt(context.Background(), addr, nil)
+				require.NoError(t, err)
+				require.Equal(t, tx.Data()[12:], code)
+			}
+			require.Nil(t, auth.Nonce)
+			require.Equal(t, parentBin, ParentBin)
+			require.Equal(t, firstBin, FirstBin)
+		}
+		require.Equal(t, 2, backend.queries)
+	})
+	t.Run("bytecode override", func(t *testing.T) {
+		ParentBin = parentBin + "00"
+		defer func() { ParentBin = parentBin }()
+		auth := deploymentAuth(t)
+		auth.Nonce, auth.NoSend = big.NewInt(0), true
+		_, tx, _, err := DeployParent(auth, nil)
+		require.NoError(t, err)
+		require.Len(t, tx.Data(), 12+41+1)
+		require.Equal(t, byte(0), tx.Data()[len(tx.Data())-1])
+		require.Equal(t, parentBin+"00", ParentBin)
+	})
+	t.Run("concurrent NoSend", func(t *testing.T) {
+		auth := deploymentAuth(t)
+		auth.Nonce, auth.NoSend = big.NewInt(7), true
+		errs := make([]error, 8)
+		var wg sync.WaitGroup
+		for i := range errs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, _, _, errs[i] = DeployParent(auth, nil)
+			}()
+		}
+		wg.Wait()
+		for _, err := range errs {
+			require.NoError(t, err)
+		}
+		require.Equal(t, int64(7), auth.Nonce.Int64())
+		require.Equal(t, parentBin, ParentBin)
+		require.Equal(t, firstBin, FirstBin)
+	})
+}
+
+// ##
