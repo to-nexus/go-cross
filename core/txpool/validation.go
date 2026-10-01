@@ -93,6 +93,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	// ##CROSS: istanbul
 	if opts.Config.IsIstanbulConsensus() {
 		// These transaction types are rejected temporarily, until our service environment is ready.
+		// Blob txs are blocked only here: consensus already handles blocks with blob txs, so removing this case is enough to allow them.
 		switch tx.Type() {
 		case types.BlobTxType: // ##CROSS: istanbul blob tx
 			return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support blob transactions", core.ErrTxTypeNotSupported, tx.Type())

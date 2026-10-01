@@ -13,6 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ##CROSS: istanbul validation
@@ -138,6 +140,66 @@ func TestPreprepare_RejectsStaleRoundChangeJustification(t *testing.T) {
 		t.Fatalf("expected no PREPARE broadcast, got %d", len(validatorBackend.broadcasts))
 	}
 }
+
+// ##CROSS: blob sidecars
+func TestRoundChange_ReproposesPreparedBlockWithSidecars(t *testing.T) {
+	valSet, keys := generateValidatorSetAndKeys(t, 4)
+	proposerAddr := valSet.GetByIndex(0).Address()
+
+	const (
+		sequence      int64 = 1
+		currentRound  int64 = 2
+		preparedRound int64 = 1
+	)
+	prepared := makeBlockWithTime(sequence, 1)
+	sidecars := types.BlobSidecars{{BlockNumber: big.NewInt(sequence), BlockHash: prepared.Hash(), TxHash: common.Hash{0x01}}}
+
+	// run sends a quorum of ROUND-CHANGE messages that justify the prepared block, and returns the
+	// proposal of the PRE-PREPARE the proposer sends for the new round.
+	run := func(t *testing.T, c *Core, b *roundChangeTestBackend, rcBlock *types.Block) istanbul.Proposal {
+		t.Helper()
+		var prepares []*protocols.Prepare
+		for i := 0; i < valSet.QuorumSize(); i++ {
+			addr := valSet.GetByIndex(uint64(i)).Address()
+			prepares = append(prepares, createSignedPrepareMessage(t, keys[addr], addr, preparedRound, prepared))
+		}
+		for i := 0; i < valSet.QuorumSize(); i++ {
+			addr := valSet.GetByIndex(uint64(i)).Address()
+			rc := createSignedRoundChangeMessage(t, keys[addr], addr, currentRound, preparedRound, rcBlock)
+			rc.Justification = prepares
+			payload, err := rlp.EncodeToBytes(rc)
+			require.NoError(t, err)
+			require.NoError(t, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
+		}
+		for _, bc := range b.broadcasts {
+			if bc.code == protocols.PreprepareCode {
+				msg, err := protocols.Decode(bc.code, bc.payload)
+				require.NoError(t, err)
+				return msg.(*protocols.Preprepare).Proposal
+			}
+		}
+		t.Fatal("no PRE-PREPARE broadcast")
+		return nil
+	}
+
+	t.Run("uses sidecars carried by ROUND-CHANGE", func(t *testing.T) {
+		c, b := newRoundChangeTestCore(t, proposerAddr, keys[proposerAddr], valSet, makeBlockWithTime(sequence, 2), sequence, currentRound)
+		proposal := run(t, c, b, prepared.WithSidecars(sidecars))
+		assert.Equal(t, prepared.Hash(), proposal.Hash())
+		assert.Len(t, proposal.Sidecars(), 1)
+	})
+
+	t.Run("uses own prepared block when ROUND-CHANGE lacks sidecars", func(t *testing.T) {
+		c, b := newRoundChangeTestCore(t, proposerAddr, keys[proposerAddr], valSet, makeBlockWithTime(sequence, 2), sequence, currentRound)
+		c.current.preparedRound = big.NewInt(preparedRound)
+		c.current.preparedBlock = prepared.WithSidecars(sidecars)
+		proposal := run(t, c, b, prepared)
+		assert.Equal(t, prepared.Hash(), proposal.Hash())
+		assert.Len(t, proposal.Sidecars(), 1)
+	})
+}
+
+// ##
 
 func newRoundChangeTestCore(
 	t *testing.T,
