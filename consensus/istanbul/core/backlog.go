@@ -17,11 +17,13 @@
 package core
 
 import (
+	"context"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 var (
@@ -39,6 +41,9 @@ var (
 	farFutureRoundDiff    = big.NewInt(12)
 )
 
+// maxBacklogPerSource caps future messages kept per validator.
+const maxBacklogPerSource = 128 // ##CROSS: istanbul backlog limit
+
 // checkMessage checks that a message matches our current QBFT state
 //
 // In particular it ensures that
@@ -54,6 +59,11 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 	if view == nil || view.Sequence == nil || view.Round == nil {
 		return errInvalidMessage
 	}
+	// ##CROSS: istanbul round limit
+	if !view.Sequence.IsUint64() || !view.Round.IsUint64() {
+		return errInvalidMessage
+	}
+	// ##
 
 	if msgCode == protocols.RoundChangeCode {
 		// if ROUND-CHANGE message
@@ -131,15 +141,15 @@ func (c *Core) checkMessage(msgCode uint64, view *istanbul.View) error {
 
 // it adds the message to backlog which is read on every state change
 func (c *Core) addToBacklog(msg protocols.Message) {
-	logger := c.currentLogger(true, msg)
-
 	src := msg.Source()
 	if src == c.Address() {
-		logger.Warn("Istanbul: backlog from self")
+		c.currentLogger(true, msg).Warn("Istanbul: backlog from self")
 		return
 	}
 
-	logger.Trace("Istanbul: new backlog message", "backlogs_size", len(c.backlogs))
+	if c.logger.Enabled(context.Background(), log.LvlTrace) {
+		c.currentLogger(true, msg).Trace("Istanbul: new backlog message", "backlogs_size", len(c.backlogs))
+	}
 
 	c.backlogsMu.Lock()
 	defer c.backlogsMu.Unlock()
@@ -149,6 +159,13 @@ func (c *Core) addToBacklog(msg protocols.Message) {
 		backlog = prque.New[int64, protocols.Message](nil)
 		c.backlogs[src] = backlog
 	}
+	// ##CROSS: istanbul backlog limit
+	// TODO(go-cross): Count cap only; add size cap if large PRE-PREPAREs in the backlog become a problem.
+	if backlog.Size() >= maxBacklogPerSource {
+		c.currentLogger(true, msg).Debug("Istanbul: backlog full, dropping message", "backlog_size", backlog.Size())
+		return
+	}
+	// ##
 	view := msg.View()
 	backlog.Push(msg, toPriority(msg.Code(), &view))
 }

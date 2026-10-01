@@ -102,6 +102,16 @@ func (q *queue) bump(addr common.Address) {
 	q.beats[addr] = time.Now()
 }
 
+// ##CROSS: fee delegation
+// dropBeat deletes the heartbeat of an account that has no queued transactions left.
+func (q *queue) dropBeat(addr common.Address) {
+	if _, ok := q.queued[addr]; !ok {
+		delete(q.beats, addr)
+	}
+}
+
+// ##
+
 func (q *queue) addresses() []common.Address {
 	addrs := make([]common.Address, 0, len(q.queued))
 	for addr := range q.queued {
@@ -219,11 +229,13 @@ func (q *queue) promoteExecutables(accounts []common.Address, gasLimit uint64, c
 		queuedRateLimitMeter.Mark(int64(len(caps)))
 
 		// Delete the entire queue entry if it became empty.
+		// ##CROSS: fee delegation
+		// The heartbeat is kept, because the caller may put held txs back; it calls dropBeat otherwise.
 		if list.Empty() {
 			delete(q.queued, addr)
-			delete(q.beats, addr)
 			removedAddresses = append(removedAddresses, addr)
 		}
+		// ##
 	}
 	queuedGauge.Dec(int64(len(dropped)))
 	return promotable, dropped, removedAddresses

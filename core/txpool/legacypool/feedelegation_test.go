@@ -28,6 +28,7 @@ import (
 	"errors"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -616,6 +617,96 @@ func TestLegacyPoolDemoteUnexecutables(t *testing.T) {
 		assert.False(t, pool.Has(txs[0].Hash()))
 		assert.True(t, pool.Has(txs[1].Hash()))
 		assert.True(t, pool.Has(txs[2].Hash()))
+		require.NoError(t, validatePoolInternals(pool))
+	})
+}
+
+// TestLegacyPool_PromoteExecutables covers how promotion holds senders whose fee
+// payer cannot cover another sponsored transaction (CCS-09).
+func TestLegacyPool_PromoteExecutables(t *testing.T) {
+	t.Parallel()
+
+	// Each fee-delegated tx commits the payer to gasFee*gas = 2*100000.
+	const perTxFeePayerCost = 200_000
+
+	// setup funds a payer for one sponsored tx and queues fee-delegated txs
+	// (nonces 0..heldCount) from a sponsored sender plus one normal tx from another sender.
+	setup := func(t *testing.T, heldCount uint64) (pool *LegacyPool, sponsored, other common.Address, txs []*types.Transaction, normal *types.Transaction) {
+		pool, _ = setupAdventurePool()
+		t.Cleanup(func() { pool.Close() })
+
+		payerKey, _ := crypto.GenerateKey()
+		sponsoredKey, _ := crypto.GenerateKey()
+		otherKey, _ := crypto.GenerateKey()
+		sponsored = crypto.PubkeyToAddress(sponsoredKey.PublicKey)
+		other = crypto.PubkeyToAddress(otherKey.PublicKey)
+
+		testAddBalance(pool, crypto.PubkeyToAddress(payerKey.PublicKey), big.NewInt(perTxFeePayerCost))
+		testAddBalance(pool, sponsored, new(big.Int).SetUint64(params.Ether))
+		testAddBalance(pool, other, new(big.Int).SetUint64(params.Ether))
+		// Hold the accounts like pool.add does, so promotion releases them as in the real flow.
+		require.NoError(t, pool.reserver.Hold(sponsored))
+		require.NoError(t, pool.reserver.Hold(other))
+
+		pool.mu.Lock()
+		defer pool.mu.Unlock()
+		for nonce := uint64(0); nonce <= heldCount; nonce++ {
+			tx := feeDelegatedDynamicFeeTx(nonce, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), sponsoredKey, payerKey)
+			_, err := pool.enqueueTx(tx.Hash(), tx, true)
+			require.NoError(t, err)
+			txs = append(txs, tx)
+		}
+		normal = dynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), otherKey)
+		_, err := pool.enqueueTx(normal.Hash(), normal, true)
+		require.NoError(t, err)
+		return pool, sponsored, other, txs, normal
+	}
+
+	t.Run("holds only the blocked sender and keeps its heartbeat", func(t *testing.T) {
+		pool, sponsored, other, txs, normal := setup(t, 1)
+
+		// The sponsored sender goes first, so its held tx comes before the other sender's tx.
+		pool.mu.Lock()
+		pool.promoteExecutables([]common.Address{sponsored, other})
+		otherPending := pool.pending[other]
+		pool.mu.Unlock()
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 2, pending, "sponsored nonce 0 and the other sender's tx are promoted")
+		assert.Equal(t, 1, queued, "only sponsored nonce 1 is held")
+		require.NotNil(t, otherPending)
+		assert.Equal(t, normal.Hash(), otherPending.txs.Get(0).Hash())
+		assert.True(t, pool.Has(txs[1].Hash()))
+
+		// A retry that promotes nothing (e.g. triggered by a new tx of the sender) must not
+		// refresh the queue lifetime of the held tx.
+		pool.mu.Lock()
+		oldBeat := time.Now().Add(-10 * time.Second)
+		pool.queue.beats[sponsored] = oldBeat
+		pool.promoteExecutables([]common.Address{sponsored})
+		beat, hasBeat := pool.queue.beats[sponsored]
+		pool.mu.Unlock()
+
+		require.True(t, hasBeat)
+		assert.Equal(t, oldBeat, beat)
+		require.NoError(t, validatePoolInternals(pool))
+	})
+
+	t.Run("caps held txs at AccountQueue", func(t *testing.T) {
+		pool, sponsored, other, txs, _ := setup(t, 4)
+
+		pool.mu.Lock()
+		pool.config.AccountQueue = 2
+		pool.promoteExecutables([]common.Address{sponsored, other})
+		pool.mu.Unlock()
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 2, pending)
+		assert.Equal(t, 2, queued)
+		assert.True(t, pool.Has(txs[1].Hash()))
+		assert.True(t, pool.Has(txs[2].Hash()))
+		assert.False(t, pool.Has(txs[3].Hash()), "highest nonces beyond AccountQueue are dropped")
+		assert.False(t, pool.Has(txs[4].Hash()))
 		require.NoError(t, validatePoolInternals(pool))
 	})
 }

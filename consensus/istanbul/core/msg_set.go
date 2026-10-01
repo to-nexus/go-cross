@@ -68,6 +68,16 @@ func (ms *msgSet) Add(msg protocols.Message) error {
 	return nil
 }
 
+// ##CROSS: istanbul round limit
+// Remove deletes the message of the given validator.
+func (ms *msgSet) Remove(addr common.Address) {
+	ms.messagesMu.Lock()
+	defer ms.messagesMu.Unlock()
+	delete(ms.messages, addr)
+}
+
+// ##
+
 func (ms *msgSet) Values() (result []protocols.Message) {
 	ms.messagesMu.Lock()
 	defer ms.messagesMu.Unlock()

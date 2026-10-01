@@ -1429,7 +1429,8 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 
 	// promote all promotable transactions
 	promoted := make([]*types.Transaction, 0, len(promotable))
-	for i, tx := range promotable {
+	held := make(map[common.Address]struct{}) // Senders held by a fee payer budget // ##CROSS: fee delegation
+	for _, tx := range promotable {
 		from, _ := pool.signer.Sender(tx)
 		// ##CROSS: fee delegation
 		// Gate promotion on the fee payer's cumulative budget. The shared index
@@ -1438,10 +1439,12 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		// this pass (including by earlier senders sharing this fee payer). Promoting
 		// a fee-delegated tx whose cost, on top of what its fee payer already
 		// sponsors in pending, exceeds the fee payer's balance would over-commit it.
-		// readies is the contiguous promotable run, so once one tx is held the rest
-		// cannot be promoted either; put this tx and the remainder back in the queue
-		// to retry later (the balance may grow or pending txs may clear).
-		if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
+		// promotable joins the ready runs of all accounts, so only this sender is held:
+		// its later nonces cannot be promoted either, but other senders still are.
+		// Held txs go back to the queue to retry later (the balance may grow or pending
+		// txs may clear).
+		_, isHeld := held[from]
+		if !isHeld && tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
 			payer := *tx.FeePayer()
 			committed := new(big.Int)
 			if sum := pool.feePayerCost[payer]; sum != nil {
@@ -1449,18 +1452,33 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 			}
 			need := new(big.Int).Add(committed, tx.FeePayerCost())
 			if pool.currentState.GetBalance(payer).ToBig().Cmp(need) < 0 {
-				for _, held := range promotable[i:] {
-					pool.enqueueTx(held.Hash(), held, false)
-				}
+				held[from] = struct{}{}
+				isHeld = true
 				log.Trace("Holding fee-delegated txs: fee payer cumulative budget exceeded",
-					"sender", from, "payer", payer, "held", len(promotable[i:]))
-				break
+					"sender", from, "payer", payer, "nonce", tx.Nonce())
 			}
 		}
+		if isHeld {
+			pool.enqueueTx(tx.Hash(), tx, false)
+			continue
+		}
+		// ##
 		if pool.promoteTx(from, tx.Hash(), tx) {
 			promoted = append(promoted, tx)
 		}
 	}
+	// ##CROSS: fee delegation
+	// Held txs were taken out of the queue before it applied AccountQueue, so apply it again.
+	for addr := range held {
+		list, _ := pool.queue.get(addr)
+		caps := list.Cap(int(pool.config.AccountQueue))
+		for _, tx := range caps {
+			dropped = append(dropped, tx.Hash())
+		}
+		queuedGauge.Dec(int64(len(caps)))
+		queuedRateLimitMeter.Mark(int64(len(caps)))
+	}
+	// ##
 
 	// remove all removable transactions
 	for _, hash := range dropped {
@@ -1470,6 +1488,14 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 
 	// release all accounts that have no more transactions in the pool
 	for _, addr := range removedAddresses {
+		// ##CROSS: fee delegation
+		// A held sender is back in the queue: keep its reservation and its old heartbeat, so a retry
+		// does not refresh the lifetime of txs that never left the queue.
+		if _, ok := held[addr]; ok {
+			continue
+		}
+		pool.queue.dropBeat(addr)
+		// ##
 		_, hasPending := pool.pending[addr]
 		if !hasPending {
 			pool.reserver.Release(addr)
