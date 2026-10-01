@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSign(t *testing.T) {
@@ -280,3 +281,23 @@ func newBackend() (b *Backend) {
 	// ##
 	return
 }
+
+// ##CROSS: blob sidecars
+func TestBackend_Verify(t *testing.T) {
+	chain, engine := newBlockChain(1)
+	defer engine.Stop()
+	block := makeBlock(chain, engine, chain.Genesis())
+
+	t.Run("accepts block without blob data", func(t *testing.T) {
+		_, err := engine.Verify(block)
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects sidecars that do not match blob transactions", func(t *testing.T) {
+		sidecar := &types.BlobSidecar{BlockNumber: block.Number(), BlockHash: block.Hash()}
+		_, err := engine.Verify(block.WithSidecars(types.BlobSidecars{sidecar}))
+		require.ErrorIs(t, err, istanbul.ErrUnavailableBlobData)
+	})
+}
+
+// ##
