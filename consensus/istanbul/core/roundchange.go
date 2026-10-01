@@ -179,6 +179,14 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 		// propose the block proposal that we generated
 		_, proposal := c.highestPrepared(currentRound)
 		prepareMessages := c.roundChangeSet.prepareMessages[currentRound.Uint64()]
+		// ##CROSS: blob sidecars
+		// Sidecars in a ROUND-CHANGE are not signed and may be missing.
+		// If we prepared the same block, use our copy:
+		// it passed our data availability check, so its sidecars are complete.
+		if proposal != nil && c.current.preparedBlock != nil && c.current.preparedBlock.Hash() == proposal.Hash() {
+			proposal = c.current.preparedBlock
+		}
+		// ##
 		if proposal == nil {
 			// ##CROSS: bad block mitigation
 			// If there is no highest prepared block (because of a bad block?), we drop prepare messages

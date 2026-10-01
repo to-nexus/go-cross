@@ -278,12 +278,22 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 			return 0, err
 		}
 		// ##
+		// ##CROSS: blob sidecars
+		// Check blob data before voting. Sidecars travel outside the signed proposal, and a block that is
+		// committed without them can never be imported, which would lock validators on it.
+		if err := core.IsDataAvailable(chain, block); err != nil {
+			return 0, fmt.Errorf("%w: %w", istanbul.ErrUnavailableBlobData, err)
+		}
+		// ##
 		return 0, nil
 	} else if err == consensus.ErrFutureBlock {
 		return time.Until(time.Unix(int64(block.Header().Time), 0)), consensus.ErrFutureBlock
 	}
 
 	parentHeader := chain.GetHeaderByHash(block.ParentHash())
+	if parentHeader == nil {
+		return 0, err
+	}
 	config := e.cfg.GetConfig(parentHeader.Number)
 
 	if config.EmptyBlockPeriod > config.BlockPeriod && len(block.Transactions()) == 0 {
