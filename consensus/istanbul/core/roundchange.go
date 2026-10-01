@@ -19,7 +19,6 @@ package core
 import (
 	"errors"
 	"math/big"
-	"sort"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -107,6 +106,13 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 	currentRoundMessages := c.roundChangeSet.getRCMessagesForGivenRound(currentRound)
 
 	logger.Info("Istanbul: handle ROUND-CHANGE message", "higherRoundChanges.count", num, "currentRoundChanges.count", currentRoundMessages)
+
+	// ##CROSS: istanbul round limit
+	if view.Round.Cmp(currentRound) > 0 && !c.roundChangeSet.keepHighestFuture(roundChange.Source(), currentRound, view.Round) {
+		logger.Debug("Istanbul: ignoring ROUND-CHANGE below a higher future round from the same validator")
+		return nil
+	}
+	// ##
 
 	// Add ROUND-CHANGE message to message set
 	if view.Round.Cmp(currentRound) >= 0 {
@@ -381,18 +387,51 @@ func (rcs *roundChangeSet) getMinRoundChange(round *big.Int) *big.Int {
 	rcs.mu.Lock()
 	defer rcs.mu.Unlock()
 
-	var keys []int
+	// ##CROSS: istanbul round limit
+	// Compare as uint64; converting to int turned rounds >= 2^63 into negative minimums.
+	var (
+		minRound uint64
+		found    bool
+	)
 	for k := range rcs.roundChanges {
-		if k > round.Uint64() {
-			keys = append(keys, int(k))
+		if k > round.Uint64() && (!found || k < minRound) {
+			minRound, found = k, true
 		}
 	}
-	sort.Ints(keys)
-	if len(keys) == 0 {
+	if !found {
 		return round
 	}
-	return big.NewInt(int64(keys[0]))
+	return new(big.Int).SetUint64(minRound)
+	// ##
 }
+
+// ##CROSS: istanbul round limit
+// keepHighestFuture keeps at most one future-round ROUND-CHANGE per validator, the highest one.
+// It drops src from lower future rounds and returns false if src already has a higher future round.
+func (rcs *roundChangeSet) keepHighestFuture(src common.Address, current, round *big.Int) bool {
+	rcs.mu.Lock()
+	defer rcs.mu.Unlock()
+
+	cur, r := current.Uint64(), round.Uint64()
+	for k, ms := range rcs.roundChanges {
+		if k <= cur || k == r || ms.Get(src) == nil {
+			continue
+		}
+		if k > r {
+			return false
+		}
+		ms.Remove(src)
+		if ms.Size() == 0 {
+			delete(rcs.roundChanges, k)
+			delete(rcs.highestPreparedRound, k)
+			delete(rcs.highestPreparedBlock, k)
+			delete(rcs.prepareMessages, k)
+		}
+	}
+	return true
+}
+
+// ##
 
 // ClearLowerThan deletes the messages for round earlier than the given round
 func (rcs *roundChangeSet) ClearLowerThan(round *big.Int) {

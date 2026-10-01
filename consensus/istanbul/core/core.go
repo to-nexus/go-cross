@@ -36,6 +36,7 @@ var (
 	roundMeter     = metrics.NewRegisteredMeter("consensus/istanbul/core/round", nil)
 	sequenceMeter  = metrics.NewRegisteredMeter("consensus/istanbul/core/sequence", nil)
 	consensusTimer = metrics.NewRegisteredTimer("consensus/istanbul/core/consensus", nil)
+	farFutureMeter = metrics.NewRegisteredMeter("consensus/istanbul/core/farfuture", nil) // ##CROSS: istanbul far future message
 )
 
 // New creates an Istanbul consensus core
@@ -52,6 +53,7 @@ func New(backend istanbul.Backend, config *istanbul.Config) *Core {
 		pendingRequests:    prque.New[int64, *Request](nil),
 		pendingRequestsMu:  new(sync.Mutex),
 		consensusTimestamp: time.Time{},
+		farFutureDrops:     make(map[common.Address]uint64), // ##CROSS: istanbul far future message
 	}
 
 	c.validateFn = c.checkValidatorSignature
@@ -94,6 +96,11 @@ type Core struct {
 
 	newRoundMutex sync.Mutex
 	newRoundTimer *time.Timer
+
+	// ##CROSS: istanbul far future message
+	farFutureDrops  map[common.Address]uint64
+	farFutureLogged time.Time
+	// ##
 }
 
 // ##CROSS: istanbul stats
