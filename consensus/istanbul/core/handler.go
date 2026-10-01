@@ -19,6 +19,7 @@ package core
 import (
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
@@ -166,23 +167,21 @@ func (c *Core) sendEvent(ev interface{}) {
 }
 
 func (c *Core) handleEncodedMsg(code uint64, data []byte) error {
-	logger := c.logger.New("code", code, "dataSize", len(data))
-
 	if _, ok := protocols.MessageCodes()[code]; !ok {
-		logger.Error("Istanbul: invalid message event code")
+		c.logger.Error("Istanbul: invalid message event code", "code", code, "dataSize", len(data))
 		return fmt.Errorf("invalid message event code %v", code)
 	}
 
 	// Decode data into a Message
 	m, err := protocols.Decode(code, data)
 	if err != nil {
-		logger.Error("Istanbul: invalid message", "err", err)
+		c.logger.Error("Istanbul: invalid message", "code", code, "dataSize", len(data), "err", err)
 		return err
 	}
 
 	// Verify signatures and set source address
 	if err = c.verifySignatures(m); err != nil {
-		logger.Error("Istanbul: failed to verify signatures", "err", err)
+		c.logger.Error("Istanbul: failed to verify signatures", "code", code, "dataSize", len(data), "err", err)
 		return err
 	}
 
@@ -195,7 +194,7 @@ func (c *Core) handleDecodedMessage(m protocols.Message) error {
 		// Store in the backlog if it's a future message
 		switch err {
 		case errFarFutureMessage: // ##CROSS: istanbul far future message
-			c.currentLogger(true, m).Warn("Istanbul: dropping far future message")
+			c.logFarFuture(m)
 		case errFutureMessage:
 			c.addToBacklog(m)
 		}
@@ -204,6 +203,29 @@ func (c *Core) handleDecodedMessage(m protocols.Message) error {
 
 	return c.deliverMessage(m)
 }
+
+// ##CROSS: istanbul far future message
+
+const farFutureLogInterval = 30 * time.Second
+
+// logFarFuture counts a dropped far-future message and logs the counts at most once per farFutureLogInterval.
+func (c *Core) logFarFuture(m protocols.Message) {
+	farFutureMeter.Mark(1)
+	c.farFutureDrops[m.Source()]++
+	if time.Since(c.farFutureLogged) < farFutureLogInterval {
+		return
+	}
+
+	var total uint64
+	for _, n := range c.farFutureDrops {
+		total += n
+	}
+	c.currentLogger(true, m).Warn("Istanbul: dropped far future messages", "total", total, "bySource", c.farFutureDrops)
+	clear(c.farFutureDrops)
+	c.farFutureLogged = time.Now()
+}
+
+// ##
 
 // Deliver to specific message handler
 func (c *Core) deliverMessage(m protocols.Message) error {
@@ -244,18 +266,16 @@ func (c *Core) handleTimeoutMsg() {
 // piggybacked in m, if any. It also sets the source address on the messages
 // and justification payloads.
 func (c *Core) verifySignatures(m protocols.Message) error {
-	logger := c.currentLogger(true, m)
-
 	// Anonymous function to verify the signature of a single message or payload
 	verify := func(m protocols.Message) error {
 		payload, err := m.EncodePayloadForSigning()
 		if err != nil {
-			logger.Error("Istanbul: invalid message payload", "err", err)
+			c.currentLogger(true, m).Error("Istanbul: invalid message payload", "err", err)
 			return err
 		}
 		source, err := c.validateFn(payload, m.Signature())
 		if err != nil {
-			logger.Error("Istanbul: invalid message signature", "err", err)
+			c.currentLogger(true, m).Error("Istanbul: invalid message signature", "err", err)
 			return errInvalidSigner
 		}
 		m.SetSource(source)
@@ -268,9 +288,17 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 	}
 
 	// Verifies the signature of piggybacked justification payloads.
+	// ##CROSS: istanbul justification limit
+	// A justification holds at most one payload per validator. Check the length before recovering
+	// signatures, so a validator cannot make us run one ecrecover per entry of an oversized list.
+	maxJustification := c.valSet.Size()
+	// ##
 	switch msgType := m.(type) {
 	case *protocols.RoundChange:
 		signedPreparePayloads := msgType.Justification
+		if len(signedPreparePayloads) > maxJustification { // ##CROSS: istanbul justification limit
+			return errInvalidMessage
+		}
 		for _, p := range signedPreparePayloads {
 			if p == nil {
 				return errInvalidMessage
@@ -281,6 +309,9 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 		}
 	case *protocols.Preprepare:
 		signedRoundChangePayloads := msgType.JustificationRoundChanges
+		if len(signedRoundChangePayloads) > maxJustification || len(msgType.JustificationPrepares) > maxJustification { // ##CROSS: istanbul justification limit
+			return errInvalidMessage
+		}
 		for _, p := range signedRoundChangePayloads {
 			if p == nil {
 				return errInvalidMessage
