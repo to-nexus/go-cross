@@ -19,6 +19,7 @@ package backend
 import (
 	"crypto/ecdsa"
 	"math/big"
+	"slices"
 	"sync"
 	"time"
 
@@ -488,21 +489,25 @@ func (sb *Backend) ValidatorsAt(chain consensus.ChainHeaderReader, header *types
 
 // IsValidatorAt reports whether addr is a validator at the given header.
 // It returns (isValidator, err). A non-nil err means the status could not be determined
-// (a StakeHub lookup failed under PoSA); callers should treat that as "unknown". A nil err
+// (the snapshot or a StakeHub lookup failed); callers should treat that as "unknown". A nil err
 // with false means addr is genuinely not a validator at this header.
 func (sb *Backend) IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, validator common.Address) (bool, error) {
 	if chain == nil || header == nil {
 		return false, nil
 	}
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		return sb.engine.IsEligibleValidator(validator, header.Number.Uint64())
+	// ##CROSS: consensus peer permissioning
+	// A member of the consensus validator set is always admitted. After its operator rotates to a new address,
+	// the old address keeps signing until the next update, so it must stay connected or it would miss its turns.
+	// Other addresses need a current StakeHub registration under PoSA.
+	snap, err := sb.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err == nil && slices.Contains(snap.validators(), validator) {
+		return true, nil
 	}
-	for _, v := range sb.ValidatorsAt(chain, header) {
-		if v == validator {
-			return true, nil
-		}
+	if !chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		return false, err
 	}
-	return false, nil
+	return sb.engine.IsEligibleValidator(validator, header.Number.Uint64())
+	// ##
 }
 
 // SetChainConfig updates the chain config used for signer selection.
