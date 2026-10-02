@@ -301,3 +301,31 @@ func TestBackend_Verify(t *testing.T) {
 }
 
 // ##
+
+// ##CROSS: consensus peer permissioning
+func TestBackend_IsValidatorAt(t *testing.T) {
+	chain, engine := newBlockChain(1)
+	defer engine.Stop()
+	head := chain.CurrentHeader()
+
+	t.Run("admits a member of the validator set", func(t *testing.T) {
+		ok, err := engine.IsValidatorAt(chain, head, engine.Address())
+		require.NoError(t, err)
+		require.True(t, ok)
+	})
+
+	t.Run("rejects an unknown address", func(t *testing.T) {
+		ok, err := engine.IsValidatorAt(chain, head, common.HexToAddress("0x1234"))
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("returns an error when the snapshot is unavailable", func(t *testing.T) {
+		unknown := &types.Header{Number: big.NewInt(5), ParentHash: common.Hash{0x01}}
+		ok, err := engine.IsValidatorAt(chain, unknown, engine.Address())
+		require.Error(t, err)
+		require.False(t, ok)
+	})
+}
+
+// ##

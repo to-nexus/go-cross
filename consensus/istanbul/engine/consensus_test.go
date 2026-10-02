@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/contracts"
@@ -1462,6 +1463,53 @@ func TestPrepareValidatorsBoundaryCoincidence(t *testing.T) {
 			assert.Equal(t, tt.expectedValidators, extra.Validators)
 		})
 	}
+}
+
+// ##
+
+// ##CROSS: consensus peer permissioning
+func TestEngine_QueryEligibleValidator(t *testing.T) {
+	var (
+		stakeHub = breakpoint.NewStakeHub()
+		addr     = common.HexToAddress("0x1000000000000000000000000000000000000001")
+		rotated  = common.HexToAddress("0x1000000000000000000000000000000000000002")
+		operator = common.HexToAddress("0x2000000000000000000000000000000000000001")
+		word     = func(b []byte) []byte { return common.LeftPadBytes(b, 32) }
+		selector = func(data []byte) string { return string(data[:4]) }
+	)
+	newEngine := func(current []byte) *Engine {
+		responses := map[string][][]byte{
+			selector(stakeHub.PackValidatorToOperator(addr)): {word(operator.Bytes())},
+			selector(stakeHub.PackIsBlackListed(operator)):   {word([]byte{0})},
+			selector(stakeHub.PackGetStakedAmount(operator)): {word([]byte{100})},
+			selector(stakeHub.PackMinValidatorStake()):       {word([]byte{10})},
+		}
+		if current != nil {
+			responses[selector(stakeHub.PackGetValidatorAddress(addr))] = [][]byte{word(current)}
+		}
+		return &Engine{
+			contractBackend: &mockContractBackend{callResponses: responses},
+			stakeHub:        stakeHub,
+			validatorCache:  &validatorCache{eligible: lru.NewCache[common.Address, eligibilityEntry](validatorCacheSize)},
+		}
+	}
+
+	t.Run("admits the current validator address", func(t *testing.T) {
+		ok, err := newEngine(addr.Bytes()).queryEligibleValidator(addr, 1)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("rejects a rotated-away validator address", func(t *testing.T) {
+		ok, err := newEngine(rotated.Bytes()).queryEligibleValidator(addr, 1)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("returns an error when the current address cannot be read", func(t *testing.T) {
+		_, err := newEngine(nil).queryEligibleValidator(addr, 1)
+		require.Error(t, err)
+	})
 }
 
 // ##
