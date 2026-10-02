@@ -18,8 +18,14 @@
 package utils
 
 import (
+	"flag"
 	"reflect"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/urfave/cli/v2"
 )
 
 func Test_SplitTagsFlag(t *testing.T) {
@@ -64,3 +70,30 @@ func Test_SplitTagsFlag(t *testing.T) {
 		})
 	}
 }
+
+// ##CROSS: fix upstream
+func TestFlags_SetP2PConfig(t *testing.T) {
+	newCtx := func(t *testing.T, args ...string) *cli.Context {
+		t.Helper()
+		set := flag.NewFlagSet("test", flag.ContinueOnError)
+		require.NoError(t, NoDiscoverFlag.Apply(set))
+		require.NoError(t, set.Parse(args))
+		return cli.NewContext(cli.NewApp(), set, nil)
+	}
+	for _, tt := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--nodiscover"}, true},
+		{[]string{"--nodiscover=true"}, true},
+		{[]string{"--nodiscover=false"}, false},
+	} {
+		t.Run(tt.args[0], func(t *testing.T) {
+			cfg := &p2p.Config{}
+			SetP2PConfig(newCtx(t, tt.args...), cfg)
+			assert.Equal(t, tt.want, cfg.NoDiscovery)
+		})
+	}
+}
+
+// ##

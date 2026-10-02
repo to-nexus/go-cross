@@ -141,6 +141,9 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend, config 
 		if len(args.data()) == 0 {
 			return errors.New(`contract creation without any data provided`)
 		}
+		if args.AuthorizationList != nil { // Must be nil, empty slice is also treated as a SetCode tx. // ##CROSS: fix upstream
+			return errors.New(`authorizationList provided for contract creation, but "to" field is missing`)
+		}
 	}
 
 	if args.Gas == nil {

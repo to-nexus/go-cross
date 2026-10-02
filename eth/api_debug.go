@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
@@ -493,6 +494,10 @@ func (api *DebugAPI) StateSize(blockHashOrNumber *rpc.BlockNumberOrHash) (interf
 	}, nil
 }
 
+// witnessExecuteConfig re-executes a stored block only to collect its witness, without writing state,
+// moving the head or calling block tracers.
+var witnessExecuteConfig = core.ExecuteConfig{MakeWitness: true}
+
 func (api *DebugAPI) ExecutionWitness(bn rpc.BlockNumber) (*stateless.ExtWitness, error) {
 	bc := api.eth.blockchain
 	block, err := api.eth.APIBackend.BlockByNumber(context.Background(), bn)
@@ -505,7 +510,7 @@ func (api *DebugAPI) ExecutionWitness(bn rpc.BlockNumber) (*stateless.ExtWitness
 		return &stateless.ExtWitness{}, fmt.Errorf("block number %v found, but parent missing", bn)
 	}
 
-	result, err := bc.ProcessBlock(parent.Root, block, false, true)
+	result, err := bc.ProcessBlock(parent.Root, block, witnessExecuteConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +530,7 @@ func (api *DebugAPI) ExecutionWitnessByHash(hash common.Hash) (*stateless.ExtWit
 		return &stateless.ExtWitness{}, fmt.Errorf("block number %x found, but parent missing", hash)
 	}
 
-	result, err := bc.ProcessBlock(parent.Root, block, false, true)
+	result, err := bc.ProcessBlock(parent.Root, block, witnessExecuteConfig)
 	if err != nil {
 		return nil, err
 	}
