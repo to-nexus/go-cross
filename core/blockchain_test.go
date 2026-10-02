@@ -4517,3 +4517,39 @@ func TestGetCanonicalReceipt(t *testing.T) {
 		}
 	}
 }
+
+// ##CROSS: fix upstream
+func TestBlockChain_ProcessBlock(t *testing.T) {
+	var (
+		key, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+		addr   = crypto.PubkeyToAddress(key.PublicKey)
+		gspec  = &Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{addr: {Balance: big.NewInt(params.Ether)}}}
+		signer = types.LatestSigner(gspec.Config)
+	)
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 1, func(i int, gen *BlockGen) {
+		tx, err := types.SignTx(types.NewTransaction(gen.TxNonce(addr), common.Address{0x01}, big.NewInt(1), params.TxGas, gen.header.BaseFee, nil), signer, key)
+		if err != nil {
+			t.Fatalf("failed to sign tx: %v", err)
+		}
+		gen.AddTx(tx)
+	})
+	block := blocks[0]
+
+	t.Run("witness execution writes nothing", func(t *testing.T) {
+		chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+		if err != nil {
+			t.Fatalf("failed to create chain: %v", err)
+		}
+		defer chain.Stop()
+
+		res, err := chain.ProcessBlock(chain.Genesis().Root(), block, ExecuteConfig{MakeWitness: true})
+		if err != nil {
+			t.Fatalf("failed to process block: %v", err)
+		}
+		assert.NotNil(t, res.Witness())
+		assert.Nil(t, chain.GetBlockByHash(block.Hash()), "block must not be written")
+		assert.False(t, chain.HasState(block.Root()), "state must not be committed")
+	})
+}
+
+// ##
