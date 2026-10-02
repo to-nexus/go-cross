@@ -300,6 +300,7 @@ const (
 // is not blacklisted, and it holds at least the minimum validator stake. Used for consensus
 // peer permissioning while PoSA is active. Concretely a validator is eligible when:
 //   - validatorToOperator(addr) != 0 (registered), and
+//   - getValidatorAddress(operator) == addr (addr is not a rotated-away address), and
 //   - the operator is not blacklisted, and
 //   - the operator's staked amount is at least minValidatorStake.
 //
@@ -335,7 +336,17 @@ func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) (boo
 		return false, nil
 	}
 
-	// 2) invalid if the operator is on the blacklist. (the blacklist is keyed by operator address)
+	// 2) the operator must still use addr.
+	current, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackGetValidatorAddress(operator), e.stakeHub.UnpackGetValidatorAddress)
+	if err != nil {
+		log.Warn("Failed to call getValidatorAddress", "operator", operator, "number", number, "err", err)
+		return false, err
+	}
+	if current != addr {
+		return false, nil
+	}
+
+	// 3) invalid if the operator is on the blacklist. (the blacklist is keyed by operator address)
 	blacklisted, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackIsBlackListed(operator), e.stakeHub.UnpackIsBlackListed)
 	if err != nil {
 		log.Warn("Failed to call isBlackListed", "operator", operator, "number", number, "err", err)
@@ -345,14 +356,14 @@ func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) (boo
 		return false, nil
 	}
 
-	// 3) the operator's staked amount. (stake is keyed by operator address, not validator address)
+	// 4) the operator's staked amount. (stake is keyed by operator address, not validator address)
 	staked, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackGetStakedAmount(operator), e.stakeHub.UnpackGetStakedAmount)
 	if err != nil {
 		log.Warn("Failed to call getStakedAmount", "operator", operator, "number", number, "err", err)
 		return false, err
 	}
 
-	// 4) minimum validator stake (cached with a separate TTL).
+	// 5) minimum validator stake (cached with a separate TTL).
 	minStake, err := e.minValidatorStakeCached(number)
 	if err != nil {
 		log.Warn("Failed to get minValidatorStake", "number", number, "err", err)
