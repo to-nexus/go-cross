@@ -67,6 +67,14 @@ func (sb *Backend) HandleMsg(addr common.Address, msg p2p.Msg) (bool, error) {
 		if !sb.Started() {
 			return true, istanbul.ErrStoppedEngine
 		}
+		// ##CROSS: istanbul peer limit
+		// Consensus messages are only gossiped to validators, so drop messages from other peers before any work.
+		// Do not return an error: a validator that has just joined may send messages before we import its epoch block.
+		if !sb.isCurrentValidator(addr) {
+			sb.logger.Trace("Istanbul: dropping consensus message from non-validator peer", "peer", addr)
+			return true, nil
+		}
+		// ##
 
 		data, hash, err := sb.decode(msg)
 		if err != nil {
@@ -126,6 +134,16 @@ func (sb *Backend) HandleMsg(addr common.Address, msg p2p.Msg) (bool, error) {
 	}
 	return false, nil
 }
+
+// ##CROSS: istanbul peer limit
+// isCurrentValidator reports whether addr is in the validator set of the next block.
+func (sb *Backend) isCurrentValidator(addr common.Address) bool {
+	head := sb.chain.CurrentHeader()
+	_, val := sb.getValidators(head.Number.Uint64(), head.Hash()).GetByAddress(addr)
+	return val != nil
+}
+
+// ##
 
 // SetBroadcaster implements consensus.Handler.SetBroadcaster
 func (sb *Backend) SetBroadcaster(broadcaster consensus.IstanbulBroadcaster) {
