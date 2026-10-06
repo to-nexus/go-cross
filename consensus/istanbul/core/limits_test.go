@@ -91,6 +91,26 @@ func TestCore_HandleDecodedMessage(t *testing.T) {
 	})
 }
 
+// ##CROSS: istanbul far future message
+func TestCore_HandleEncodedMsg(t *testing.T) {
+	valSet, keys := generateValidatorSetAndKeys(t, 4)
+	addr := valSet.GetByIndex(0).Address()
+	src := valSet.GetByIndex(1).Address()
+	c, b := newRoundChangeTestCore(t, addr, keys[addr], valSet, makeBlockWithTime(1, 1), 1, 0)
+
+	t.Run("forgets a far future message", func(t *testing.T) {
+		msg := protocols.NewPrepareWithSigAndSource(big.NewInt(3), big.NewInt(0), common.Hash{}, nil, src)
+		signProtocolMessage(t, msg, keys[src])
+		payload, err := rlp.EncodeToBytes(msg)
+		require.NoError(t, err)
+
+		require.Equal(t, errFarFutureMessage, c.handleEncodedMsg(protocols.PrepareCode, payload))
+		assert.Equal(t, []common.Hash{istanbul.RLPHash(payload)}, b.forgotten)
+	})
+}
+
+// ##
+
 func TestCore_HandleRoundChange(t *testing.T) {
 	valSet, keys := generateValidatorSetAndKeys(t, 4)
 	addr := valSet.GetByIndex(0).Address()

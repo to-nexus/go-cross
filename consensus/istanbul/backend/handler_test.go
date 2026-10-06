@@ -89,6 +89,24 @@ func TestBackend_HandleMsg(t *testing.T) {
 		assert.False(t, ok, "message must be dropped before it is cached")
 		assert.False(t, backend.knownMessages.Contains(istanbul.RLPHash(data)))
 	})
+
+	// ##CROSS: istanbul far future message
+	t.Run("handles a forgotten message again", func(t *testing.T) {
+		data := []byte("data3")
+		hash := istanbul.RLPHash(data)
+
+		_, err := backend.HandleMsg(backend.Address(), makeMsg(istanbulMsg, data))
+		require.NoError(t, err)
+		require.True(t, backend.knownMessages.Contains(hash))
+
+		backend.ForgetMessage(hash)
+		require.False(t, backend.knownMessages.Contains(hash))
+
+		_, err = backend.HandleMsg(backend.Address(), makeMsg(istanbulMsg, data))
+		require.NoError(t, err)
+		assert.True(t, backend.knownMessages.Contains(hash), "the same message must pass the cache again")
+	})
+	// ##
 }
 
 // ##
