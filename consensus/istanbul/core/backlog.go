@@ -162,7 +162,9 @@ func (c *Core) addToBacklog(msg protocols.Message) {
 	// ##CROSS: istanbul backlog limit
 	// TODO(go-cross): Count cap only; add size cap if large PRE-PREPAREs in the backlog become a problem.
 	if backlog.Size() >= maxBacklogPerSource {
-		c.currentLogger(true, msg).Debug("Istanbul: backlog full, dropping message", "backlog_size", backlog.Size())
+		if c.logger.Enabled(context.Background(), log.LvlDebug) {
+			c.currentLogger(true, msg).Debug("Istanbul: backlog full, dropping message", "backlog_size", backlog.Size())
+		}
 		return
 	}
 	// ##
