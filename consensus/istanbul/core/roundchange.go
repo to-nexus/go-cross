@@ -19,6 +19,7 @@ package core
 import (
 	"errors"
 	"math/big"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -100,12 +101,12 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 	currentRound := c.currentView().Round
 
 	// number of validators we received ROUND-CHANGE from for a round higher than the current one
-	num := c.roundChangeSet.higherRoundMessages(currentRound)
+	higherNum := c.roundChangeSet.higherRoundMessages(currentRound)
 
 	// number of validators we received ROUND-CHANGE from for the current round
-	currentRoundMessages := c.roundChangeSet.getRCMessagesForGivenRound(currentRound)
+	currentNum := c.roundChangeSet.getRCMessagesForGivenRound(currentRound)
 
-	logger.Info("Istanbul: handle ROUND-CHANGE message", "higherRoundChanges.count", num, "currentRoundChanges.count", currentRoundMessages)
+	logger.Info("Istanbul: handle ROUND-CHANGE message", "higherRoundChanges.count", higherNum, "currentRoundChanges.count", currentNum)
 
 	// ##CROSS: istanbul round limit
 	if view.Round.Cmp(currentRound) > 0 && !c.roundChangeSet.keepHighestFuture(roundChange.Source(), currentRound, view.Round) {
@@ -153,14 +154,14 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 	}
 
 	// number of validators we received ROUND-CHANGE from for a round higher than the current one
-	num = c.roundChangeSet.higherRoundMessages(currentRound)
+	higherNum = c.roundChangeSet.higherRoundMessages(currentRound)
 
 	// number of validators we received ROUND-CHANGE from for the current round
-	currentRoundMessages = c.roundChangeSet.getRCMessagesForGivenRound(currentRound)
+	currentNum = c.roundChangeSet.getRCMessagesForGivenRound(currentRound)
 
-	logger = logger.New("higherRoundChanges.count", num, "currentRoundChanges.count", currentRoundMessages)
+	logger = logger.New("higherRoundChanges.count", higherNum, "currentRoundChanges.count", currentNum)
 
-	if num == c.valSet.F()+1 {
+	if higherNum == c.valSet.F()+1 {
 		// We received F+1 ROUND-CHANGE messages (this may happen before our timeout expired)
 		// we start new round and broadcast ROUND-CHANGE message
 		newRound := c.roundChangeSet.getMinRoundChange(currentRound)
@@ -169,7 +170,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 
 		c.startNewRound(newRound)
 		c.broadcastRoundChange(newRound)
-	} else if currentRoundMessages >= c.valSet.QuorumSize() && c.IsProposer() && c.current.preprepareSent.Cmp(currentRound) < 0 {
+	} else if currentNum >= c.valSet.QuorumSize() && c.IsProposer() && c.current.preprepareSent.Cmp(currentRound) < 0 {
 		logger.Info("Istanbul: received quorum of ROUND-CHANGE messages", "quorum", c.valSet.QuorumSize())
 
 		// We received quorum of ROUND-CHANGE for current round and we are proposer
@@ -180,11 +181,8 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 		_, proposal := c.highestPrepared(currentRound)
 		prepareMessages := c.roundChangeSet.prepareMessages[currentRound.Uint64()]
 		// ##CROSS: blob sidecars
-		// Sidecars in a ROUND-CHANGE are not signed and may be missing.
-		// If we prepared the same block, use our copy:
-		// it passed our data availability check, so its sidecars are complete.
-		if proposal != nil && c.current.preparedBlock != nil && c.current.preparedBlock.Hash() == proposal.Hash() {
-			proposal = c.current.preparedBlock
+		if proposal != nil {
+			proposal = c.availablePrepared(proposal, currentRound)
 		}
 		// ##
 		if proposal == nil {
@@ -244,6 +242,39 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 	}
 	return nil
 }
+
+// ##CROSS: blob sidecars
+// availablePrepared returns a copy of the prepared proposal whose blob data passes verification.
+// Sidecars in a ROUND-CHANGE are not signed, so the copy we stored first may lack them while our own
+// prepared copy or a later ROUND-CHANGE carries valid ones. Blocks without blob txs are returned as is.
+func (c *Core) availablePrepared(proposal istanbul.Proposal, round *big.Int) istanbul.Proposal {
+	block, ok := proposal.(*types.Block)
+	hasBlobTx := ok && slices.ContainsFunc(block.Transactions(), func(tx *types.Transaction) bool {
+		return tx.Type() == types.BlobTxType
+	})
+	if !hasBlobTx {
+		return proposal
+	}
+	candidates := []istanbul.Proposal{proposal}
+	if own := c.current.preparedBlock; own != nil && own.Hash() == proposal.Hash() {
+		candidates = append([]istanbul.Proposal{own}, candidates...)
+	}
+	if cs := c.roundChangeSet.roundChanges[round.Uint64()]; cs != nil {
+		for _, m := range cs.Values() {
+			if rc := m.(*protocols.RoundChange); rc.PreparedBlock != nil && rc.PreparedBlock.Hash() == proposal.Hash() {
+				candidates = append(candidates, rc.PreparedBlock)
+			}
+		}
+	}
+	for _, candidate := range candidates {
+		if _, err := c.backend.Verify(candidate); err == nil {
+			return candidate
+		}
+	}
+	return proposal
+}
+
+// ##
 
 // highestPrepared returns the highest Prepared Round and the corresponding Prepared Block
 func (c *Core) highestPrepared(round *big.Int) (*big.Int, istanbul.Proposal) {

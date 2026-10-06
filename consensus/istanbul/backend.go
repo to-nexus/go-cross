@@ -86,5 +86,8 @@ type Backend interface {
 	// HasBadProposal returns whether the block with the hash is a bad block
 	HasBadProposal(hash common.Hash) bool
 
+	// ForgetMessage removes the message hash from the received-message cache.
+	ForgetMessage(hash common.Hash) // ##CROSS: istanbul far future message
+
 	Close() error
 }

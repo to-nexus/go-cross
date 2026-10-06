@@ -435,6 +435,14 @@ func (sb *Backend) HasBadProposal(hash common.Hash) bool {
 	return sb.hasBadBlock(sb.db, hash)
 }
 
+// ##CROSS: istanbul far future message
+// ForgetMessage implements istanbul.Backend.ForgetMessage
+func (sb *Backend) ForgetMessage(hash common.Hash) {
+	sb.knownMessages.Remove(hash)
+}
+
+// ##
+
 func (sb *Backend) Close() error {
 	return nil
 }

@@ -185,7 +185,15 @@ func (c *Core) handleEncodedMsg(code uint64, data []byte) error {
 		return err
 	}
 
-	return c.handleDecodedMessage(m)
+	err = c.handleDecodedMessage(m)
+	// ##CROSS: istanbul far future message
+	// The backend cached this message before we saw it. It was dropped only because it came too early,
+	// so let the same message in again: another validator may re-gossip it after we catch up.
+	if err == errFarFutureMessage {
+		c.backend.ForgetMessage(istanbul.RLPHash(data))
+	}
+	// ##
+	return err
 }
 
 func (c *Core) handleDecodedMessage(m protocols.Message) error {
