@@ -51,14 +51,14 @@ func TestEnginePrepare(t *testing.T) {
 		posa   bool
 	}{
 		{"disabled", nil, types.IstanbulDigest, true},
-		{"before osaka", newUint64(parent.Time + 2), types.IstanbulDigest, true},
-		{"at osaka", newUint64(parent.Time + 1), types.IstanbulDigestV2, true},
-		{"after osaka", newUint64(parent.Time), types.IstanbulDigestV2, true},
-		{"osaka at genesis", newUint64(0), types.IstanbulDigestV2, true},
-		{"osaka without posa", newUint64(0), types.IstanbulDigestV2, false},
+		{"before bravo", newUint64(parent.Time + 2), types.IstanbulDigest, true},
+		{"at bravo", newUint64(parent.Time + 1), types.IstanbulDigestV2, true},
+		{"after bravo", newUint64(parent.Time), types.IstanbulDigestV2, true},
+		{"bravo at genesis", newUint64(0), types.IstanbulDigestV2, true},
+		{"bravo without posa", newUint64(0), types.IstanbulDigestV2, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			config := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0), OsakaTime: test.fork, Istanbul: &params.IstanbulConfig{}}
+			config := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0), BreakpointBravoTime: test.fork, Istanbul: &params.IstanbulConfig{}}
 			if test.posa {
 				config.BreakpointTime = newUint64(0)
 				config.Istanbul.PoSA = &params.PoSAConfig{}

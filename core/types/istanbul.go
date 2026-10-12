@@ -281,7 +281,7 @@ func ExtractIstanbulExtra(h *Header) (*IstanbulExtra, error) {
 }
 
 // IstanbulFilteredHeader returns a copy with seals and signer bits removed and the round set to zero.
-// BLS signer keys are included from Osaka onward. It returns nil if extra-data cannot be decoded or encoded.
+// BLS signer keys are included from BreakpointBravo onward. It returns nil if extra-data cannot be decoded or encoded.
 func IstanbulFilteredHeader(h *Header) *Header {
 	return IstanbulFilteredHeaderWithRound(h, 0)
 }
