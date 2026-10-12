@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/stretchr/testify/require"
 )
 
 // downloadTester is a test simulator for mocking out local block chain.
@@ -117,6 +118,7 @@ func (dl *downloadTester) newPeer(id string, version uint, blocks []*types.Block
 		id:              id,
 		chain:           newTestBlockchain(blocks),
 		withholdHeaders: make(map[common.Hash]struct{}),
+		dropped:         make(chan error, 1),
 	}
 	dl.peers[id] = peer
 
@@ -145,6 +147,10 @@ type downloadTesterPeer struct {
 	chain *core.BlockChain
 
 	withholdHeaders map[common.Hash]struct{}
+	corruptBodies   bool // if set, the peer serves incorrect blocks
+	corruptReceipts bool // ##CROSS: fix upstream
+
+	dropped chan error // signaled when res.Done receives an error
 }
 
 // Head constructs a function to retrieve a peer's current head hash
@@ -275,6 +281,11 @@ func (dlp *downloadTesterPeer) RequestBodies(hashes []common.Hash, sink chan *et
 		txsHashes[i] = types.DeriveSha(types.Transactions(body.Transactions), hasher)
 		uncleHashes[i] = types.CalcUncleHash(body.Uncles)
 	}
+	if dlp.corruptBodies {
+		for i := range txsHashes {
+			txsHashes[i] = common.Hash{0xff}
+		}
+	}
 	req := &eth.Request{
 		Peer: dlp.id,
 	}
@@ -283,10 +294,16 @@ func (dlp *downloadTesterPeer) RequestBodies(hashes []common.Hash, sink chan *et
 		Res:  (*eth.BlockBodiesResponse)(&bodies),
 		Meta: [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes},
 		Time: 1,
-		Done: make(chan error, 1), // Ignore the returned status
+		Done: make(chan error),
 	}
 	go func() {
 		sink <- res
+		if err := <-res.Done; err != nil {
+			select {
+			case dlp.dropped <- err:
+			default:
+			}
+		}
 	}()
 	return req, nil
 }
@@ -306,6 +323,13 @@ func (dlp *downloadTesterPeer) RequestReceipts(hashes []common.Hash, sink chan *
 	for i, receipt := range receipts {
 		hashes[i] = types.DeriveSha(receipt, hasher)
 	}
+	// ##CROSS: fix upstream
+	if dlp.corruptReceipts {
+		for i := range hashes {
+			hashes[i] = common.Hash{0xff}
+		}
+	}
+	// ##
 	req := &eth.Request{
 		Peer: dlp.id,
 	}
@@ -315,10 +339,18 @@ func (dlp *downloadTesterPeer) RequestReceipts(hashes []common.Hash, sink chan *
 		Res:  &resp,
 		Meta: hashes,
 		Time: 1,
-		Done: make(chan error, 1), // Ignore the returned status
+		Done: make(chan error), // ##CROSS: receipt validation
 	}
 	go func() {
 		sink <- res
+		// ##CROSS: receipt rejection
+		if err := <-res.Done; err != nil {
+			select {
+			case dlp.dropped <- err:
+			default:
+			}
+		}
+		// ##
 	}()
 	return req, nil
 }
@@ -1283,3 +1315,44 @@ func testBeaconSync(t *testing.T, protocol uint, mode SyncMode) {
 		})
 	}
 }
+
+// ##CROSS: fix upstream
+func TestDownloader_InvalidResponse(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode SyncMode
+		want error
+	}{
+		{"body", FullSync, errInvalidBody},
+		{"receipt", SnapSync, errInvalidReceipt},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			success := make(chan struct{})
+			tester := newTesterWithNotification(t, func() { close(success) })
+			defer tester.terminate()
+			chain := testChainBase.shorten(blockCacheMaxItems - 15)
+			peer := tester.newPeer("corrupt", eth.ETH68, chain.blocks[1:])
+			peer.corruptBodies = tc.mode == FullSync
+			peer.corruptReceipts = tc.mode == SnapSync
+			head := chain.blocks[len(chain.blocks)-1].Header()
+			require.NoError(t, tester.downloader.BeaconSync(tc.mode, head, nil))
+			select {
+			case err := <-peer.dropped:
+				require.ErrorIs(t, err, tc.want)
+			case <-time.After(10 * time.Second):
+				t.Fatal("invalid response was not rejected")
+			}
+			// Simulate the protocol handler disconnecting the peer after res.Done returns an error.
+			tester.dropPeer(peer.id)
+			tester.newPeer("honest", eth.ETH68, chain.blocks[1:])
+			select {
+			case <-success:
+				require.Equal(t, head.Hash(), tester.chain.CurrentBlock().Hash())
+			case <-time.After(10 * time.Second):
+				t.Fatal("sync did not recover with an honest peer")
+			}
+		})
+	}
+}
+
+// ##

@@ -68,8 +68,8 @@ type prestateTracer struct {
 	to          common.Address
 	config      prestateTracerConfig
 	chainConfig *params.ChainConfig
-	interrupt   atomic.Bool // Atomic flag to signal execution interruption
-	reason      error       // Textual reason for the interruption
+	interrupt   atomic.Bool           // Atomic flag to signal execution interruption
+	reason      atomic.Pointer[error] // Reason for the interruption, populated by Stop
 	created     map[common.Address]bool
 	deleted     map[common.Address]bool
 }
@@ -243,12 +243,15 @@ func (t *prestateTracer) GetResult() (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.RawMessage(res), t.reason
+	if p := t.reason.Load(); p != nil {
+		return json.RawMessage(res), *p
+	}
+	return json.RawMessage(res), nil
 }
 
 // Stop terminates execution of the tracer at the first opportune moment.
 func (t *prestateTracer) Stop(err error) {
-	t.reason = err
+	t.reason.Store(&err)
 	t.interrupt.Store(true)
 }
 

@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -4245,7 +4246,7 @@ func TestSendRawTransactionSync_Timeout(t *testing.T) {
 
 	raw, _ := makeSelfSignedRaw(t, api, b.acc.Address)
 
-	timeout := hexutil.Uint64(200) // 200ms
+	timeout := uint64(200) // 200ms
 	receipt, err := api.SendRawTransactionSync(context.Background(), raw, &timeout)
 
 	if receipt != nil {
@@ -4273,3 +4274,67 @@ func TestSendRawTransactionSync_Timeout(t *testing.T) {
 		t.Fatalf("expected ErrorData=%s, got %v", want, got)
 	}
 }
+
+// ##CROSS: fix upstream
+func TestSendRawTransactionSync_RPC(t *testing.T) {
+	genesis := &core.Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{}}
+	b := newTestBackend(t, 0, genesis, ethash.NewFaker(), nil)
+	defer b.db.Close()
+	defer b.chain.Stop()
+	b.syncDefaultTimeout = 2 * time.Millisecond
+	b.syncMaxTimeout = 5 * time.Millisecond
+	api := NewTransactionAPI(b, new(AddrLocker), "")
+	raw, tx := makeSelfSignedRaw(t, api, b.acc.Address)
+	server := rpc.NewServer()
+	defer server.Stop()
+	require.NoError(t, server.RegisterName("eth", api))
+	for _, tc := range []struct {
+		name    string
+		timeout string
+		wait    time.Duration
+		invalid bool
+	}{
+		{name: "number", timeout: "1", wait: time.Millisecond},
+		{name: "omitted", wait: 2 * time.Millisecond},
+		{name: "null", timeout: "null", wait: 2 * time.Millisecond},
+		{name: "zero", timeout: "0", wait: 2 * time.Millisecond},
+		{name: "at cap", timeout: "5", wait: 5 * time.Millisecond},
+		{name: "above cap", timeout: "200", wait: 5 * time.Millisecond},
+		{name: "duration overflow", timeout: "9223372036855", wait: 5 * time.Millisecond},
+		{name: "uint64 max", timeout: "18446744073709551615", wait: 5 * time.Millisecond},
+		{name: "negative", timeout: "-1", invalid: true},
+		{name: "fraction", timeout: "1.5", invalid: true},
+		{name: "hex string", timeout: `"0xc8"`, invalid: true},
+		{name: "uint64 overflow", timeout: "18446744073709551616", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			suffix := ""
+			if tc.timeout != "" {
+				suffix = "," + tc.timeout
+			}
+			request := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"eth_sendRawTransactionSync","params":[%q%s]}`, hexutil.Encode(raw), suffix)
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest("POST", "/", strings.NewReader(request))
+			req.Header.Set("Content-Type", "application/json")
+			server.ServeHTTP(recorder, req)
+			var response struct {
+				Error *struct {
+					Code    int
+					Message string
+					Data    string
+				}
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			require.NotNil(t, response.Error)
+			if tc.invalid {
+				require.Equal(t, -32602, response.Error.Code)
+			} else {
+				require.Equal(t, errCodeTxSyncTimeout, response.Error.Code)
+				require.Equal(t, tx.Hash().Hex(), response.Error.Data)
+				require.Contains(t, response.Error.Message, "wasn't processed in "+tc.wait.String())
+			}
+		})
+	}
+}
+
+// ##

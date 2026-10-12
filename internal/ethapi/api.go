@@ -1850,7 +1850,7 @@ func (api *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil
 
 // SendRawTransactionSync will add the signed transaction to the transaction pool
 // and wait until the transaction has been included in a block and return the receipt, or the timeout.
-func (api *TransactionAPI) SendRawTransactionSync(ctx context.Context, input hexutil.Bytes, timeoutMs *hexutil.Uint64) (map[string]interface{}, error) {
+func (api *TransactionAPI) SendRawTransactionSync(ctx context.Context, input hexutil.Bytes, timeoutMs *uint64) (map[string]interface{}, error) {
 	tx := new(types.Transaction)
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return nil, err
@@ -1890,12 +1890,13 @@ func (api *TransactionAPI) SendRawTransactionSync(ctx context.Context, input hex
 		timeout        = defaultTimeout
 	)
 	if timeoutMs != nil && *timeoutMs > 0 {
-		req := time.Duration(*timeoutMs) * time.Millisecond
-		if req > maxTimeout {
+		// ##CROSS: fix upstream
+		if maxTimeout <= 0 || *timeoutMs > uint64(maxTimeout/time.Millisecond) {
 			timeout = maxTimeout
 		} else {
-			timeout = req
+			timeout = time.Duration(*timeoutMs) * time.Millisecond
 		}
+		// ##
 	}
 	receiptCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

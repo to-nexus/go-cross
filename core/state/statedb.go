@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -264,6 +265,9 @@ func (s *StateDB) Logs() []*types.Log {
 	for _, lgs := range s.logs {
 		logs = append(logs, lgs...)
 	}
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].Index < logs[j].Index
+	})
 	return logs
 }
 
@@ -605,15 +609,16 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 	}
 	s.AccountReads += time.Since(start)
 
-	// Short circuit if the account is not found
-	if acct == nil {
-		return nil
-	}
-	// Schedule the resolved account for prefetching if it's enabled.
+	// Schedule the account path for prefetching if it's enabled. Even if the
+	// account is absent, the trie path proves its non-existence for witnesses.
 	if s.prefetcher != nil {
 		if err = s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, []common.Address{addr}, nil, true); err != nil {
 			log.Error("Failed to prefetch account", "addr", addr, "err", err)
 		}
+	}
+	// Short circuit if the account is not found
+	if acct == nil {
+		return nil
 	}
 	// Insert into the live set
 	obj := newObject(s, addr, acct)

@@ -32,15 +32,6 @@ import (
 // into the journal, but no such file is currently open.
 var errNoActiveJournal = errors.New("no active journal")
 
-// devNull is a WriteCloser that just discards anything written into it. Its
-// goal is to allow the transaction journal to write into a fake journal when
-// loading transactions on startup without printing warnings due to no file
-// being read for write.
-type devNull struct{}
-
-func (*devNull) Write(p []byte) (n int, err error) { return len(p), nil }
-func (*devNull) Close() error                      { return nil }
-
 // journal is a rotating log of transactions with the aim of storing locally
 // created transactions to allow non-executed ones to survive node restarts.
 type journal struct {
@@ -69,9 +60,8 @@ func (journal *journal) load(add func([]*types.Transaction) []error) error {
 	}
 	defer input.Close()
 
-	// Temporarily discard any journal additions (don't double add on load)
-	journal.writer = new(devNull)
-	defer func() { journal.writer = nil }()
+	// ##CROSS: journal readiness
+	// The caller loads transactions without persisting them again; replay never changes the writer.
 
 	// Inject all transactions from the journal into the pool
 	stream := rlp.NewStream(input, 0)
