@@ -18,8 +18,10 @@
 package locals
 
 import (
+	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -54,6 +56,7 @@ type TxTracker struct {
 	shutdownCh chan struct{}
 	mu         sync.Mutex
 	wg         sync.WaitGroup
+	ready      atomic.Bool // ##CROSS: journal readiness
 }
 
 // New creates a new TxTracker
@@ -72,18 +75,37 @@ func New(journalPath string, journalTime time.Duration, chainConfig *params.Chai
 	return pool
 }
 
-// Track adds a transaction to the tracked set.
-// Note: blob-type transactions are ignored.
-func (tracker *TxTracker) Track(tx *types.Transaction) {
-	tracker.TrackAll([]*types.Transaction{tx})
+// ##CROSS: journal readiness
+// Ready reports whether transactions can be tracked with the configured persistence.
+func (tracker *TxTracker) Ready() bool {
+	return tracker.journal == nil || tracker.ready.Load()
 }
 
-// TrackAll adds a list of transactions to the tracked set.
+// ##
+
+// Track adds a transaction to the tracked set, returning ErrNotReady if the journal is unavailable.
 // Note: blob-type transactions are ignored.
-func (tracker *TxTracker) TrackAll(txs []*types.Transaction) {
+func (tracker *TxTracker) Track(tx *types.Transaction) error {
+	return tracker.TrackAll([]*types.Transaction{tx})
+}
+
+// TrackAll adds transactions to the tracked set, returning ErrNotReady if the journal is unavailable.
+// Note: blob-type transactions are ignored.
+func (tracker *TxTracker) TrackAll(txs []*types.Transaction) error {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 
+	// ##CROSS: journal readiness
+	if !tracker.Ready() {
+		return ErrNotReady
+	}
+	// ##
+	tracker.trackAll(txs, true)
+	return nil
+}
+
+// trackAll updates the tracked set while mu is held. Journal replay skips persistence.
+func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) {
 	for _, tx := range txs {
 		if tx.Type() == types.BlobTxType {
 			continue
@@ -106,9 +128,13 @@ func (tracker *TxTracker) TrackAll(txs []*types.Transaction) {
 		}
 		tracker.byAddr[addr].Put(tx)
 
-		if tracker.journal != nil {
-			_ = tracker.journal.insert(tx)
+		// ##CROSS: journal readiness
+		if persist && tracker.journal != nil {
+			if err := tracker.journal.insert(tx); err != nil {
+				log.Warn("Failed to journal local transaction", "hash", tx.Hash(), "err", err)
+			}
 		}
+		// ##
 	}
 	localGauge.Update(int64(len(tracker.all)))
 }
@@ -172,8 +198,28 @@ func (tracker *TxTracker) recheck(journalCheck bool) []*types.Transaction {
 // Start is called after all services have been constructed and the networking
 // layer was also initialized to spawn any goroutines required by the service.
 func (tracker *TxTracker) Start() error {
+	// ##CROSS: journal readiness
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if tracker.journal != nil {
+		if err := tracker.journal.load(func(transactions []*types.Transaction) []error {
+			tracker.trackAll(transactions, false)
+			return nil
+		}); err != nil {
+			return fmt.Errorf("load local transaction journal: %w", err)
+		}
+		// Setup the writer for the upcoming transactions
+		if err := tracker.journal.setupWriter(); err != nil {
+			log.Error("Failed to setup the journal writer", "err", err)
+			return err
+		}
+	}
+	// ##
+
 	tracker.wg.Add(1)
 	go tracker.loop()
+
+	tracker.ready.Store(true) // ##CROSS: journal readiness
 	return nil
 }
 
@@ -181,27 +227,25 @@ func (tracker *TxTracker) Start() error {
 // Stop terminates all goroutines belonging to the service, blocking until they
 // are all terminated.
 func (tracker *TxTracker) Stop() error {
+	tracker.ready.Store(false) // ##CROSS: journal readiness
+
 	close(tracker.shutdownCh)
 	tracker.wg.Wait()
-	return nil
+
+	// ##CROSS: journal readiness
+	tracker.mu.Lock()
+	var err error
+	if tracker.journal != nil {
+		err = tracker.journal.close()
+	}
+	tracker.mu.Unlock()
+	return err
+	// ##
 }
 
 func (tracker *TxTracker) loop() {
 	defer tracker.wg.Done()
 
-	if tracker.journal != nil {
-		tracker.journal.load(func(transactions []*types.Transaction) []error {
-			tracker.TrackAll(transactions)
-			return nil
-		})
-
-		// Setup the writer for the upcoming transactions
-		if err := tracker.journal.setupWriter(); err != nil {
-			log.Error("Failed to setup the journal writer", "err", err)
-			return
-		}
-		defer tracker.journal.close()
-	}
 	var (
 		lastJournal = time.Now()
 		timer       = time.NewTimer(10 * time.Second) // Do initial check after 10 seconds, do rechecks more seldom.
