@@ -278,6 +278,15 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 			return 0, err
 		}
 		// ##
+		// ##CROSS: istanbul posa
+		// Check the epoch validator list before voting. Finalize checks it again on import,
+		// so a wrong list that gets committed can never be imported and would stall the chain.
+		if chain.Config().IsIstanbulPoSA(block.Number(), block.Time()) {
+			if err := e.verifyValidators(chain, block.Header()); err != nil {
+				return 0, err
+			}
+		}
+		// ##
 		// ##CROSS: blob sidecars
 		// Check blob data before voting. Sidecars travel outside the signed proposal, and a block that is
 		// committed without them can never be imported, which would lock validators on it.
@@ -309,6 +318,11 @@ func (e *Engine) VerifyBlockProposal(chain consensus.ChainHeaderReader, block *t
 // verifyProposalTransactions quick-checks order and senders of transactions before they enter round progress.
 func (e *Engine) verifyProposalTransactions(chain consensus.ChainHeaderReader, block *types.Block) error {
 	header := block.Header()
+	// Reject long list before recovering any sender.
+	if n, limit := len(block.Transactions()), header.GasLimit/params.TxGas; uint64(n) > limit {
+		return fmt.Errorf("too many transactions: have %d, max %d", n, limit)
+	}
+
 	signer := types.MakeSigner(chain.Config(), header.Number, header.Time)
 
 	var seenSystemTx bool
@@ -609,21 +623,25 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 		return err
 	}
 	committedSeal := extra.CommittedSeal
+	posa := chain.Config().IsIstanbulPoSA(header.Number, header.Time)
+
+	// ##CROSS: bls seal
+	// Validators and signers list are only set on the boundary of new validator epoch.
+	// Check it before the empty seal return, because a proposal has no seal yet and would otherwise be voted on.
+	if posa && !e.cfg.GetConfig(header.Number).OnNewValidatorEpoch(number) && (len(extra.Signers) > 0 || len(extra.Validators) > 0) {
+		return istanbul.ErrInvalidCommittedSeals
+	}
+	// ##
 
 	// The length of Committed seals should be larger than 0
 	if len(committedSeal) == 0 {
 		return istanbul.ErrEmptyCommittedSeals
 	}
 
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+	if posa {
 		// ##CROSS: bls seal
 		// For BLS seal, only one committed seal must be present
 		if len(committedSeal) != 1 {
-			return istanbul.ErrInvalidCommittedSeals
-		}
-		if !e.cfg.GetConfig(header.Number).OnNewValidatorEpoch(header.Number.Uint64()) &&
-			(len(extra.Signers) > 0 || len(extra.Validators) > 0) {
-			// Validators and signers list are only set on the boundary of new validator epoch
 			return istanbul.ErrInvalidCommittedSeals
 		}
 

@@ -61,6 +61,34 @@ func TestCore_VerifySignatures(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, errInvalidMessage, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
 	})
+
+	// Justification was rejected before any signature recovery and returns errInvalidMessage.
+	block := makeBlockWithTime(1, 1)
+	unsigned := protocols.NewPrepareWithSigAndSource(big.NewInt(1), big.NewInt(0), block.Hash(), nil, src)
+
+	t.Run("accepts prepares with a prepared block", func(t *testing.T) {
+		roundChange := createSignedRoundChangeMessage(t, keys[src], src, 1, 0, block)
+		roundChange.Justification = []*protocols.Prepare{createSignedPrepareMessage(t, keys[src], src, 0, block)}
+		assert.NoError(t, c.verifySignatures(roundChange))
+	})
+
+	t.Run("rejects prepares without a prepared block before signature recovery", func(t *testing.T) {
+		roundChange := createSignedRoundChangeMessage(t, keys[src], src, 1, 0, nil)
+		roundChange.Justification = []*protocols.Prepare{unsigned}
+		assert.Equal(t, errInvalidMessage, c.verifySignatures(roundChange))
+	})
+
+	t.Run("rejects round 0 PRE-PREPARE justification before signature recovery", func(t *testing.T) {
+		preprepare := protocols.NewPreprepare(big.NewInt(1), big.NewInt(0), block)
+		signProtocolMessage(t, preprepare, keys[src])
+
+		preprepare.JustificationPrepares = []*protocols.Prepare{unsigned}
+		assert.Equal(t, errInvalidMessage, c.verifySignatures(preprepare))
+
+		preprepare.JustificationPrepares = nil
+		preprepare.JustificationRoundChanges = []*protocols.SignedRoundChangePayload{&protocols.NewRoundChange(big.NewInt(1), big.NewInt(1), nil, nil).SignedRoundChangePayload}
+		assert.Equal(t, errInvalidMessage, c.verifySignatures(preprepare))
+	})
 }
 
 func TestCore_HandleDecodedMessage(t *testing.T) {

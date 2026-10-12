@@ -18,6 +18,7 @@ package backend
 
 import (
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
 	"slices"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/engine"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -212,6 +214,15 @@ func (sb *Backend) Commit(proposal istanbul.Proposal, seals []istanbul.SignedSea
 
 	// update block's header
 	block = block.WithSeal(header)
+
+	// ##CROSS: istanbul validation
+	// Check the sealed header the way import does.
+	if err := sb.VerifyHeader(sb.chain, header); err != nil && !errors.Is(err, consensus.ErrFutureBlock) {
+		sb.logger.Error("Istanbul: committed block fails header verification", "number", header.Number, "hash", block.Hash(), "err", err)
+		rawdb.WriteBadBlock(sb.db, block)
+		return err
+	}
+	// ##
 
 	logger := sb.logger.With("author", sb.Address(), "hash", proposal.Hash(), "number", proposal.Number().Uint64())
 	// ##CROSS: bls seal

@@ -619,6 +619,117 @@ func TestLegacyPoolDemoteUnexecutables(t *testing.T) {
 		assert.True(t, pool.Has(txs[2].Hash()))
 		require.NoError(t, validatePoolInternals(pool))
 	})
+
+	t.Run("requeues sponsored transactions above the fee payer total", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		testAddBalance(pool, payer, big.NewInt(400_000))
+
+		// Two senders share the payer. Each tx costs the payer 200000, so both fit the balance of 400000.
+		var txs []*types.Transaction
+		for range 2 {
+			senderKey, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			testAddBalance(pool, crypto.PubkeyToAddress(senderKey.PublicKey), new(big.Int).SetUint64(params.Ether))
+			tx := feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)
+			require.NoError(t, pool.addRemoteSync(tx))
+			txs = append(txs, tx)
+		}
+		require.Equal(t, big.NewInt(400_000), payerCost(pool, payer))
+
+		// A new head lowers the balance to 300000: each tx still fits alone, but both together do not.
+		pool.mu.Lock()
+		pool.currentState.SetBalance(payer, uint256.NewInt(300_000), tracing.BalanceChangeUnspecified)
+		pool.demoteUnexecutables()
+		pool.mu.Unlock()
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 1, pending)
+		assert.Equal(t, 1, queued)
+		assert.Equal(t, big.NewInt(200_000), payerCost(pool, payer))
+		assert.True(t, pool.Has(txs[0].Hash()))
+		assert.True(t, pool.Has(txs[1].Hash()))
+
+		require.NoError(t, validatePoolInternals(pool))
+	})
+
+	t.Run("ignores mined transactions of other senders in the fee payer total", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		testAddBalance(pool, payer, big.NewInt(800_000))
+
+		// Two senders share the payer with nonces 0 and 1, each costing the payer 200000.
+		var senders []common.Address
+		for range 2 {
+			senderKey, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+			testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+			for nonce := range uint64(2) {
+				require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(nonce, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)))
+			}
+			senders = append(senders, sender)
+		}
+
+		// A new head mines both nonce 0 txs, and the 400000 left covers both nonce 1 txs. Whichever sender
+		// comes first must not count the other sender's mined tx.
+		pool.mu.Lock()
+		for _, sender := range senders {
+			pool.currentState.SetNonce(sender, 1, tracing.NonceChangeUnspecified)
+		}
+		pool.currentState.SetBalance(payer, uint256.NewInt(400_000), tracing.BalanceChangeUnspecified)
+		pool.mu.Unlock()
+		<-pool.requestReset(nil, nil)
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 2, pending)
+		assert.Equal(t, 0, queued)
+		assert.Equal(t, big.NewInt(400_000), payerCost(pool, payer))
+		require.NoError(t, validatePoolInternals(pool))
+	})
+
+	t.Run("requeues only the highest nonces above the fee payer total", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		testAddBalance(pool, payer, big.NewInt(400_000))
+
+		senderKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+		testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+
+		var txs []*types.Transaction
+		for nonce := range uint64(2) {
+			tx := feeDelegatedDynamicFeeTx(nonce, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)
+			require.NoError(t, pool.addRemoteSync(tx))
+			txs = append(txs, tx)
+		}
+
+		// The balance drops to 300000: nonce 0 still fits, nonce 1 does not.
+		pool.mu.Lock()
+		pool.currentState.SetBalance(payer, uint256.NewInt(300_000), tracing.BalanceChangeUnspecified)
+		pool.mu.Unlock()
+		<-pool.requestReset(nil, nil)
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 1, pending)
+		assert.Equal(t, 1, queued)
+		assert.Equal(t, big.NewInt(200_000), payerCost(pool, payer))
+		assert.NotNil(t, pool.pending[sender].txs.Get(txs[0].Nonce()))
+		require.NoError(t, validatePoolInternals(pool))
+	})
 }
 
 // TestLegacyPool_PromoteExecutables covers how promotion holds senders whose fee

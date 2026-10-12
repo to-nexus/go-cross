@@ -299,6 +299,8 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 	// ##CROSS: istanbul justification limit
 	// A justification holds at most one payload per validator. Check the length before recovering
 	// signatures, so a validator cannot make us run one ecrecover per entry of an oversized list.
+	// A justification that the handlers never read is rejected too: prepares without a prepared
+	// block, and any justification on a round 0 PRE-PREPARE. Honest nodes never send these.
 	maxJustification := c.valSet.Size()
 	// ##
 	switch msgType := m.(type) {
@@ -307,6 +309,11 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 		if len(signedPreparePayloads) > maxJustification { // ##CROSS: istanbul justification limit
 			return errInvalidMessage
 		}
+		// ##CROSS: istanbul justification limit
+		if len(signedPreparePayloads) > 0 && (msgType.PreparedRound == nil || msgType.PreparedBlock == nil) {
+			return errInvalidMessage
+		}
+		// ##
 		for _, p := range signedPreparePayloads {
 			if p == nil {
 				return errInvalidMessage
@@ -320,6 +327,11 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 		if len(signedRoundChangePayloads) > maxJustification || len(msgType.JustificationPrepares) > maxJustification { // ##CROSS: istanbul justification limit
 			return errInvalidMessage
 		}
+		// ##CROSS: istanbul justification limit
+		if msgType.Round.Sign() == 0 && (len(signedRoundChangePayloads) > 0 || len(msgType.JustificationPrepares) > 0) {
+			return errInvalidMessage
+		}
+		// ##
 		for _, p := range signedRoundChangePayloads {
 			if p == nil {
 				return errInvalidMessage
