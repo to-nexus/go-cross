@@ -748,7 +748,7 @@ func makeMixHashBLS(randomReveal []byte, lastMixHash common.Hash) (mixHash commo
 
 // ##CROSS: istanbul digest v2
 func istanbulDigest(chain consensus.ChainHeaderReader, header *types.Header, mixHash common.Hash) common.Hash {
-	return types.MakeIstanbulDigest(mixHash, chain.Config().IsOsaka(header.Number, header.Time))
+	return types.MakeIstanbulDigest(mixHash, chain.Config().IsBreakpointBravo(header.Number, header.Time))
 }
 
 // ##
