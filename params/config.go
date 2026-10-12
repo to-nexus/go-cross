@@ -113,7 +113,7 @@ var (
 		PragueTime:              newUint64(1778814000),
 		BreakpointTime:          newUint64(1778814000), // ##CROSS: fork breakpoint
 		BreakpointAlphaTime:     newUint64(1781240400), // 2026-06-12 05:00:00 UTC // ##CROSS: fork breakpoint
-		OsakaTime:               newUint64(1792040400), // 2026-10-15 05:00:00 UTC
+		OsakaTime:               nil,
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
@@ -165,6 +165,7 @@ var (
 		CancunTime:              newUint64(1770076800),
 		PragueTime:              newUint64(1770076800),
 		BreakpointTime:          newUint64(1781164800), // ##CROSS: fork breakpoint
+		BreakpointBravoTime:     newUint64(1789970400), // 2026-09-21 06:00:00 UTC // ##CROSS: fork breakpoint
 		OsakaTime:               newUint64(1789970400), // 2026-09-21 06:00:00 UTC
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -222,6 +223,7 @@ var (
 		CancunTime:              newUint64(1770076800),
 		PragueTime:              newUint64(1770076800),
 		BreakpointTime:          newUint64(1781164800), // ##CROSS: fork breakpoint
+		BreakpointBravoTime:     newUint64(1789970400), // 2026-09-21 06:00:00 UTC // ##CROSS: fork breakpoint
 		OsakaTime:               newUint64(1789970400), // 2026-09-21 06:00:00 UTC
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -716,6 +718,7 @@ type ChainConfig struct {
 	PragueTime          *uint64 `json:"pragueTime,omitempty"`          // Prague switch time (nil = no fork, 0 = already on prague)
 	BreakpointTime      *uint64 `json:"breakpointTime,omitempty"`      // Breakpoint switch time (nil = no fork, 0 = already on breakpoint) ##CROSS: fork breakpoint
 	BreakpointAlphaTime *uint64 `json:"breakpointAlphaTime,omitempty"` // BreakpointAlpha switch time (nil = no fork, 0 = already on breakpoint-alpha) ##CROSS: fork breakpoint
+	BreakpointBravoTime *uint64 `json:"breakpointBravoTime,omitempty"` // BreakpointBravo switch time (nil = no fork, 0 = already on breakpoint-bravo) ##CROSS: fork breakpoint
 	OsakaTime           *uint64 `json:"osakaTime,omitempty"`           // Osaka switch time (nil = no fork, 0 = already on osaka)
 	BPO1Time            *uint64 `json:"bpo1Time,omitempty"`            // BPO1 switch time (nil = no fork, 0 = already on bpo1)
 	BPO2Time            *uint64 `json:"bpo2Time,omitempty"`            // BPO2 switch time (nil = no fork, 0 = already on bpo2)
@@ -859,6 +862,9 @@ func (c *ChainConfig) String() string {
 	if c.BreakpointAlphaTime != nil {
 		result += fmt.Sprintf(", BreakpointAlphaTime: %v", *c.BreakpointAlphaTime)
 	}
+	if c.BreakpointBravoTime != nil {
+		result += fmt.Sprintf(", BreakpointBravoTime: %v", *c.BreakpointBravoTime)
+	}
 	// ##
 	if c.OsakaTime != nil {
 		result += fmt.Sprintf(", OsakaTime: %v", *c.OsakaTime)
@@ -935,6 +941,9 @@ func (c *ChainConfig) Description() string {
 	}
 	if c.BreakpointAlphaTime != nil {
 		banner += printFork("BreakpointAlpha", c.BreakpointAlphaTime, nil)
+	}
+	if c.BreakpointBravoTime != nil {
+		banner += printFork("BreakpointBravo", c.BreakpointBravoTime, nil)
 	}
 	// ##
 	if c.OsakaTime != nil {
@@ -1162,6 +1171,11 @@ func (c *ChainConfig) IsOnBreakpointAlpha(currentBlockNumber *big.Int, lastBlock
 	return !c.IsBreakpointAlpha(lastBlockNumber, lastBlockTime) && c.IsBreakpointAlpha(currentBlockNumber, currentBlockTime)
 }
 
+// IsBreakpointBravo returns whether time is either equal to the BreakpointBravo fork time or greater.
+func (c *ChainConfig) IsBreakpointBravo(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.BreakpointBravoTime, time)
+}
+
 // ##
 
 // ##CROSS: istanbul posa
@@ -1300,6 +1314,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "pragueTime", timestamp: c.PragueTime, optional: true},
 		{name: "breakpointTime", timestamp: c.BreakpointTime, optional: true},           // ##CROSS: fork breakpoint
 		{name: "breakpointAlphaTime", timestamp: c.BreakpointAlphaTime, optional: true}, // ##CROSS: fork breakpoint
+		{name: "breakpointBravoTime", timestamp: c.BreakpointBravoTime, optional: true}, // ##CROSS: fork breakpoint
 		{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
@@ -1469,6 +1484,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.BreakpointAlphaTime, newcfg.BreakpointAlphaTime, headTimestamp) {
 		return newTimestampCompatError("BreakpointAlpha fork timestamp", c.BreakpointAlphaTime, newcfg.BreakpointAlphaTime)
 	}
+	if isForkTimestampIncompatible(c.BreakpointBravoTime, newcfg.BreakpointBravoTime, headTimestamp) {
+		return newTimestampCompatError("BreakpointBravo fork timestamp", c.BreakpointBravoTime, newcfg.BreakpointBravoTime)
+	}
 	// ##
 	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
 		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
@@ -1528,6 +1546,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	case c.IsOsaka(london, time):
 		return forks.Osaka
 	// ##CROSS: fork breakpoint
+	case c.IsBreakpointBravo(london, time):
+		return forks.BreakpointBravo
 	case c.IsBreakpointAlpha(london, time):
 		return forks.BreakpointAlpha
 	case c.IsBreakpoint(london, time):
@@ -1563,7 +1583,7 @@ func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
 		return c.BlobScheduleConfig.BPO1
 	case forks.Osaka:
 		return c.BlobScheduleConfig.Osaka
-	case forks.Prague, forks.Breakpoint, forks.BreakpointAlpha: // ##CROSS: fork breakpoint
+	case forks.Prague, forks.Breakpoint, forks.BreakpointAlpha, forks.BreakpointBravo: // ##CROSS: fork breakpoint
 		return c.BlobScheduleConfig.Prague
 	case forks.Cancun:
 		return c.BlobScheduleConfig.Cancun
@@ -1617,6 +1637,8 @@ func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	case forks.Osaka:
 		return c.OsakaTime
 	// ##CROSS: fork breakpoint
+	case forks.BreakpointBravo:
+		return c.BreakpointBravoTime
 	case forks.BreakpointAlpha:
 		return c.BreakpointAlphaTime
 	case forks.Breakpoint:
