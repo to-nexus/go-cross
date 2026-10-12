@@ -40,8 +40,11 @@ const (
 	Adventure // ##CROSS: fork adventure
 	Cancun
 	Prague
-	Breakpoint      // ##CROSS: fork breakpoint
-	BreakpointAlpha // ##CROSS: fork breakpoint
+	// ##CROSS: fork breakpoint
+	Breakpoint
+	BreakpointAlpha
+	BreakpointBravo
+	// ##
 	Osaka
 	BPO1
 	BPO2
@@ -81,13 +84,16 @@ var forkToString = map[Fork]string{
 	Adventure:        "Adventure", // ##CROSS: fork adventure
 	Cancun:           "Cancun",
 	Prague:           "Prague",
-	Breakpoint:       "Breakpoint",      // ##CROSS: fork breakpoint
-	BreakpointAlpha:  "BreakpointAlpha", // ##CROSS: fork breakpoint
-	Osaka:            "Osaka",
-	BPO1:             "BPO1",
-	BPO2:             "BPO2",
-	BPO3:             "BPO3",
-	BPO4:             "BPO4",
-	BPO5:             "BPO5",
-	Amsterdam:        "Amsterdam",
+	// ##CROSS: fork breakpoint
+	Breakpoint:      "Breakpoint",
+	BreakpointAlpha: "BreakpointAlpha",
+	BreakpointBravo: "BreakpointBravo",
+	// ##
+	Osaka:     "Osaka",
+	BPO1:      "BPO1",
+	BPO2:      "BPO2",
+	BPO3:      "BPO3",
+	BPO4:      "BPO4",
+	BPO5:      "BPO5",
+	Amsterdam: "Amsterdam",
 }
