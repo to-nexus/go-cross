@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -23,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/stretchr/testify/assert"
@@ -41,9 +44,17 @@ func TestEnginePrepare(t *testing.T) {
 	require.NoError(t, err)
 	blsKey, err := bls.RandKey()
 	require.NoError(t, err)
+
 	address := crypto.PubkeyToAddress(key.PublicKey)
 	// Keep the parent ahead of the wall clock so Prepare picks a deterministic timestamp.
-	parent := &types.Header{Number: big.NewInt(0), Time: uint64(time.Now().Unix()) + 30, GasLimit: 10_000_000, BaseFee: big.NewInt(1_000_000_000), MixDigest: types.IstanbulDigest}
+	parent := &types.Header{
+		Number:    big.NewInt(0),
+		Time:      uint64(time.Now().Unix()) + 30,
+		GasLimit:  10_000_000,
+		BaseFee:   big.NewInt(1_000_000_000),
+		MixDigest: types.IstanbulDigest,
+	}
+
 	for _, test := range []struct {
 		name   string
 		fork   *uint64
@@ -58,49 +69,77 @@ func TestEnginePrepare(t *testing.T) {
 		{"bravo without posa", newUint64(0), types.IstanbulDigestV2, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			config := &params.ChainConfig{ChainID: big.NewInt(1), LondonBlock: big.NewInt(0), BreakpointBravoTime: test.fork, Istanbul: &params.IstanbulConfig{}}
+			config := &params.ChainConfig{
+				ChainID:             big.NewInt(1),
+				LondonBlock:         big.NewInt(0),
+				BreakpointBravoTime: test.fork,
+				Istanbul:            &params.IstanbulConfig{},
+			}
 			if test.posa {
 				config.BreakpointTime = newUint64(0)
 				config.Istanbul.PoSA = &params.PoSAConfig{}
 			}
+
 			chain := &mockChainHeaderReader{config: config, headers: map[common.Hash]*types.Header{parent.Hash(): parent}}
 			cfg := istanbul.NewConfig(config)
 			cfg.AllowedFutureBlockTime = 120
+
 			engine := NewEngine(cfg, address, func(data []byte) ([]byte, error) {
 				return crypto.Sign(crypto.Keccak256(data), key)
 			}, nil, func(data []byte) ([]byte, error) {
 				return blsKey.Sign(data).Marshal(), nil
 			}, nil, nil)
+
 			valSet := validator.NewSet([]common.Address{address}, []types.BLSPublicKey{types.BytesToBLSPublicKey(blsKey.PublicKey().Marshal())}, cfg.ProposerPolicy)
-			header := &types.Header{Number: big.NewInt(1), ParentHash: parent.Hash(), GasLimit: parent.GasLimit, UncleHash: types.EmptyUncleHash}
+			header := &types.Header{
+				Number:     big.NewInt(1),
+				ParentHash: parent.Hash(),
+				GasLimit:   parent.GasLimit,
+				UncleHash:  types.EmptyUncleHash,
+			}
 			header.BaseFee = eip1559.CalcBaseFee(config, parent)
 			// Prepare must overwrite a stale version and use its final timestamp.
 			header.MixDigest[15] = 0xff
-			require.NoError(t, engine.Prepare(chain, header, valSet))
+
+			err := engine.Prepare(chain, header, valSet)
+			require.NoError(t, err)
 			assert.Equal(t, parent.Time+1, header.Time)
 			assert.Equal(t, test.digest[:16], header.MixDigest[:16])
+
 			header.Coinbase = address
-			assert.ErrorIs(t, engine.VerifyHeader(chain, header, nil, valSet), istanbul.ErrEmptyCommittedSeals)
+			err = engine.VerifyHeader(chain, header, nil, valSet)
+			assert.ErrorIs(t, err, istanbul.ErrEmptyCommittedSeals)
+
 			hash := header.Hash()
 			seal, err := crypto.Sign(PrepareCommittedSeal(header, 0), key)
 			require.NoError(t, err)
+
 			if test.posa {
 				seal = blsKey.Sign(PrepareCommittedSeal(header, 0)).Marshal()
 			}
-			require.NoError(t, engine.CommitHeader(chain, header, []istanbul.SignedSeal{signedSeal{0, seal}}, big.NewInt(0)))
+
+			err = engine.CommitHeader(chain, header, []istanbul.SignedSeal{signedSeal{0, seal}}, big.NewInt(0))
+			require.NoError(t, err)
 			assert.Equal(t, hash, header.Hash())
-			require.NoError(t, engine.VerifyHeader(chain, header, nil, valSet))
+
+			err = engine.VerifyHeader(chain, header, nil, valSet)
+			require.NoError(t, err)
+
 			for _, version := range []byte{0x20, 0x32, 0xff} {
 				if version == test.digest[15] {
 					continue
 				}
 				bad := types.CopyHeader(header)
 				bad.MixDigest[15] = version
-				assert.ErrorIs(t, engine.VerifyHeader(chain, bad, nil, valSet), istanbul.ErrInvalidMixDigest)
+				err = engine.VerifyHeader(chain, bad, nil, valSet)
+				assert.ErrorIs(t, err, istanbul.ErrInvalidMixDigest)
 			}
+
 			bad := types.CopyHeader(header)
 			bad.MixDigest[31] ^= 1
-			assert.ErrorIs(t, engine.VerifyHeader(chain, bad, nil, valSet), istanbul.ErrInvalidMixDigest)
+			err = engine.VerifyHeader(chain, bad, nil, valSet)
+			assert.ErrorIs(t, err, istanbul.ErrInvalidMixDigest)
+
 			// PREVRANDAO includes the prefix as well as the random seed.
 			random := core.NewEVMBlockContext(header, &chainMock{config: config}, &address).Random
 			require.NotNil(t, random)
@@ -109,18 +148,33 @@ func TestEnginePrepare(t *testing.T) {
 			other.MixDigest[15] ^= 0x20 ^ 0x32
 			otherRandom := core.NewEVMBlockContext(other, &chainMock{config: config}, &address).Random
 			assert.NotEqual(t, *random, *otherRandom)
+
 			// Verify the next block with a versioned parent, including a legacy-to-v2 transition.
 			chain.headers[header.Hash()] = header
 			next := &types.Header{Number: big.NewInt(2), ParentHash: header.Hash(), GasLimit: header.GasLimit, UncleHash: types.EmptyUncleHash}
 			next.BaseFee = eip1559.CalcBaseFee(config, header)
-			require.NoError(t, engine.Prepare(chain, next, valSet))
+
+			err = engine.Prepare(chain, next, valSet)
+			require.NoError(t, err)
+
 			next.Coinbase = address
-			assert.ErrorIs(t, engine.VerifyHeader(chain, next, nil, valSet), istanbul.ErrEmptyCommittedSeals)
-			genesis := &types.Header{Number: big.NewInt(0), Time: parent.Time, MixDigest: types.IstanbulDigest, UncleHash: types.EmptyUncleHash, Difficulty: istanbul.DefaultDifficulty}
-			require.NoError(t, ApplyHeaderIstanbulExtra(genesis))
-			require.NoError(t, engine.VerifyHeader(chain, genesis, nil, nil))
+			err = engine.VerifyHeader(chain, next, nil, valSet)
+			assert.ErrorIs(t, err, istanbul.ErrEmptyCommittedSeals)
+
+			genesis := &types.Header{
+				Number:     big.NewInt(0),
+				Time:       parent.Time,
+				MixDigest:  types.IstanbulDigest,
+				UncleHash:  types.EmptyUncleHash,
+				Difficulty: istanbul.DefaultDifficulty,
+			}
+			err = ApplyHeaderIstanbulExtra(genesis)
+			require.NoError(t, err)
+			err = engine.VerifyHeader(chain, genesis, nil, nil)
+			require.NoError(t, err)
 			genesis.MixDigest = types.IstanbulDigestV2
-			assert.ErrorIs(t, engine.VerifyHeader(chain, genesis, nil, nil), istanbul.ErrInvalidMixDigest)
+			err = engine.VerifyHeader(chain, genesis, nil, nil)
+			assert.ErrorIs(t, err, istanbul.ErrInvalidMixDigest)
 		})
 	}
 }
@@ -177,6 +231,103 @@ func TestEngineVerifyCommittedSeals(t *testing.T) {
 		}
 	}
 }
+
+// ##CROSS: istanbul posa
+func TestEngineVerifyBlockProposal(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	blsKey, err := bls.RandKey()
+	require.NoError(t, err)
+
+	var (
+		address = crypto.PubkeyToAddress(key.PublicKey)
+		signer  = types.BytesToBLSPublicKey(blsKey.PublicKey().Marshal())
+		// Block 2 starts a validator epoch. A huge council period keeps the council rollover path out of the test.
+		config = &params.ChainConfig{
+			ChainID:        big.NewInt(1),
+			LondonBlock:    big.NewInt(0),
+			BreakpointTime: newUint64(0),
+			Istanbul: &params.IstanbulConfig{
+				PoSA: &params.PoSAConfig{
+					ValidatorEpochLength: 2,
+					CouncilPeriod:        math.MaxUint64,
+				},
+			},
+		}
+		cfg = istanbul.NewConfig(config)
+		// The contract returns this validator for every getActiveValidators call.
+		method   = string(breakpoint.NewValidatorSet().PackGetActiveValidators()[:4])
+		response = packActiveValidatorsResponse(t, []common.Address{address}, [][]byte{signer.Bytes()})
+		contract = &mockContractBackend{codeAtBytes: []byte{1}, callResponses: map[string][][]byte{method: slices.Repeat([][]byte{response}, 16)}}
+		valSet   = validator.NewSet([]common.Address{address}, []types.BLSPublicKey{signer}, cfg.ProposerPolicy)
+	)
+
+	cfg.AllowedFutureBlockTime = 120
+	engine := NewEngine(cfg, address, func(data []byte) ([]byte, error) {
+		return crypto.Sign(crypto.Keccak256(data), key)
+	}, nil, func(data []byte) ([]byte, error) {
+		return blsKey.Sign(data).Marshal(), nil
+	}, nil, contract)
+
+	// Keep the parents ahead of the wall clock so Prepare picks deterministic timestamps.
+	parent0 := &types.Header{
+		Number:    big.NewInt(0),
+		Time:      uint64(time.Now().Unix()) + 30,
+		GasLimit:  10_000_000,
+		BaseFee:   big.NewInt(1_000_000_000),
+		MixDigest: types.IstanbulDigest,
+	}
+	parent1 := &types.Header{
+		Number:     big.NewInt(1),
+		ParentHash: parent0.Hash(),
+		Time:       parent0.Time + 1,
+		GasLimit:   parent0.GasLimit,
+		MixDigest:  types.IstanbulDigest,
+	}
+	parent1.BaseFee = eip1559.CalcBaseFee(config, parent0)
+	chain := &mockChainHeaderReader{
+		config: config,
+		headers: map[common.Hash]*types.Header{
+			parent0.Hash(): parent0,
+			parent1.Hash(): parent1,
+		},
+	}
+
+	// propose builds an unsealed proposal on top of parent the way a proposer does, then applies the edits.
+	propose := func(t *testing.T, parent *types.Header, edits ...ApplyExtra) *types.Block {
+		header := &types.Header{
+			Number:     new(big.Int).Add(parent.Number, common.Big1),
+			ParentHash: parent.Hash(),
+			GasLimit:   parent.GasLimit,
+			UncleHash:  types.EmptyUncleHash,
+		}
+		header.BaseFee = eip1559.CalcBaseFee(config, parent)
+		require.NoError(t, engine.Prepare(chain, header, valSet))
+		header.Coinbase = address
+		require.NoError(t, ApplyHeaderIstanbulExtra(header, edits...))
+		return types.NewBlock(header, &types.Body{}, nil, trie.NewStackTrie(nil))
+	}
+
+	t.Run("accepts a proposal outside an epoch", func(t *testing.T) {
+		_, err := engine.VerifyBlockProposal(chain, propose(t, parent0), valSet)
+		require.NoError(t, err)
+	})
+	t.Run("rejects validators outside an epoch", func(t *testing.T) {
+		// The proposal has no seal yet, so this was accepted and only failed after commit.
+		_, err := engine.VerifyBlockProposal(chain, propose(t, parent0, WriteValidators([]common.Address{address})), valSet)
+		require.ErrorIs(t, err, istanbul.ErrInvalidCommittedSeals)
+	})
+	t.Run("accepts epoch validators that match the contract", func(t *testing.T) {
+		_, err := engine.VerifyBlockProposal(chain, propose(t, parent1), valSet)
+		require.NoError(t, err)
+	})
+	t.Run("rejects epoch validators that differ from the contract", func(t *testing.T) {
+		_, err := engine.VerifyBlockProposal(chain, propose(t, parent1, WriteValidators([]common.Address{{2}})), valSet)
+		require.ErrorIs(t, err, errValidatorSetMismatch)
+	})
+}
+
+// ##
 
 func TestPrepareExtra(t *testing.T) {
 	expectedResult := hexutil.MustDecode("0xf87ba00000000000000000000000000000000000000000000000000000000000000000f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080c080")
@@ -673,6 +824,7 @@ func TestVerifyProposalTransactions(t *testing.T) {
 	header := &types.Header{
 		Number:   big.NewInt(1),
 		Time:     1,
+		GasLimit: 3 * params.TxGas,
 		Coinbase: crypto.PubkeyToAddress(proposerKey.PublicKey),
 	}
 	signer := types.MakeSigner(chainConfig, header.Number, header.Time)
@@ -726,6 +878,11 @@ func TestVerifyProposalTransactions(t *testing.T) {
 			name:    "rejects invalid fee payer signature",
 			txs:     []*types.Transaction{invalidFeePayerTx},
 			wantErr: "invalid fee payer",
+		},
+		{
+			name:    "rejects more transactions than gas limit allows",
+			txs:     []*types.Transaction{invalidSenderTx, normalTx, validFeePayerTx, systemTx},
+			wantErr: "too many transactions: have 4, max 3",
 		},
 	}
 	for _, tt := range tests {

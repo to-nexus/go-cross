@@ -17,7 +17,6 @@
 package backend
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"math/big"
 	"reflect"
@@ -198,7 +197,7 @@ func TestSealStopChannel(t *testing.T) {
 func TestSealCommittedOtherHash(t *testing.T) {
 	chain, engine := newBlockChain(1)
 	defer engine.Stop()
-	block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
+	block := updateIstanbulBlock(makeBlockWithoutSeal(chain, engine, chain.Genesis()), engine.Address()) // ##CROSS: istanbul validation
 	// ##CROSS: contract upgrade
 	// FinalizeAndAssemble requires the parent block, so we need to write new block to the chain
 	state, _ := chain.State()
@@ -206,8 +205,10 @@ func TestSealCommittedOtherHash(t *testing.T) {
 		t.Fatalf("failed to write block: %v", err)
 	}
 	// ##
-	otherBlock := makeBlockWithoutSeal(chain, engine, block)
-	expectedCommittedSeal := append([]byte{1, 2, 3}, bytes.Repeat([]byte{0x00}, types.IstanbulExtraSeal-3)...)
+	// ##CROSS: istanbul validation
+	otherBlock := updateIstanbulBlock(makeBlockWithoutSeal(chain, engine, block), engine.Address())
+	committedSeal := commitSeal(t, engine.privateKey, otherBlock)
+	// ##
 
 	eventSub := engine.EventMux().Subscribe(istanbul.RequestEvent{})
 	blockOutputChannel := make(chan *types.Block)
@@ -218,7 +219,7 @@ func TestSealCommittedOtherHash(t *testing.T) {
 		if _, ok := ev.Data.(istanbul.RequestEvent); !ok {
 			t.Errorf("unexpected event comes: %v", reflect.TypeOf(ev.Data))
 		}
-		if err := engine.Commit(otherBlock, []istanbul.SignedSeal{signedSeal(expectedCommittedSeal)}, big.NewInt(0)); err != nil {
+		if err := engine.Commit(otherBlock, []istanbul.SignedSeal{committedSeal}, big.NewInt(0)); err != nil {
 			t.Error(err.Error())
 		}
 		eventSub.Unsubscribe()

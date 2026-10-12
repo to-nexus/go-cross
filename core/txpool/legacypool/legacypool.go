@@ -1678,6 +1678,39 @@ func (pool *LegacyPool) demoteUnexecutables() {
 			}
 		}
 	}
+	// ##CROSS: fee delegation
+	// Check the fee payer totals, after every sender dropped its mined and unpayable txs.
+	// Demote from the highest nonce down, so the txs that the balance covers stay pending.
+	for addr, list := range pool.pending {
+		txs := list.Flatten()
+		var demoted types.Transactions
+		for i := len(txs) - 1; i >= 0; i-- {
+			tx := txs[i]
+			if tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
+				continue
+			}
+			payer := *tx.FeePayer()
+			if sum := pool.feePayerCost[payer]; sum == nil || pool.currentState.GetBalance(payer).Cmp(sum) >= 0 {
+				continue
+			}
+			if removed, cascaded := list.Remove(tx); removed {
+				demoted = append(demoted, tx)
+				demoted = append(demoted, cascaded...)
+				log.Trace("Demoting fee-delegated tx due to fee payer cumulative budget", "hash", tx.Hash())
+			}
+		}
+		for _, tx := range demoted {
+			pool.enqueueTx(tx.Hash(), tx, false)
+		}
+		pendingGauge.Dec(int64(len(demoted)))
+		if list.Empty() {
+			delete(pool.pending, addr)
+			if _, ok := pool.queue.get(addr); !ok {
+				pool.reserver.Release(addr)
+			}
+		}
+	}
+	// ##
 }
 
 // accountSet is simply a set of addresses to check for existence, and a signer

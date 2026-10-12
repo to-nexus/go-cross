@@ -3,6 +3,7 @@ package ethapi
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -31,16 +32,22 @@ func (api *CrossAPI) GetCheckpointProof(ctx context.Context, blockNr, startNr, e
 	if startNr >= endNr || !(startNr <= blockNr && blockNr <= endNr) {
 		return nil, errors.New("invalid range")
 	}
-	if endNr-startNr > 86400 {
+	if endNr-startNr >= 86400 {
 		return nil, errors.New("range too large")
 	}
 
-	// collect block hashes
+	// Collect block hashes.
 	hashes := make([][]byte, 0, endNr-startNr+1)
-	for n := startNr; n <= endNr; n++ {
-		h, err := api.b.HeaderByNumber(ctx, n)
+	for i := range endNr - startNr + 1 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		h, err := api.b.HeaderByNumber(ctx, startNr+i)
 		if err != nil {
 			return nil, err
+		}
+		if h == nil {
+			return nil, fmt.Errorf("header %d not found", startNr+i)
 		}
 		hashes = append(hashes, h.Hash().Bytes())
 	}

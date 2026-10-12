@@ -380,6 +380,39 @@ func TestUDPv5_findnodeCall(t *testing.T) {
 	}
 }
 
+// ##CROSS: fix upstream 9429725 (#35043)
+func TestUDPv5_findnodeCall_ZeroRespCount(t *testing.T) {
+	t.Parallel()
+	test := newUDPV5Test(t)
+	defer test.close()
+
+	var (
+		distances = []uint{230}
+		remote    = test.getNode(test.remotekey, test.remoteaddr).Node()
+		nodes     = nodesAtDistance(remote.ID(), int(distances[0]), 2)
+		done      = make(chan error, 1)
+		response  []*enode.Node
+	)
+	go func() {
+		var err error
+		response, err = test.udp.Findnode(remote, distances)
+		done <- err
+	}()
+
+	test.waitPacketOut(func(p *v5wire.Findnode, addr netip.AddrPort, _ v5wire.Nonce) {
+		test.packetIn(&v5wire.Nodes{ReqID: p.ReqID, RespCount: 0, Nodes: nodesToRecords(nodes)})
+	})
+
+	if err := <-done; err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(response, nodes) {
+		t.Fatalf("wrong nodes in response")
+	}
+}
+
+// ##
+
 // BadIdentityScheme mocks an identity scheme not supported by the test node.
 type BadIdentityScheme struct{}
 
