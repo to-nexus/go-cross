@@ -15,18 +15,19 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/params/predeploy"
+	paramspredeploy "github.com/ethereum/go-ethereum/params/predeploy"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
 )
 
-// ##CROSS: fork breakpoint
+// ##CROSS: make genesis
 
 const initialOperatorStake = 1_000_000
 
@@ -44,42 +45,8 @@ var (
 	]`)
 )
 
-// MakeBreakpointGenesis adds initialized Breakpoint contracts to a custom genesis.
-func MakeBreakpointGenesis(genesis *Genesis) error {
-	return makeBreakpointGenesis(genesis, nil)
-}
-
-//nolint:unused
-func clonePoSAChainConfig(config *params.ChainConfig) *params.ChainConfig {
-	cloned := *config
-	if config.Istanbul != nil {
-		istanbul := *config.Istanbul
-		cloned.Istanbul = &istanbul
-		if config.Istanbul.PoSA != nil {
-			posa := *config.Istanbul.PoSA
-			posa.Validators = append([]params.PoSAValidator(nil), config.Istanbul.PoSA.Validators...)
-			cloned.Istanbul.PoSA = &posa
-		}
-	}
-	return &cloned
-}
-
-//nolint:unused
-func cloneAlloc(alloc types.GenesisAlloc) types.GenesisAlloc {
-	cloned := make(types.GenesisAlloc, len(alloc))
-	for addr, account := range alloc {
-		if account.Balance != nil {
-			account.Balance = new(big.Int).Set(account.Balance)
-		}
-		account.Code = common.CopyBytes(account.Code)
-		account.Storage = maps.Clone(account.Storage)
-		cloned[addr] = account
-	}
-	return cloned
-}
-
 // makeBreakpointGenesis creates a Breakpoint genesis allocation with initialized contracts and state.
-func makeBreakpointGenesis(genesis *Genesis, registeredValidators []params.PoSAValidator) error {
+func makeBreakpointGenesis(genesis *Genesis) error {
 	if err := prepareBreakpointConfig(genesis); err != nil {
 		return err
 	}
@@ -90,7 +57,7 @@ func makeBreakpointGenesis(genesis *Genesis, registeredValidators []params.PoSAV
 	if err != nil {
 		return err
 	}
-	if err := initializeBreakpointState(genesis, statedb, registeredValidators); err != nil {
+	if err := initializeBreakpointState(genesis, statedb); err != nil {
 		return err
 	}
 	alloc, err := dumpBreakpointState(statedb, genesis.Config)
@@ -168,7 +135,7 @@ func addBreakpointGenesisCode(genesis *Genesis) error {
 		params.WithdrawalQueueAddress:    {Balance: new(big.Int), Nonce: 1, Code: params.WithdrawalQueueCode},
 		params.ConsolidationQueueAddress: {Balance: new(big.Int), Nonce: 1, Code: params.ConsolidationQueueCode},
 	}
-	maps.Insert(tmpl, maps.All(predeploy.BreakpointGenesisAlloc()))
+	maps.Insert(tmpl, maps.All(paramspredeploy.BreakpointGenesisAlloc()))
 
 	// Add the Breakpoint contracts to the genesis allocation.
 	for addr, account := range tmpl {
@@ -212,13 +179,10 @@ func makeBreakpointState(alloc types.GenesisAlloc) (*state.StateDB, error) {
 }
 
 // initializeBreakpointState runs the initialization calls for every Breakpoint contract.
-func initializeBreakpointState(genesis *Genesis, statedb *state.StateDB, registeredValidators []params.PoSAValidator) error {
+func initializeBreakpointState(genesis *Genesis, statedb *state.StateDB) error {
 	posa := genesis.Config.Istanbul.PoSA
 	admin := posa.Admin
 	one := big.NewInt(1)
-	if registeredValidators == nil {
-		registeredValidators = posa.Validators
-	}
 
 	// Run the PoSA contract initialization calls.
 	calls := []genesisCall{
@@ -235,14 +199,14 @@ func initializeBreakpointState(genesis *Genesis, statedb *state.StateDB, registe
 		}
 	}
 
-	// Collect parameters from the registered validators.
+	// Collect parameters from the PoSA validators.
 	var (
-		operators  = make([]common.Address, 0, len(registeredValidators))
-		validators = make([]common.Address, 0, len(registeredValidators))
-		signers    = make([][]byte, 0, len(registeredValidators))
-		ids        = make([]string, 0, len(registeredValidators))
+		operators  = make([]common.Address, 0, len(posa.Validators))
+		validators = make([]common.Address, 0, len(posa.Validators))
+		signers    = make([][]byte, 0, len(posa.Validators))
+		ids        = make([]string, 0, len(posa.Validators))
 	)
-	for _, validator := range registeredValidators {
+	for _, validator := range posa.Validators {
 		operators = append(operators, validator.Operator)
 		validators = append(validators, validator.Validator)
 		signers = append(signers, common.CopyBytes(validator.Signer))
@@ -266,7 +230,7 @@ func initializeBreakpointState(genesis *Genesis, statedb *state.StateDB, registe
 		}
 	}
 
-	// Stake the initial operator stake for each registered validator.
+	// Stake the initial operator stake for each validator.
 	stake := new(big.Int).Mul(big.NewInt(initialOperatorStake), big.NewInt(params.Ether))
 	totalStake := new(big.Int).Mul(stake, new(big.Int).SetUint64(uint64(len(operators))))
 	statedb.AddBalance(system, uint256.MustFromBig(totalStake), tracing.BalanceIncreaseGenesisBalance)
@@ -380,3 +344,140 @@ func mustGenesisABI(input string) abi.ABI {
 	}
 	return parsed
 }
+
+var (
+	bridgeGenesisABI = mustGenesisABI(`[
+		{"type":"function","name":"initialize","inputs":[{"name":"owner","type":"address"},{"name":"dev","type":"address"},{"name":"threshold","type":"uint8"}]}
+	]`)
+
+	// initializableSlot is the OpenZeppelin Initializable storage slot.
+	initializableSlot = common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00")
+	// initializersDisabled is the slot value that _disableInitializers sets.
+	initializersDisabled = common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff")
+)
+
+// GenesisContracts selects the contracts that MakeGenesis adds to a custom genesis.
+type GenesisContracts struct {
+	Breakpoint       bool // Breakpoint system contracts, active from genesis
+	Bridge           bool // CrossBridge proxy and implementation
+	Multicall        bool // Multicall3
+	SingletonFactory bool // deterministic deployment proxies
+
+	BridgeOwner     common.Address // bridge admin; the PoSA admin if zero
+	BridgeDev       common.Address // bridge reward wallet; BridgeOwner if zero
+	BridgeThreshold uint8          // required bridge validator signatures; 1 if zero
+}
+
+// MakeGenesis adds CrossEx and the selected contracts to a custom genesis, and initializes them.
+// Accounts that already hold a balance keep it.
+func MakeGenesis(genesis *Genesis, opts GenesisContracts) error {
+	if genesis == nil || genesis.Config == nil {
+		return errors.New("genesis chain config is required")
+	}
+	// Copy the map, so a shared allocation such as a built-in genesis stays unchanged.
+	genesis.Alloc = maps.Clone(genesis.Alloc)
+	if genesis.Alloc == nil {
+		genesis.Alloc = make(types.GenesisAlloc)
+	}
+	if opts.Breakpoint {
+		if err := makeBreakpointGenesis(genesis); err != nil {
+			return err
+		}
+	}
+
+	// balance keeps the existing balance. Genesis JSON requires a balance on every account.
+	balance := func(addr common.Address) *big.Int {
+		if existing := genesis.Alloc[addr].Balance; existing != nil {
+			return new(big.Int).Set(existing)
+		}
+		return new(big.Int)
+	}
+
+	// CrossEx is always added. The Breakpoint fork replaces its code, so pick the code active at genesis.
+	crossEx := types.Account{Balance: balance(contracts.CrossExAddr), Nonce: 1, Code: common.Hex2Bytes(predeploy.CrossExCode)}
+	if genesis.Config.IsBreakpoint(common.Big0, genesis.Timestamp) {
+		crossEx.Code = common.Hex2Bytes(breakpoint.CrossExCode)
+	}
+	genesis.Alloc[contracts.CrossExAddr] = crossEx
+
+	extra := make(types.GenesisAlloc)
+	if opts.Bridge {
+		extra[contracts.BridgeAddr] = types.Account{
+			Nonce: 1,
+			Code:  common.Hex2Bytes(predeploy.CrossBridgeCode),
+			Storage: map[common.Hash]common.Hash{
+				contracts.ProxyImplSlot: common.BytesToHash(contracts.BridgeImplAddr.Bytes()),
+			},
+		}
+		// Genesis code never runs a constructor, so disable the implementation initializer here.
+		extra[contracts.BridgeImplAddr] = types.Account{
+			Nonce:   1,
+			Code:    common.Hex2Bytes(predeploy.CrossBridgeImplCode),
+			Storage: map[common.Hash]common.Hash{initializableSlot: initializersDisabled},
+		}
+	}
+	if opts.Multicall {
+		extra[contracts.Multicall3Addr] = types.Account{Nonce: 1, Code: common.Hex2Bytes(predeploy.Multicall3Code)}
+	}
+	if opts.SingletonFactory {
+		extra[contracts.SingletonFactoryAddr] = types.Account{Nonce: 1, Code: common.Hex2Bytes(predeploy.SingletonFactoryCode)}
+		extra[contracts.SingletonFactory2Addr] = types.Account{Nonce: 1, Code: common.Hex2Bytes(predeploy.SingletonFactoryCode)}
+	}
+	if genesis.Config.IsPrague(common.Big0, genesis.Timestamp) && len(genesis.Alloc[params.HistoryStorageAddress].Code) == 0 {
+		extra[params.HistoryStorageAddress] = types.Account{Nonce: 1, Code: params.HistoryStorageCode}
+	}
+	for addr, account := range extra {
+		existing, ok := genesis.Alloc[addr]
+		if ok && (existing.Nonce != 0 || len(existing.Code) != 0 || len(existing.Storage) != 0) {
+			return fmt.Errorf("genesis allocation conflicts with contract at %s", addr)
+		}
+		account.Balance = balance(addr)
+		genesis.Alloc[addr] = account
+	}
+
+	if opts.Bridge {
+		if err := initializeGenesisBridge(genesis, opts); err != nil {
+			return err
+		}
+	}
+	return genesis.validateBreakpointAlloc()
+}
+
+// initializeGenesisBridge runs the CrossBridge initializer, so no one else can take the bridge after genesis.
+func initializeGenesisBridge(genesis *Genesis, opts GenesisContracts) error {
+	owner := opts.BridgeOwner
+	if owner == (common.Address{}) && genesis.Config.Istanbul != nil && genesis.Config.Istanbul.PoSA != nil {
+		owner = genesis.Config.Istanbul.PoSA.Admin
+	}
+	if owner == (common.Address{}) {
+		return errors.New("bridge owner is required without a PoSA admin")
+	}
+	dev := opts.BridgeDev
+	if dev == (common.Address{}) {
+		dev = owner
+	}
+	threshold := opts.BridgeThreshold
+	if threshold == 0 {
+		threshold = 1
+	}
+
+	statedb, err := makeBreakpointState(genesis.Alloc)
+	if err != nil {
+		return err
+	}
+	call := genesisCall{owner, contracts.BridgeAddr, bridgeGenesisABI, "initialize", nil, []any{owner, dev, threshold}}
+	if err := runGenesisCall(genesis, statedb, call); err != nil {
+		return err
+	}
+	if statedb.GetState(contracts.BridgeAddr, initializableSlot) == (common.Hash{}) {
+		return errors.New("bridge is still uninitialized after its initializer ran")
+	}
+	alloc, err := dumpBreakpointState(statedb, genesis.Config)
+	if err != nil {
+		return err
+	}
+	genesis.Alloc = alloc
+	return nil
+}
+
+// ##

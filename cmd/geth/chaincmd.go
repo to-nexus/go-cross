@@ -86,34 +86,6 @@ It expects the genesis file as argument.`,
 The dumpgenesis command prints the genesis configuration of the network preset
 if one is set.  Otherwise it prints the genesis from the datadir.`,
 	}
-	// ##CROSS: fork breakpoint
-	makeBreakpointGenesisCommand = &cli.Command{
-		Action:    makeBreakpointGenesis,
-		Name:      "make-breakpoint-genesis",
-		Usage:     "Builds a custom genesis with Breakpoint active from block one",
-		ArgsUsage: "[<inputGenesis> <outputGenesis>]",
-		Flags: []cli.Flag{
-			&cli.UintFlag{
-				Name:  "validators",
-				Usage: "Number of validators to generate without input arguments",
-				Value: 3,
-			},
-			&cli.BoolFlag{
-				Name:  "json",
-				Usage: "Print generated keys as JSON",
-			},
-			&cli.BoolFlag{
-				Name:    "force",
-				Aliases: []string{"f"},
-				Usage:   "Overwrite the output file if it already exists",
-			},
-		},
-		Description: `
-The make-breakpoint-genesis command installs and initializes the Breakpoint
-contracts using the Istanbul PoSA configuration in the input genesis. Without
-arguments, it generates genesis.json and prints all keys.`,
-	}
-	// ##
 	importCommand = &cli.Command{
 		Action:    importChain,
 		Name:      "import",
@@ -284,8 +256,9 @@ var (
 // ##CROSS: fork breakpoint
 type (
 	breakpointGenesisKeys struct {
-		admin      *ecdsa.PrivateKey
-		validators []breakpointValidatorKeys
+		admin       *ecdsa.PrivateKey
+		beneficiary *ecdsa.PrivateKey
+		validators  []breakpointValidatorKeys
 	}
 	breakpointValidatorKeys struct {
 		validator *ecdsa.PrivateKey
@@ -294,66 +267,10 @@ type (
 	}
 )
 
-func makeBreakpointGenesis(ctx *cli.Context) error {
-	var (
-		genesis    *core.Genesis
-		keys       *breakpointGenesisKeys
-		outputPath string
-	)
-	switch ctx.Args().Len() {
-	case 0:
-		var err error
-		genesis, keys, err = makeDefaultBreakpointGenesis(ctx.Uint("validators"))
-		if err != nil {
-			return err
-		}
-		outputPath = "genesis.json"
-	case 2:
-		if ctx.IsSet("validators") || ctx.Bool("json") {
-			return errors.New("--validators and --json are only available without input arguments")
-		}
-		inputPath := ctx.Args().Get(0)
-		outputPath = ctx.Args().Get(1)
-		input, err := os.Open(inputPath)
-		if err != nil {
-			return fmt.Errorf("open input genesis: %w", err)
-		}
-		defer input.Close()
-
-		genesis = new(core.Genesis)
-		if err := json.NewDecoder(input).Decode(genesis); err != nil {
-			return fmt.Errorf("decode input genesis: %w", err)
-		}
-		if err := core.MakeBreakpointGenesis(genesis); err != nil {
-			return fmt.Errorf("build Breakpoint genesis: %w", err)
-		}
-	default:
-		return fmt.Errorf("usage: %s", ctx.Command.ArgsUsage)
-	}
-
-	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
-	if ctx.Bool("force") {
-		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-	}
-	output, err := os.OpenFile(outputPath, flags, 0o644)
-	if err != nil {
-		return fmt.Errorf("create output genesis: %w", err)
-	}
-	defer output.Close()
-	encoder := json.NewEncoder(output)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(genesis); err != nil {
-		return fmt.Errorf("encode output genesis: %w", err)
-	}
-	if keys != nil {
-		if err := printBreakpointGenesisKeys(os.Stdout, keys, ctx.Bool("json")); err != nil {
-			return fmt.Errorf("print generated keys: %w", err)
-		}
-	}
-	return nil
-}
-
-func makeDefaultBreakpointGenesis(validatorCount uint) (*core.Genesis, *breakpointGenesisKeys, error) {
+// makeDefaultGenesis generates the PoSA admin, beneficiary, and validator keys, and a genesis that uses them
+// with the CrossDev3 chain config.
+// It sets its own fork times, and enables Breakpoint and BreakpointBravo from genesis if breakpoint is true.
+func makeDefaultGenesis(validatorCount uint, breakpoint bool) (*core.Genesis, *breakpointGenesisKeys, error) {
 	if validatorCount == 0 {
 		return nil, nil, errors.New("validator count must be greater than zero")
 	}
@@ -361,7 +278,11 @@ func makeDefaultBreakpointGenesis(validatorCount uint) (*core.Genesis, *breakpoi
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate PoSA admin key: %w", err)
 	}
-	keys := &breakpointGenesisKeys{admin: admin, validators: make([]breakpointValidatorKeys, validatorCount)}
+	beneficiary, err := crypto.GenerateKey()
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate beneficiary key: %w", err)
+	}
+	keys := &breakpointGenesisKeys{admin: admin, beneficiary: beneficiary, validators: make([]breakpointValidatorKeys, validatorCount)}
 	validators := make([]params.PoSAValidator, len(keys.validators))
 	validatorAddrs := make([]common.Address, len(keys.validators))
 	for i := range keys.validators {
@@ -393,8 +314,19 @@ func makeDefaultBreakpointGenesis(validatorCount uint) (*core.Genesis, *breakpoi
 	config.Istanbul = &istanbulConfig
 	istanbulConfig.PoSA = &posaConfig
 	istanbulConfig.Validators = validatorAddrs
+	beneficiaryAddr := crypto.PubkeyToAddress(beneficiary.PublicKey)
+	istanbulConfig.Beneficiary = &beneficiaryAddr
 	posaConfig.Admin = crypto.PubkeyToAddress(admin.PublicKey)
 	posaConfig.Validators = validators
+
+	// Do not take the CrossDev3 fork schedule.
+	zero := uint64(0)
+	config.ShanghaiTime, config.AdventureTime = &zero, &zero
+	config.CancunTime, config.PragueTime = &zero, &zero
+	config.BreakpointTime, config.BreakpointBravoTime, config.OsakaTime = nil, nil, nil
+	if breakpoint {
+		config.BreakpointTime, config.BreakpointBravoTime = &zero, &zero
+	}
 
 	adminBalance := new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(params.Ether))
 	genesis := &core.Genesis{
@@ -408,9 +340,6 @@ func makeDefaultBreakpointGenesis(validatorCount uint) (*core.Genesis, *breakpoi
 		Alloc: types.GenesisAlloc{
 			posaConfig.Admin: {Balance: adminBalance},
 		},
-	}
-	if err := core.MakeBreakpointGenesis(genesis); err != nil {
-		return nil, nil, fmt.Errorf("build default Breakpoint genesis: %w", err)
 	}
 	return genesis, keys, nil
 }
@@ -440,6 +369,10 @@ func printBreakpointGenesisKeys(w io.Writer, keys *breakpointGenesisKeys, jsonOu
 				"address":    crypto.PubkeyToAddress(keys.admin.PublicKey).Hex(),
 				"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(keys.admin)),
 			},
+			"beneficiary": map[string]string{
+				"address":    crypto.PubkeyToAddress(keys.beneficiary.PublicKey).Hex(),
+				"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(keys.beneficiary)),
+			},
 			"validators": validators,
 		}
 		encoder := json.NewEncoder(w)
@@ -447,6 +380,7 @@ func printBreakpointGenesisKeys(w io.Writer, keys *breakpointGenesisKeys, jsonOu
 		return encoder.Encode(output)
 	}
 	fmt.Fprintf(w, "PoSA admin\n  address: %s\n  private key: 0x%s\n", crypto.PubkeyToAddress(keys.admin.PublicKey), hex.EncodeToString(crypto.FromECDSA(keys.admin)))
+	fmt.Fprintf(w, "Beneficiary\n  address: %s\n  private key: 0x%s\n", crypto.PubkeyToAddress(keys.beneficiary.PublicKey), hex.EncodeToString(crypto.FromECDSA(keys.beneficiary)))
 	for i, validatorKeys := range keys.validators {
 		fmt.Fprintf(w, "Validator %d\n", i+1)
 		fmt.Fprintf(w, "  validator address: %s\n", crypto.PubkeyToAddress(validatorKeys.validator.PublicKey))
