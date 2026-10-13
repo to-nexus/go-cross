@@ -182,7 +182,8 @@ func newIstanbulMiner(t *testing.T) (*Miner, *event.TypeMux) {
 		Mixhash:    types.IstanbulDigest,
 		ExtraData:  extra,
 	}
-	require.NoError(t, core.MakeBreakpointGenesis(genesis))
+	err = core.MakeGenesis(genesis, core.GenesisContracts{Breakpoint: true})
+	require.NoError(t, err)
 
 	db := rawdb.NewMemoryDatabase()
 	engine := istanbulBackend.New(&config, key, blsKey, db, nil)
