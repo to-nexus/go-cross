@@ -29,13 +29,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
-	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -44,6 +44,11 @@ var (
 
 	slashSystemTxSkippedMeter    = metrics.NewRegisteredMeter("consensus/istanbul/engine/systemtx/slash/skipped", nil)
 	mitigateSystemTxSkippedMeter = metrics.NewRegisteredMeter("consensus/istanbul/engine/systemtx/mitigate/skipped", nil)
+
+	// ##CROSS: validator slash
+	errSystemTxMismatch = errors.New("system tx mismatch")
+	errOmittedSystemTx  = errors.New("block omits a required system tx")
+	// ##
 )
 
 type SignerFn func(data []byte) ([]byte, error)
@@ -986,6 +991,9 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if posa {
 		// ##CROSS: validator slash
 		if err := e.slashValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+			if errors.Is(err, errOmittedSystemTx) {
+				return err
+			}
 			slashSystemTxSkippedMeter.Mark(1)
 			log.Error("Finalize: Failed to slash validators", "error", err, "number", header.Number.Uint64())
 		}
@@ -1002,6 +1010,9 @@ func (e *Engine) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		if chain.Config().IsIstanbulPoSA(parent.Number, parent.Time) && e.cfg.GetConfig(header.Number).OnNewCouncilPeriod(parent.Time, header.Time) {
 			// ##CROSS: validator slash
 			if err := e.mitigateSlashedValidators(header, state, cx, txs, (*[]*types.Receipt)(receipts), systemTxs, usedGas, tracer); err != nil {
+				if errors.Is(err, errOmittedSystemTx) {
+					return err
+				}
 				mitigateSystemTxSkippedMeter.Mark(1)
 				log.Error("Finalize: Failed to mitigate slashed validators", "error", err, "number", header.Number.Uint64())
 			}
@@ -1368,7 +1379,7 @@ func (e *Engine) applyReceivedSystemTransaction(
 	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
 	expectedHash := signer.Hash(expectedTx)
 	if systemTxs == nil || len(*systemTxs) == 0 || (*systemTxs)[0] == nil {
-		return errors.New("supposed to get an actual transaction, but got none")
+		return fmt.Errorf("%w: supposed to get an actual transaction, but got none", errSystemTxMismatch)
 	}
 
 	actualTx := (*systemTxs)[0]
@@ -1376,7 +1387,8 @@ func (e *Engine) applyReceivedSystemTransaction(
 		expectedJson, _ := expectedTx.MarshalJSON()
 		actualJson, _ := actualTx.MarshalJSON()
 		log.Error("system tx mismatch", "expected", string(expectedJson), "actual", string(actualJson))
-		return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
+		return fmt.Errorf("%w: expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s",
+			errSystemTxMismatch,
 			expectedHash.String(),
 			actualTx.Hash().String(),
 			expectedTx.Nonce(),
@@ -1521,6 +1533,41 @@ func applySystemMessage(msg *core.Message, evm *vm.EVM, state vm.StateDB, header
 	}
 
 	return msg.GasLimit - returnGas, err
+}
+
+// applyOptionalSystemTransaction applies a system tx which can be omitted if it would fail.
+// From BreakpointBravo, it returns errOmittedSystemTx when the block lacks a call that would succeed.
+func (e *Engine) applyOptionalSystemTransaction(
+	msg *core.Message,
+	state vm.StateDB,
+	header *types.Header,
+	chainContext core.ChainContext,
+	txs *[]*types.Transaction,
+	receipts *[]*types.Receipt,
+	systemTxs *[]*types.Transaction,
+	usedGas *uint64,
+	tracer *tracing.Hooks,
+) error {
+	err := e.applyReceivedSystemTransaction(msg, state, header, chainContext, txs, receipts, systemTxs, usedGas, tracer)
+	if errors.Is(err, errSystemTxMismatch) &&
+		chainContext.Config().IsBreakpointBravo(header.Number, header.Time) &&
+		checkSystemCallSucceeds(msg, state, header, chainContext) {
+		return fmt.Errorf("%w: %w", errOmittedSystemTx, err)
+	}
+	return err
+}
+
+// checkSystemCallSucceeds reports whether msg runs without error on the current state, and then reverts every change.
+// The EVM has no tracer, but a state wrapped with tracing hooks still reports the trial changes.
+func checkSystemCallSucceeds(msg *core.Message, state vm.StateDB, header *types.Header, chainContext core.ChainContext) bool {
+	snapshot := state.Snapshot()
+	defer state.RevertToSnapshot(snapshot)
+
+	context := core.NewEVMBlockContext(header, chainContext, &header.Coinbase)
+	evm := vm.NewEVM(context, state, chainContext.Config(), vm.Config{})
+	evm.SetTxContext(core.NewEVMTxContext(msg))
+	_, err := applySystemMessage(msg, evm, state, header)
+	return err == nil
 }
 
 func newSystemMessage(from, toAddress common.Address, data []byte, value *big.Int) *core.Message {

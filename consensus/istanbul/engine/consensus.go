@@ -474,7 +474,7 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 	msg := newSystemMessage(header.Coinbase, contracts.ValidatorSlashAddr, data, nil)
 
 	if systemTxs != nil {
-		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+		err = e.applyOptionalSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 	} else {
 		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
 	}
@@ -559,7 +559,7 @@ func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateD
 
 	log.Info("Mitigating slashed validators", "number", header.Number.Uint64(), "slashed", slashed, "isMining", systemTxs == nil)
 	if systemTxs != nil {
-		err = e.applyReceivedSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
+		err = e.applyOptionalSystemTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, tracer)
 	} else {
 		err = e.applyGeneratedSystemTransaction(msg, state, header, cx, txs, receipts, &header.GasUsed, tracer)
 	}
