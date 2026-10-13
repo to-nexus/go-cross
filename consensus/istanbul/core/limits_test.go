@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,32 @@ func TestCore_AddToBacklog(t *testing.T) {
 			c.addToBacklog(msg)
 		}
 		assert.Equal(t, maxBacklogPerSource, c.backlogs[src].Size())
+	})
+
+	t.Run("caps encoded bytes per source", func(t *testing.T) {
+		c, _ := newRoundChangeTestCore(t, addr, keys[addr], valSet, makeBlockWithTime(1, 1), 1, 0)
+		block := types.NewBlockWithHeader(&types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(0), Extra: make([]byte, 4*1024*1024)})
+		for i := 0; i < 10; i++ {
+			msg := protocols.NewPreprepare(big.NewInt(2), big.NewInt(int64(i)), block)
+			msg.SetSource(src)
+			c.addToBacklog(msg)
+		}
+		// Each PRE-PREPARE is a bit over 4 MiB, so seven of them fit in the budget.
+		assert.Equal(t, 7, c.backlogs[src].Size())
+		used := c.backlogBytes[src]
+		assert.Greater(t, used, 7*4*1024*1024)
+		assert.LessOrEqual(t, used, maxBacklogBytesPerSource)
+
+		// Messages that are still in the future keep their bytes.
+		c.processBacklog()
+		assert.Equal(t, 7, c.backlogs[src].Size())
+		assert.Equal(t, used, c.backlogBytes[src])
+
+		// Old messages leave the backlog and release their bytes.
+		c.current = newRoundState(&istanbul.View{Sequence: big.NewInt(3), Round: big.NewInt(0)}, valSet, nil, nil, nil, nil, func(common.Hash) bool { return false })
+		c.processBacklog()
+		assert.Zero(t, c.backlogs[src].Size())
+		assert.Zero(t, c.backlogBytes[src])
 	})
 }
 

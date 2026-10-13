@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 var (
@@ -41,8 +42,22 @@ var (
 	farFutureRoundDiff    = big.NewInt(12)
 )
 
-// maxBacklogPerSource caps future messages kept per validator.
-const maxBacklogPerSource = 128 // ##CROSS: istanbul backlog limit
+// ##CROSS: istanbul backlog limit
+const (
+	// maxBacklogPerSource caps future messages kept per validator.
+	maxBacklogPerSource = 128
+	// maxBacklogBytesPerSource caps the encoded size of future messages kept per validator.
+	// It fits about three messages of the largest size the istanbul protocol accepts.
+	maxBacklogBytesPerSource = 32 * 1024 * 1024
+)
+
+// backlogEntry is a future message with its encoded size.
+type backlogEntry struct {
+	msg  protocols.Message
+	size int
+}
+
+// ##
 
 // checkMessage checks that a message matches our current QBFT state
 //
@@ -156,20 +171,33 @@ func (c *Core) addToBacklog(msg protocols.Message) {
 
 	backlog := c.backlogs[src]
 	if backlog == nil {
-		backlog = prque.New[int64, protocols.Message](nil)
+		backlog = prque.New[int64, backlogEntry](nil) // ##CROSS: istanbul backlog limit
 		c.backlogs[src] = backlog
 	}
 	// ##CROSS: istanbul backlog limit
-	// TODO(go-cross): Count cap only; add size cap if large PRE-PREPAREs in the backlog become a problem.
 	if backlog.Size() >= maxBacklogPerSource {
 		if c.logger.Enabled(context.Background(), log.LvlDebug) {
 			c.currentLogger(true, msg).Debug("Istanbul: backlog full, dropping message", "backlog_size", backlog.Size())
 		}
 		return
 	}
-	// ##
+	// Measure the encoded message here, so every path that defers a message is counted the same way.
+	encoded, err := rlp.EncodeToBytes(msg)
+	if err != nil {
+		c.currentLogger(true, msg).Error("Istanbul: can not encode backlog message", "err", err)
+		return
+	}
+	size := len(encoded)
+	if c.backlogBytes[src]+size > maxBacklogBytesPerSource {
+		if c.logger.Enabled(context.Background(), log.LvlDebug) {
+			c.currentLogger(true, msg).Debug("Istanbul: backlog byte budget exceeded, dropping message", "backlog_bytes", c.backlogBytes[src], "size", size)
+		}
+		return
+	}
+	c.backlogBytes[src] += size
 	view := msg.View()
-	backlog.Push(msg, toPriority(msg.Code(), &view))
+	backlog.Push(backlogEntry{msg: msg, size: size}, toPriority(msg.Code(), &view))
+	// ##
 }
 
 // processBacklog lookup for future messages that have been backlogged and post it on
@@ -188,6 +216,7 @@ func (c *Core) processBacklog() {
 		if src == nil {
 			// validator is not available
 			delete(c.backlogs, srcAddress)
+			delete(c.backlogBytes, srcAddress) // ##CROSS: istanbul backlog limit
 			continue
 		}
 		logger := c.logger.New("from", src, "state", c.state)
@@ -199,7 +228,11 @@ func (c *Core) processBacklog() {
 		//   1. backlog is empty
 		//   2. The first message in queue is a future message
 		for !(backlog.Empty() || isFuture) {
-			msg, prio := backlog.Pop()
+			// ##CROSS: istanbul backlog limit
+			entry, prio := backlog.Pop()
+			msg := entry.msg
+			c.backlogBytes[srcAddress] -= entry.size
+			// ##
 
 			var code uint64
 			var view istanbul.View
@@ -217,7 +250,10 @@ func (c *Core) processBacklog() {
 				if err == errFutureMessage {
 					// this is still a future message
 					logger.Trace("Istanbul: stop processing backlog")
-					backlog.Push(msg, prio)
+					// ##CROSS: istanbul backlog limit
+					backlog.Push(entry, prio)
+					c.backlogBytes[srcAddress] += entry.size
+					// ##
 					isFuture = true
 					break
 				}

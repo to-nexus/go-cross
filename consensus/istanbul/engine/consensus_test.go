@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/ethereum/go-ethereum"
@@ -20,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -786,6 +788,190 @@ func TestSlashValidatorsRevert(t *testing.T) {
 	assert.Empty(t, txs)
 	assert.Empty(t, receipts)
 	assert.Zero(t, usedGas)
+}
+
+// slashStoreCode writes 1 to slot 0 and stops, so a test can see whether the call stayed in the state.
+var slashStoreCode = []byte{0x60, 0x01, 0x60, 0x00, 0x55, 0x00}
+
+func newSlashTestEngine(t *testing.T, bravoTime *uint64) (*Engine, *mockChainHeaderReader, *types.Header) {
+	t.Helper()
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	author := crypto.PubkeyToAddress(key.PublicKey)
+
+	config := *params.CrossTestChainConfig
+	config.BreakpointBravoTime = bravoTime
+	validators := []common.Address{addr1, addr2, addr3}
+	chain := &mockChainHeaderReader{headers: make(map[common.Hash]*types.Header), config: &config}
+	var header *types.Header
+	for i, h := range []struct {
+		coinbase common.Address
+		round    uint32
+	}{{addr1, 0}, {addr3, 1}, {author, 0}} { // Block 99 takes one extra round
+		var parentHash common.Hash
+		if header != nil {
+			parentHash = header.Hash()
+		}
+		header = createHeaderWithIstanbulExtra(t, uint64(98+i), parentHash, h.coinbase, validators, h.round)
+		header.Time = uint64(i + 1) // PoSA starts after the Breakpoint time
+		chain.headers[header.Hash()] = header
+	}
+
+	signer := types.LatestSignerForChainID(chain.config.ChainID)
+	engine := &Engine{
+		cfg:            &istanbul.Config{ProposerPolicy: istanbul.NewRoundRobinProposerPolicy()},
+		signer:         author,
+		consensus:      &mockIstanbulEngine{validators: validators},
+		rewardHub:      breakpoint.NewRewardHub(),
+		validatorSlash: breakpoint.NewValidatorSlash(),
+		signTx: func(_ accounts.Account, tx *types.Transaction, _ *big.Int) (*types.Transaction, error) {
+			return types.SignTx(tx, signer, key)
+		},
+	}
+	return engine, chain, header
+}
+
+func newSlashTestState(t *testing.T, code []byte) *state.StateDB {
+	t.Helper()
+
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabase(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil), nil))
+	require.NoError(t, err)
+	statedb.SetCode(contracts.ValidatorSlashAddr, code, tracing.CodeChangeUnspecified)
+	return statedb
+}
+
+func TestEngine_Finalize(t *testing.T) {
+	// A builder leaves the slash tx out when the call fails. Import must accept that,
+	// but reject a block that leaves out a slash that would succeed.
+	for _, tt := range []struct {
+		name         string
+		builderCode  []byte // ValidatorSlash code when the block is built
+		importerCode []byte // ValidatorSlash code when the block is imported
+		beforeBravo  bool
+		slashed      bool
+		err          error
+	}{
+		{
+			name:         "accepts a block with the slash tx",
+			builderCode:  slashStoreCode,
+			importerCode: slashStoreCode,
+			slashed:      true,
+		},
+		{
+			name:         "accepts a block without a slash tx that reverts",
+			builderCode:  revertCode,
+			importerCode: revertCode,
+		},
+		{
+			name:         "rejects a block without a slash tx that would succeed",
+			builderCode:  revertCode,
+			importerCode: slashStoreCode,
+			err:          errOmittedSystemTx,
+		},
+		{
+			name:         "accepts a block without a slash tx that would succeed before BreakpointBravo",
+			builderCode:  revertCode,
+			importerCode: slashStoreCode,
+			beforeBravo:  true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			bravoTime := newUint64(0)
+			if tt.beforeBravo {
+				bravoTime = nil
+			}
+			engine, chain, header := newSlashTestEngine(t, bravoTime)
+
+			// Build
+			buildState := newSlashTestState(t, tt.builderCode)
+			block, _, err := engine.FinalizeAndAssemble(chain, types.CopyHeader(header), buildState, nil, nil, nil)
+			require.NoError(t, err)
+
+			// Import
+			importState := newSlashTestState(t, tt.importerCode)
+			var (
+				txs      []*types.Transaction
+				receipts types.Receipts
+				usedGas  uint64
+			)
+			systemTxs := slices.Clone([]*types.Transaction(block.Transactions()))
+			err = engine.Finalize(chain, header, importState, block.Body(), &txs, &receipts, &systemTxs, &usedGas, nil)
+			if tt.err != nil {
+				require.ErrorIs(t, err, tt.err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, block.Transactions().Len(), len(txs))
+				assert.Equal(t, block.GasUsed(), usedGas)
+			}
+
+			// Slot 0 should be non-zero when a validator is slashed or should be zero when the tx reverted.
+			assert.Equal(t, tt.slashed, importState.GetState(contracts.ValidatorSlashAddr, common.Hash{}) != common.Hash{})
+			// When a system tx is applied successfully, the nonce of the block proposer should be incremented.
+			assert.Equal(t, uint64(len(txs)), importState.GetNonce(header.Coinbase))
+		})
+	}
+}
+
+func TestEngine_MitigateSlashedValidators(t *testing.T) {
+	// Mitigate goes through the same check as slash.
+	parsed, err := breakpoint.ValidatorSlashMetaData.ParseABI()
+	require.NoError(t, err)
+	slashed, err := parsed.Methods["getSlashedValidators"].Outputs.Pack([]common.Address{addr2})
+	require.NoError(t, err)
+	selector := string(breakpoint.NewValidatorSlash().PackGetSlashedValidators()[:4])
+
+	// otherTx stands for the next system tx of the block, such as the reward tx.
+	otherTx := types.NewTransaction(0, contracts.RewardHubAddr, big.NewInt(0), 0, big.NewInt(0), nil)
+
+	for _, tt := range []struct {
+		name        string
+		code        []byte
+		beforeBravo bool
+		err         error
+	}{
+		{
+			name: "rejects a block without a mitigate tx that would succeed",
+			code: slashStoreCode,
+			err:  errOmittedSystemTx,
+		},
+		{
+			name: "accepts a block without a mitigate tx that reverts",
+			code: revertCode,
+			err:  errSystemTxMismatch,
+		},
+		{
+			name:        "accepts a block without a mitigate tx that would succeed before BreakpointBravo",
+			code:        slashStoreCode,
+			beforeBravo: true,
+			err:         errSystemTxMismatch,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			bravoTime := newUint64(0)
+			if tt.beforeBravo {
+				bravoTime = nil
+			}
+			engine, chain, header := newSlashTestEngine(t, bravoTime)
+			engine.contractBackend = &mockContractBackend{callResponses: map[string][][]byte{selector: {slashed}}}
+			statedb := newSlashTestState(t, tt.code)
+
+			var (
+				txs       []*types.Transaction
+				receipts  []*types.Receipt
+				usedGas   uint64
+				systemTxs = []*types.Transaction{otherTx}
+			)
+			err := engine.mitigateSlashedValidators(header, statedb, &chainContext{Chain: chain, engine: engine.consensus}, &txs, &receipts, &systemTxs, &usedGas, nil)
+			require.ErrorIs(t, err, tt.err)
+			if tt.err != errOmittedSystemTx {
+				assert.NotErrorIs(t, err, errOmittedSystemTx)
+			}
+			assert.Equal(t, []*types.Transaction{otherTx}, systemTxs)
+			assert.Empty(t, txs)
+			assert.Equal(t, common.Hash{}, statedb.GetState(contracts.ValidatorSlashAddr, common.Hash{}))
+		})
+	}
 }
 
 // ##

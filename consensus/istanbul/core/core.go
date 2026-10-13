@@ -48,7 +48,8 @@ func New(backend istanbul.Backend, config *istanbul.Config) *Core {
 		handlerWg:          new(sync.WaitGroup),
 		logger:             log.New("address", backend.Address()),
 		backend:            backend,
-		backlogs:           make(map[common.Address]*prque.Prque[int64, protocols.Message]),
+		backlogs:           make(map[common.Address]*prque.Prque[int64, backlogEntry]), // ##CROSS: istanbul backlog limit
+		backlogBytes:       make(map[common.Address]int),                               // ##CROSS: istanbul backlog limit
 		backlogsMu:         new(sync.Mutex),
 		pendingRequests:    prque.New[int64, *Request](nil),
 		pendingRequestsMu:  new(sync.Mutex),
@@ -77,8 +78,11 @@ type Core struct {
 	valSet     istanbul.ValidatorSet
 	validateFn func([]byte, []byte) (common.Address, error)
 
-	backlogs   map[common.Address]*prque.Prque[int64, protocols.Message]
-	backlogsMu *sync.Mutex
+	// ##CROSS: istanbul backlog limit
+	backlogs     map[common.Address]*prque.Prque[int64, backlogEntry]
+	backlogBytes map[common.Address]int
+	backlogsMu   *sync.Mutex
+	// ##
 
 	current      *roundState
 	currentMutex sync.Mutex

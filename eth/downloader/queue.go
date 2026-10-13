@@ -391,6 +391,11 @@ func (q *queue) Results(block bool) []*fetchResult {
 			size += common.StorageSize(tx.Size())
 		}
 		size += common.StorageSize(result.Withdrawals.Size())
+		// ##CROSS: blob sidecars
+		for _, sidecar := range result.Sidecars {
+			size += common.StorageSize(sidecar.Size())
+		}
+		// ##
 		q.resultSize = common.StorageSize(blockCacheSizeWeight)*size +
 			(1-common.StorageSize(blockCacheSizeWeight))*q.resultSize
 	}
@@ -848,10 +853,29 @@ func (q *queue) DeliverBodies(id string, txLists [][]*types.Transaction, txListH
 		}
 
 		// ##CROSS: blob sidecars
-		// do some sanity check for sidecar
 		for _, sidecar := range sidecars[index] {
 			if err := sidecar.SanityCheck(header.Number, header.Hash()); err != nil {
 				return fmt.Errorf("%w: %v", errInvalidBody, err)
+			}
+		}
+		// The block hash does not cover sidecars. Tie them one to one to the blob txs before caching.
+		// Pruned blocks come without sidecars.
+		if len(sidecars[index]) > 0 {
+			var n int
+			for i, tx := range txLists[index] {
+				if tx.Type() != types.BlobTxType {
+					continue
+				}
+				if n == len(sidecars[index]) {
+					return fmt.Errorf("%w: missing sidecar for blob tx %d", errInvalidBody, i)
+				}
+				if sidecar := sidecars[index][n]; sidecar.TxIndex != uint64(i) || sidecar.TxHash != tx.Hash() || len(sidecar.Blobs) != len(tx.BlobHashes()) {
+					return fmt.Errorf("%w: sidecar %d does not match blob tx %d", errInvalidBody, n, i)
+				}
+				n++
+			}
+			if n != len(sidecars[index]) {
+				return fmt.Errorf("%w: %d sidecars for %d blob txs", errInvalidBody, len(sidecars[index]), n)
 			}
 		}
 		// ##

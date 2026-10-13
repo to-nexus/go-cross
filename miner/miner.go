@@ -86,6 +86,13 @@ func (miner *Miner) update() {
 	defer miner.wg.Done()
 
 	events := miner.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
+	// ##CROSS: istanbul
+	// Keep Istanbul running during sync.
+	// A node that is behind only sends stale messages that others ignore, and it follows the imported heads.
+	if miner.worker.istanbulBackend != nil {
+		events.Unsubscribe()
+	}
+	// ##
 	defer func() {
 		if !events.Closed() {
 			events.Unsubscribe()
