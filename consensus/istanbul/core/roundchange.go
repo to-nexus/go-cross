@@ -109,7 +109,7 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 	logger.Info("Istanbul: handle ROUND-CHANGE message", "higherRoundChanges.count", higherNum, "currentRoundChanges.count", currentNum)
 
 	// ##CROSS: istanbul round limit
-	if view.Round.Cmp(currentRound) > 0 && !c.roundChangeSet.keepHighestFuture(roundChange.Source(), currentRound, view.Round) {
+	if view.Round.Cmp(currentRound) > 0 && !c.roundChangeSet.keepHighestFuture(roundChange.Source(), currentRound, view.Round, c.valSet.QuorumSize(), c.hasBadProposal) {
 		logger.Debug("Istanbul: ignoring ROUND-CHANGE below a higher future round from the same validator")
 		return nil
 	}
@@ -375,21 +375,24 @@ func (rcs *roundChangeSet) Add(r *big.Int, msg protocols.Message, preparedRound 
 		return err
 	}
 
+	rcs.updatePrepared(round, msg.(*protocols.RoundChange), preparedRound, preparedBlock, prepareMessages, quorumSize, hasBadProposal)
+	return nil
+}
+
+// updatePrepared keeps the prepared round, block, and PREPAREs of the message if its prepared round is the highest.
+func (rcs *roundChangeSet) updatePrepared(round uint64, roundChange *protocols.RoundChange, preparedRound *big.Int, preparedBlock istanbul.Proposal, prepareMessages []*protocols.Prepare, quorumSize int, hasBadProposal func(common.Hash) bool) {
 	if preparedRound != nil && (rcs.highestPreparedRound[round] == nil || preparedRound.Cmp(rcs.highestPreparedRound[round]) > 0) {
 		// ##CROSS: bad block mitigation
 		if preparedBlock != nil && hasBadProposal != nil && hasBadProposal(preparedBlock.Hash()) {
-			return nil
+			return
 		}
 		// ##
-		roundChange := msg.(*protocols.RoundChange)
 		if hasMatchingRoundChangeAndPrepares(roundChange, prepareMessages, quorumSize) == nil {
 			rcs.highestPreparedRound[round] = preparedRound
 			rcs.highestPreparedBlock[round] = preparedBlock
 			rcs.prepareMessages[round] = prepareMessages
 		}
 	}
-
-	return nil
 }
 
 // higherRoundMessages returns the count of validators we received a ROUND-CHANGE message from
@@ -447,7 +450,7 @@ func (rcs *roundChangeSet) getMinRoundChange(round *big.Int) *big.Int {
 // ##CROSS: istanbul round limit
 // keepHighestFuture keeps at most one future-round ROUND-CHANGE per validator, the highest one.
 // It drops src from lower future rounds and returns false if src already has a higher future round.
-func (rcs *roundChangeSet) keepHighestFuture(src common.Address, current, round *big.Int) bool {
+func (rcs *roundChangeSet) keepHighestFuture(src common.Address, current, round *big.Int, quorumSize int, hasBadProposal func(common.Hash) bool) bool {
 	rcs.mu.Lock()
 	defer rcs.mu.Unlock()
 
@@ -460,11 +463,19 @@ func (rcs *roundChangeSet) keepHighestFuture(src common.Address, current, round 
 			return false
 		}
 		ms.Remove(src)
+		delete(rcs.highestPreparedRound, k)
+		delete(rcs.highestPreparedBlock, k)
+		delete(rcs.prepareMessages, k)
 		if ms.Size() == 0 {
 			delete(rcs.roundChanges, k)
-			delete(rcs.highestPreparedRound, k)
-			delete(rcs.highestPreparedBlock, k)
-			delete(rcs.prepareMessages, k)
+			continue
+		}
+		// The dropped message may have set the prepared cache, so rebuild it from the rest.
+		for _, m := range ms.Values() {
+			rc := m.(*protocols.RoundChange)
+			if rc.PreparedRound != nil && rc.PreparedBlock != nil && len(rc.Justification) > 0 {
+				rcs.updatePrepared(k, rc, rc.PreparedRound, rc.PreparedBlock, rc.Justification, quorumSize, hasBadProposal)
+			}
 		}
 	}
 	return true

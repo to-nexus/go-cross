@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/core/vm/program"
@@ -4550,6 +4551,40 @@ func TestBlockChain_ProcessBlock(t *testing.T) {
 		assert.Nil(t, chain.GetBlockByHash(block.Hash()), "block must not be written")
 		assert.False(t, chain.HasState(block.Root()), "state must not be committed")
 	})
+
+	// ##CROSS: fix upstream 39df8a0 (#35512)
+	// tracedChain counts the transaction calls of a live tracer, as geth --vmtrace sets it.
+	tracedChain := func(t *testing.T) (*BlockChain, *int) {
+		calls := new(int)
+		options := DefaultConfig()
+		options.VmConfig = vm.Config{Tracer: &tracing.Hooks{
+			OnTxStart: func(*tracing.VMContext, *types.Transaction, common.Address) { *calls++ },
+			OnTxEnd:   func(*types.Receipt, error) { *calls++ },
+		}}
+		chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), options)
+		if err != nil {
+			t.Fatalf("failed to create chain: %v", err)
+		}
+		t.Cleanup(chain.Stop)
+		return chain, calls
+	}
+
+	t.Run("witness execution does not call the live tracer", func(t *testing.T) {
+		chain, calls := tracedChain(t)
+		if _, err := chain.ProcessBlock(chain.Genesis().Root(), block, ExecuteConfig{MakeWitness: true}); err != nil {
+			t.Fatalf("failed to process block: %v", err)
+		}
+		assert.Zero(t, *calls)
+	})
+
+	t.Run("import calls the live tracer", func(t *testing.T) {
+		chain, calls := tracedChain(t)
+		if _, err := chain.InsertChain(types.Blocks{block}); err != nil {
+			t.Fatalf("failed to insert block: %v", err)
+		}
+		assert.Equal(t, 2, *calls)
+	})
+	// ##
 }
 
 // ##

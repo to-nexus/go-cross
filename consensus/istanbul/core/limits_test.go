@@ -207,6 +207,35 @@ func TestCore_HandleRoundChange(t *testing.T) {
 		send(t, c, honest, currentRound+2)
 		assert.Equal(t, uint64(currentRound+2), c.currentView().Round.Uint64())
 	})
+
+	t.Run("rebuilds the prepared cache after dropping a lower future round", func(t *testing.T) {
+		// With 7 validators F+1 is 3, so two validators do not move the node to a future round.
+		valSet, keys := generateValidatorSetAndKeys(t, 7)
+		addr, a, b := valSet.GetByIndex(0).Address(), valSet.GetByIndex(1).Address(), valSet.GetByIndex(2).Address()
+		block := makeBlockWithTime(1, 1)
+		c, _ := newRoundChangeTestCore(t, addr, keys[addr], valSet, block, 1, currentRound)
+
+		send := func(from common.Address, round, preparedRound int64) {
+			msg := createSignedRoundChangeMessage(t, keys[from], from, round, preparedRound, block)
+			for _, v := range valSet.List()[:valSet.QuorumSize()] {
+				msg.Justification = append(msg.Justification, createSignedPrepareMessage(t, keys[v.Address()], v.Address(), preparedRound, block))
+			}
+			payload, err := rlp.EncodeToBytes(msg)
+			require.NoError(t, err)
+			require.NoError(t, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
+		}
+		send(a, currentRound+1, 5)
+		send(b, currentRound+1, 4)
+		send(a, currentRound+2, 5) // drops a from round currentRound+1
+
+		round := uint64(currentRound + 1)
+		rcs := c.roundChangeSet
+		require.Equal(t, uint64(currentRound), c.currentView().Round.Uint64())
+		require.Nil(t, rcs.roundChanges[round].Get(a))
+		assert.Equal(t, big.NewInt(4), rcs.highestPreparedRound[round], "the prepared round must come from b")
+		require.NotEmpty(t, rcs.prepareMessages[round])
+		assert.Equal(t, big.NewInt(4), rcs.prepareMessages[round][0].Round)
+	})
 }
 
 func TestRoundChangeSet_GetMinRoundChange(t *testing.T) {

@@ -2257,6 +2257,16 @@ type ExecuteConfig struct {
 	MakeWitness bool
 }
 
+// overrideTracerActivation returns the EVM configuration to execute a block with, honoring the
+// caller's tracing intent.
+func (bc *BlockChain) overrideTracerActivation(tracerOn bool) vm.Config {
+	vmConfig := bc.cfg.VmConfig
+	if !tracerOn {
+		vmConfig.Tracer = nil
+	}
+	return vmConfig
+}
+
 // ProcessBlock executes and validates the given block. If there was no error
 // it writes the block and associated state to database.
 func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, config ExecuteConfig) (_ *blockProcessingResult, blockEndErr error) {
@@ -2267,6 +2277,10 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, c
 		interrupt atomic.Bool
 	)
 	defer interrupt.Store(true) // terminate the prefetch at the end
+
+	// The live tracer in bc.cfg.VmConfig is a node-wide singleton that is only safe to drive from
+	// the chain-insertion goroutine, so it is attached only when the caller opts in via EnableTracer.
+	vmConfig := bc.overrideTracerActivation(config.EnableTracer)
 
 	if bc.cfg.NoPrefetch {
 		statedb, err = state.New(parentRoot, bc.statedb)
@@ -2362,7 +2376,7 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, c
 
 	// Process block using the parent state as reference point
 	pstart := time.Now()
-	res, err := bc.processor.Process(block, statedb, bc.cfg.VmConfig)
+	res, err := bc.processor.Process(block, statedb, vmConfig)
 	if err != nil {
 		bc.reportBlock(block, res, err)
 		return nil, err
@@ -2393,7 +2407,7 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, c
 		task := types.NewBlockWithHeader(context).WithBody(*block.Body())
 
 		// Run the stateless self-cross-validation
-		crossStateRoot, crossReceiptRoot, err := ExecuteStateless(bc.chainConfig, bc.cfg.VmConfig, task, witness)
+		crossStateRoot, crossReceiptRoot, err := ExecuteStateless(bc.chainConfig, vmConfig, task, witness)
 		if err != nil {
 			return nil, fmt.Errorf("stateless self-validation failed: %v", err)
 		}
