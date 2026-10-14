@@ -46,11 +46,12 @@ func (c *Core) Start() error {
 // Stop implements core.Engine.Stop
 func (c *Core) Stop() error {
 	c.logger.Info("Istanbul: stopping...")
-	c.stopTimer()
 	c.unsubscribeEvents()
 
 	// Make sure the handler goroutine exits
 	c.handlerWg.Wait()
+	// Stop the timers after the handler exits, because the handler sets them.
+	c.stopTimer()
 	c.logger.Info("Istanbul: stopped")
 	return nil
 }
@@ -95,7 +96,9 @@ func (c *Core) unsubscribeEvents() {
 func (c *Core) handleEvents() {
 	// Clear state
 	defer func() {
+		c.currentMutex.Lock()
 		c.current = nil
+		c.currentMutex.Unlock()
 		c.handlerWg.Done()
 	}()
 

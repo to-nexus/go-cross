@@ -49,7 +49,9 @@ func (c *Core) handleRequest(request *Request) error {
 	}
 	// ##
 
+	c.currentMutex.Lock()
 	c.current.pendingRequest = request
+	c.currentMutex.Unlock()
 	if c.state == StateAcceptRequest {
 		config := c.config.GetConfig(c.current.Sequence())
 		if config.EmptyBlockPeriod == 0 { // emptyBlockPeriod is not set
