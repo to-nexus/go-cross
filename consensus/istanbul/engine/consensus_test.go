@@ -756,7 +756,7 @@ func TestSlashValidatorsRevert(t *testing.T) {
 	triedb := triedb.NewDatabase(memdb, nil)
 	sdb := state.NewDatabase(triedb, nil)
 	statedb, _ := state.New(types.EmptyRootHash, sdb)
-	statedb.SetCode(contracts.ValidatorSlashAddr, revertCode)
+	statedb.SetCode(contracts.ValidatorSlashAddr, revertCode, tracing.CodeChangeUnspecified)
 
 	mockChain := &mockChainHeaderReader{
 		headers: headers,

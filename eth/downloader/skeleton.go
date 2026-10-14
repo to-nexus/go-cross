@@ -275,7 +275,7 @@ func (s *skeleton) startup() {
 			for {
 				// If the sync cycle terminated or was terminated, propagate up when
 				// higher layers request termination. There's no fancy explicit error
-				// signalling as the sync loop should never terminate (TM).
+				// signaling as the sync loop should never terminate (TM).
 				newhead, err := s.sync(head)
 				switch {
 				case err == errSyncLinked:
@@ -384,7 +384,7 @@ func (s *skeleton) sync(head *types.Header) (*types.Header, error) {
 			defer close(done)
 			filled := s.filler.suspend()
 			if filled == nil {
-				log.Error("Latest filled block is not available")
+				log.Warn("Latest filled block is not available")
 				return
 			}
 			// If something was filled, try to delete stale sync helpers. If

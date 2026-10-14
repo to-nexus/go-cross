@@ -64,7 +64,7 @@ func (h *istanbulHandler) FindPeers(targets map[common.Address]bool) map[common.
 // The Run method starts the protocol and is called by the p2p server. The quorum consensus subprotocol,
 // leverages the peer created and managed by the "eth" subprotocol.
 // The quorum consensus protocol requires that the "eth" protocol is running as well.
-func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, version uint, length uint64, backend eth.Backend, network uint64, dnsdisc enode.Iterator) p2p.Protocol {
+func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, version uint, length uint64, backend eth.Backend, network uint64) p2p.Protocol {
 	log.Debug("registering qouorum protocol ", "protoName", protoName, "version", version)
 
 	return p2p.Protocol{
@@ -109,8 +109,9 @@ func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, versio
 		PeerInfo: func(id enode.ID) interface{} {
 			return backend.PeerInfo(id)
 		},
-		Attributes:     []enr.Entry{eth.CurrentENREntry(backend.Chain())},
-		DialCandidates: dnsdisc,
+		Attributes: []enr.Entry{eth.CurrentENREntry(backend.Chain())},
+		// No DialCandidates are advertised here - the "eth" protocol already feeds the same discovery iterator to the p2p server.
+		DialCandidates: nil,
 	}
 }
 

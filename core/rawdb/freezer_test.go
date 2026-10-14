@@ -239,7 +239,7 @@ func TestFreezerConcurrentModifyTruncate(t *testing.T) {
 		// fails, otherwise it succeeds. In either case, the freezer should be positioned
 		// at 10 after both operations are done.
 		if truncateErr != nil {
-			t.Fatal("concurrent truncate failed:", err)
+			t.Fatal("concurrent truncate failed:", truncateErr)
 		}
 		if !(errors.Is(modifyErr, nil) || errors.Is(modifyErr, errOutOrderInsertion)) {
 			t.Fatal("wrong error from concurrent modify:", modifyErr)
@@ -363,7 +363,12 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	// check read only
+	additionTablesDefault := make([]string, len(additionTables))
+	copy(additionTablesDefault, additionTables)
 	additionTables = []string{"a1"}
+	t.Cleanup(func() {
+		additionTables = additionTablesDefault
+	})
 	f, err = NewFreezer(dir, "", true, 2049, map[string]freezerTableConfig{"o1": {true, true}, "o2": {true, true}, "a1": {true, true}})
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
@@ -438,16 +443,20 @@ func appendSameItem(op ethdb.AncientWriteOp, tables []string, i uint64, item []b
 // ##
 
 func newFreezerForTesting(t *testing.T, tables map[string]freezerTableConfig) (*Freezer, string) {
+	dir := t.TempDir()
+	return newFreezerForTestingWithDir(t, tables, dir), dir
+}
+
+func newFreezerForTestingWithDir(t *testing.T, tables map[string]freezerTableConfig, dir string) *Freezer {
 	t.Helper()
 
-	dir := t.TempDir()
 	// note: using low max table size here to ensure the tests actually
 	// switch between multiple files.
 	f, err := NewFreezer(dir, "", false, 2049, tables)
 	if err != nil {
 		t.Fatal("can't open freezer", err)
 	}
-	return f, dir
+	return f
 }
 
 // checkAncientCount verifies that the freezer contains n items.
@@ -461,9 +470,6 @@ func checkAncientCount(t *testing.T, f *Freezer, kind string, n uint64) {
 	// Check at index n-1.
 	if n > 0 {
 		index := n - 1
-		if ok, _ := f.HasAncient(kind, index); !ok {
-			t.Errorf("HasAncient(%q, %d) returned false unexpectedly", kind, index)
-		}
 		if _, err := f.Ancient(kind, index); err != nil {
 			t.Errorf("Ancient(%q, %d) returned unexpected error %q", kind, index, err)
 		}
@@ -471,9 +477,6 @@ func checkAncientCount(t *testing.T, f *Freezer, kind string, n uint64) {
 
 	// Check at index n.
 	index := n
-	if ok, _ := f.HasAncient(kind, index); ok {
-		t.Errorf("HasAncient(%q, %d) returned true unexpectedly", kind, index)
-	}
 	if _, err := f.Ancient(kind, index); err == nil {
 		t.Errorf("Ancient(%q, %d) didn't return expected error", kind, index)
 	} else if err != errOutOfBounds {
@@ -496,7 +499,7 @@ func TestFreezerCloseSync(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.Sync(); err == nil {
+	if err := f.SyncAncient(); err == nil {
 		t.Fatalf("want error, have nil")
 	} else if have, want := err.Error(), "[closed closed]"; have != want {
 		t.Fatalf("want %v, have %v", have, want)

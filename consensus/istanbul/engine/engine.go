@@ -209,6 +209,7 @@ func writeCommittedSeals(chain consensus.ChainHeaderReader, header *types.Header
 			if len(committedSeals) == 0 {
 				return istanbul.ErrInvalidCommittedSeals
 			}
+
 			// aggregate seal signatures
 			bs := bitset.New(uint(len(committedSeals)))
 			sigs := make([][]byte, 0, len(committedSeals))
@@ -248,22 +249,6 @@ func writeCommittedSeals(chain consensus.ChainHeaderReader, header *types.Header
 
 		return nil
 	}
-}
-
-func aggregateCommittedSeals(committedSeals []istanbul.SignedSeal) ([]byte, error) {
-	sigs := make([][]byte, 0, len(committedSeals))
-	for _, seal := range committedSeals {
-		if len(seal.Signature()) != types.IstanbulExtraSealBLS {
-			return nil, istanbul.ErrInvalidCommittedSeals
-		}
-		sigs = append(sigs, seal.Signature())
-	}
-
-	aggSig, err := bls.AggregateCompressedSignatures(sigs)
-	if err != nil {
-		return nil, err
-	}
-	return aggSig.Marshal(), nil
 }
 
 // writeRoundNumber writes the extra-data field of a block header with given round.
@@ -687,10 +672,25 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 				validSeal++
 				continue
 			}
+			log.Error("Istanbul: unknown committer",
+				"number", header.Number.Uint64(),
+				"addr", addr,
+				"committers", committers,
+				"validators", validators.List(),
+				"extra", hexutil.Encode(header.Extra),
+			)
 			return istanbul.ErrInvalidCommittedSeals
 		}
 
 		if validSeal < validators.QuorumSize() {
+			log.Error("Istanbul: not enough quorum",
+				"number", header.Number.Uint64(),
+				"validSeal", validSeal,
+				"quorum", validators.QuorumSize(),
+				"committers", committers,
+				"validators", validators.List(),
+				"extra", hexutil.Encode(header.Extra),
+			)
 			return istanbul.ErrInvalidCommittedSeals
 		}
 	}
@@ -1129,7 +1129,7 @@ func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSe
 		return nil, nil, istanbul.ErrEmptySigners
 	}
 
-	expected := bitset.New(uint(signerCount)) // build expected signers bitset
+	expected := bitset.New(signerCount) // build expected signers bitset
 	addrs := make([]common.Address, 0, signerCount)
 	pubkeys := make([]types.BLSPublicKey, 0, signerCount)
 	// SignersBitset is encoded against byte-sorted validators
@@ -1450,7 +1450,7 @@ func executeSystemTransaction(evm *vm.EVM, msg *core.Message, tx *types.Transact
 	receipt = types.NewReceipt(root, false, *usedGas)
 	receipt.TxHash = tx.Hash()
 	receipt.GasUsed = gasUsed
-	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
+	receipt.Logs = state.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash(), header.Time)
 	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockHash = header.Hash()
 	receipt.BlockNumber = header.Number

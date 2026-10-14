@@ -22,7 +22,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -42,9 +41,10 @@ var (
 type ValidationOptions struct {
 	Config *params.ChainConfig // Chain configuration to selectively validate based on current fork rules
 
-	Accept  uint8    // Bitmap of transaction types that should be accepted for the calling pool
-	MaxSize uint64   // Maximum size of a transaction that the caller can meaningfully handle
-	MinTip  *big.Int // Minimum gas tip needed to allow a transaction into the caller pool
+	Accept       uint8    // Bitmap of transaction types that should be accepted for the calling pool
+	MaxSize      uint64   // Maximum size of a transaction that the caller can meaningfully handle
+	MaxBlobCount int      // Maximum number of blobs allowed per transaction
+	MinTip       *big.Int // Minimum gas tip needed to allow a transaction into the caller pool
 }
 
 // ValidationFunction is an method type which the pools use to perform the tx-validations which do not
@@ -62,6 +62,9 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	// Ensure transactions not implemented by the calling pool are rejected
 	if opts.Accept&(1<<tx.Type()) == 0 {
 		return fmt.Errorf("%w: tx type %v not supported by this pool", core.ErrTxTypeNotSupported, tx.Type())
+	}
+	if blobCount := len(tx.BlobHashes()); blobCount > opts.MaxBlobCount {
+		return fmt.Errorf("%w: blob count %v, limit %v", ErrTxBlobLimitExceeded, blobCount, opts.MaxBlobCount)
 	}
 	// Before performing any expensive validations, sanity check that the tx is
 	// smaller than the maximum limit the pool can meaningfully handle
@@ -89,6 +92,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	}
 	// ##CROSS: istanbul
 	if opts.Config.IsIstanbulConsensus() {
+		// These transaction types are rejected temporarily, until our service environment is ready.
 		switch tx.Type() {
 		case types.BlobTxType: // ##CROSS: istanbul blob tx
 			return fmt.Errorf("%w: type %d rejected, Istanbul consensus engine does not support blob transactions", core.ErrTxTypeNotSupported, tx.Type())
@@ -100,6 +104,9 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	// Check whether the init code size has been exceeded
 	if rules.IsShanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", core.ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
+	}
+	if rules.IsOsaka && tx.Gas() > params.MaxTxGas {
+		return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, params.MaxTxGas, tx.Gas())
 	}
 	// Transactions can't be negative. This may never happen using RLP decoded
 	// transactions but may occur for transactions created using the RPC.
@@ -125,24 +132,15 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if _, err := types.Sender(signer, tx); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSender, err)
 	}
+	// Limit nonce to 2^64-1 per EIP-2681
+	if tx.Nonce()+1 < tx.Nonce() {
+		return core.ErrNonceMax
+	}
 	// ##CROSS: fee delegation
 	// Make sure the fee payer is signed properly
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-		// Structural validity check that must run before anything dereferences the
-		// fee payer. FeePayer is an RLP-nilable pointer, so a malformed transaction
-		// (e.g. one relayed by a peer over the P2P path, which bypasses the RPC-side
-		// guard) can decode as a fee-delegated transaction with FeePayer == nil while
-		// still carrying fee-payer signature values. Reject it here, before the
-		// *tx.FeePayer() dereferences below would otherwise panic.
-		if tx.FeePayer() == nil {
-			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-		}
-		recovered, err := types.FeePayer(signer, tx)
-		if err != nil {
+		if _, err := tx.FeePayerValidated(signer.ChainID()); err != nil {
 			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
-		}
-		if recovered != *tx.FeePayer() {
-			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), recovered)
 		}
 	}
 	// ##
@@ -174,7 +172,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 		// Ensure tx.GasFeeCap() >= (MinBaseFee + MinTip) as required by the Istanbul consensus fee policy.
 		// Reject the transaction if its max fee cap is below the minimum acceptable gas fee.
 		if minBaseFee := opts.Config.GetMinBaseFee(head.Number); minBaseFee != nil && opts.MinTip != nil {
-			minFeeCap := new(big.Int).Add(opts.MinTip, opts.Config.GetMinBaseFee(head.Number))
+			minFeeCap := new(big.Int).Add(opts.MinTip, minBaseFee)
 			if minFeeCap.Cmp(tx.GasFeeCap()) > 0 {
 				return fmt.Errorf("%w: gas fee cap %v, minimum needed %v", ErrTxGasPriceTooLow, tx.GasFeeCap(), minFeeCap)
 			}
@@ -182,53 +180,67 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	}
 	// ##
 	if tx.Type() == types.BlobTxType {
-		// Ensure the blob fee cap satisfies the minimum blob gas price
-		if tx.BlobGasFeeCapIntCmp(blobTxMinBlobGasPrice) < 0 {
-			return fmt.Errorf("%w: blob fee cap %v, minimum needed %v", ErrTxGasPriceTooLow, tx.BlobGasFeeCap(), blobTxMinBlobGasPrice)
-		}
-		sidecar := tx.BlobTxSidecar()
-		if sidecar == nil {
-			return errors.New("missing sidecar in blob transaction")
-		}
-		// Ensure the number of items in the blob transaction and various side
-		// data match up before doing any expensive validations
-		hashes := tx.BlobHashes()
-		if len(hashes) == 0 {
-			return errors.New("blobless blob transaction")
-		}
-		maxBlobs := eip4844.MaxBlobsPerBlock(opts.Config, head.Time)
-		if len(hashes) > maxBlobs {
-			return fmt.Errorf("too many blobs in transaction: have %d, permitted %d", len(hashes), maxBlobs)
-		}
-		// Ensure commitments, proofs and hashes are valid
-		if err := validateBlobSidecar(hashes, sidecar); err != nil {
-			return err
-		}
+		return validateBlobTx(tx, head, opts)
 	}
 	if tx.Type() == types.SetCodeTxType {
 		if len(tx.SetCodeAuthorizations()) == 0 {
-			return fmt.Errorf("set code tx must have at least one authorization tuple")
+			return errors.New("set code tx must have at least one authorization tuple")
 		}
 	}
 	return nil
 }
 
-func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobTxSidecar) error {
+// validateBlobTx implements the blob-transaction specific validations.
+func validateBlobTx(tx *types.Transaction, head *types.Header, opts *ValidationOptions) error {
+	sidecar := tx.BlobTxSidecar()
+	if sidecar == nil {
+		return errors.New("missing sidecar in blob transaction")
+	}
+	// Ensure the blob fee cap satisfies the minimum blob gas price
+	if tx.BlobGasFeeCapIntCmp(blobTxMinBlobGasPrice) < 0 {
+		return fmt.Errorf("%w: blob fee cap %v, minimum needed %v", ErrTxGasPriceTooLow, tx.BlobGasFeeCap(), blobTxMinBlobGasPrice)
+	}
+	// Ensure the number of items in the blob transaction and various side
+	// data match up before doing any expensive validations
+	hashes := tx.BlobHashes()
+	if len(hashes) == 0 {
+		return errors.New("blobless blob transaction")
+	}
+	if len(hashes) > params.BlobTxMaxBlobs {
+		return fmt.Errorf("too many blobs in transaction: have %d, permitted %d", len(hashes), params.BlobTxMaxBlobs)
+	}
 	if len(sidecar.Blobs) != len(hashes) {
 		return fmt.Errorf("invalid number of %d blobs compared to %d blob hashes", len(sidecar.Blobs), len(hashes))
-	}
-	if len(sidecar.Proofs) != len(hashes) {
-		return fmt.Errorf("invalid number of %d blob proofs compared to %d blob hashes", len(sidecar.Proofs), len(hashes))
 	}
 	if err := sidecar.ValidateBlobCommitmentHashes(hashes); err != nil {
 		return err
 	}
-	// Blob commitments match with the hashes in the transaction, verify the
-	// blobs themselves via KZG
+	// Fork-specific sidecar checks, including proof verification.
+	if sidecar.Version == types.BlobSidecarVersion1 {
+		return validateBlobSidecarOsaka(sidecar, hashes)
+	} else {
+		return validateBlobSidecarLegacy(sidecar, hashes)
+	}
+}
+
+func validateBlobSidecarLegacy(sidecar *types.BlobTxSidecar, hashes []common.Hash) error {
+	if len(sidecar.Proofs) != len(hashes) {
+		return fmt.Errorf("invalid number of %d blob proofs expected %d", len(sidecar.Proofs), len(hashes))
+	}
 	for i := range sidecar.Blobs {
 		if err := kzg4844.VerifyBlobProof(&sidecar.Blobs[i], sidecar.Commitments[i], sidecar.Proofs[i]); err != nil {
-			return fmt.Errorf("invalid blob %d: %v", i, err)
+			return fmt.Errorf("%w: invalid blob proof: %v", ErrKZGVerificationError, err)
 		}
+	}
+	return nil
+}
+
+func validateBlobSidecarOsaka(sidecar *types.BlobTxSidecar, hashes []common.Hash) error {
+	if len(sidecar.Proofs) != len(hashes)*kzg4844.CellProofsPerBlob {
+		return fmt.Errorf("invalid number of %d blob proofs expected %d", len(sidecar.Proofs), len(hashes)*kzg4844.CellProofsPerBlob)
+	}
+	if err := kzg4844.VerifyCellProofs(sidecar.Blobs, sidecar.Commitments, sidecar.Proofs); err != nil {
+		return fmt.Errorf("%w: %v", ErrKZGVerificationError, err)
 	}
 	return nil
 }
@@ -291,9 +303,6 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		}
 	}
 
-	if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() == nil { // ##CROSS: fee delegation
-		return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-	}
 	// Ensure the transactor has enough funds to cover the transaction costs
 	var (
 		balance = opts.State.GetBalance(from).ToBig()
@@ -304,25 +313,17 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 	}
 
 	// ##CROSS: fee delegation
-	// If the transaction is a Fee Delegated Dynamic Fee transaction, perform the following checks:
-	// 1. Verify that a FeePayer is specified; if not, return an error.
-	// 2. Confirm that the fee payer's signature, as recovered from the transaction using a FeeDelegationSigner,
-	//    matches the provided FeePayer address.
-	// 3. Ensure that the FeePayer has a sufficient balance to cover the fee payer cost.
-	// These validations ensure that fee delegation is applied correctly and that the fee payer is both authorized and funded.
+	// Make sure the transaction is signed properly.
 	if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-		// Make sure the transaction is signed properly.
-		if tx.FeePayer() == nil {
-			return fmt.Errorf("%w: fee payer is nil", core.ErrInvalidFeePayer)
-		} else if feePayer, err := types.FeePayer(types.NewFeeDelegationSigner(signer.ChainID()), tx); err != nil {
+		feePayer, err := tx.FeePayerValidated(signer.ChainID())
+		if err != nil {
 			return fmt.Errorf("%w: %v", core.ErrInvalidFeePayer, err)
-		} else if *tx.FeePayer() != feePayer {
-			return fmt.Errorf("%w: feepayer: %v, sig: %v", core.ErrInvalidFeePayer, *tx.FeePayer(), feePayer)
 		}
-		feePayerBalance := opts.State.GetBalance(*tx.FeePayer()).ToBig()
+
+		feePayerBalance := opts.State.GetBalance(feePayer).ToBig()
 		// Ensure this single transaction's fee payer cost is covered.
-		if feePayerBalance.Cmp(tx.FeePayerCost()) < 0 {
-			return core.ErrFeePayerInsufficientFunds
+		if cost := tx.FeePayerCost(); feePayerBalance.Cmp(cost) < 0 {
+			return fmt.Errorf("%w: address %v have %v want %v", core.ErrFeePayerInsufficientFunds, feePayer, feePayerBalance, cost)
 		}
 		// Ensure the fee payer can cover the cumulative cost of every pooled
 		// fee-delegated transaction it is sponsoring, not just this one in
@@ -334,7 +335,7 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		// sponsored gas costs and its own outgoing costs come out of the same
 		// account, so both must be counted here.
 		if opts.ExistingFeePayerExpenditure != nil {
-			feePayerSponsored := opts.ExistingFeePayerExpenditure(*tx.FeePayer(), from, tx.Nonce())
+			feePayerSponsored := opts.ExistingFeePayerExpenditure(feePayer, from, tx.Nonce())
 			feePayerOwn := opts.ExistingExpenditure(*tx.FeePayer())
 			feePayerPooled := new(big.Int).Add(feePayerSponsored, feePayerOwn)
 			feePayerNeed := new(big.Int).Add(feePayerPooled, tx.FeePayerCost())

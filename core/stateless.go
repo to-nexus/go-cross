@@ -66,7 +66,7 @@ func ExecuteStateless(config *params.ChainConfig, vmconfig vm.Config, block *typ
 		numberCache: lru.NewCache[common.Hash, uint64](numberCacheLimit),
 		engine:      beacon.New(ethash.NewFaker()),
 	}
-	processor := NewStateProcessor(config, chain)
+	processor := NewStateProcessor(chain)
 	validator := NewBlockValidator(config, nil) // No chain, we only validate the state, not the block
 
 	// Run the stateless blocks processing and self-validate certain fields

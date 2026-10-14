@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/kylelemons/godebug/diff"
@@ -24,10 +23,10 @@ import (
 // ##CROSS: transfer log
 
 var (
-	testUnit            = int64(1_000_000_000_000_000_000)
+	testUnit            = int64(params.Ether)
 	testBigUnit         = big.NewInt(testUnit)
-	testKey1, _         = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-	testKey2, _         = crypto.HexToECDSA("8a1f9a8f95be41cd7ccb6168179afb4504aefe388d1e14474d32c45c72ce7b7a")
+	testKey1, _         = crypto.GenerateKey()
+	testKey2, _         = crypto.GenerateKey()
 	testAddr1           = crypto.PubkeyToAddress(testKey1.PublicKey)
 	testAddr2           = crypto.PubkeyToAddress(testKey2.PublicKey)
 	testChainID         = big.NewInt(612044)
@@ -149,7 +148,10 @@ func TestAddTransferLog_transferTx(t *testing.T) {
 				gen = genFunc(tt.atBlock, testBigUnit)
 			}
 			db, chain, receipts := GenerateChainWithGenesis(tt.gspec, beacon.NewFaker(), 5, gen)
-			blockchain, _ := NewBlockChain(db, nil, tt.gspec, nil, beacon.NewFaker(), vm.Config{}, nil)
+			blockchain, err := NewBlockChain(db, tt.gspec, beacon.NewFaker(), DefaultConfig())
+			if err != nil {
+				t.Fatalf("failed to create blockchain: %v", err)
+			}
 			defer blockchain.Stop()
 
 			if i, err := blockchain.InsertChain(chain); err != nil {
@@ -266,7 +268,7 @@ func TestAddTransferLog_callContract(t *testing.T) {
 			addTx(gen, testChainID, testKey1, contract1, testBigUnit, input)
 		}
 	})
-	blockchain, _ := NewBlockChain(db, nil, gspec, nil, beacon.NewFaker(), vm.Config{}, nil)
+	blockchain, _ := NewBlockChain(db, gspec, beacon.NewFaker(), DefaultConfig())
 	defer blockchain.Stop()
 
 	if i, err := blockchain.InsertChain(chain); err != nil {
