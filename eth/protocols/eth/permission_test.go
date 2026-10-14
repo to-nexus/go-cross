@@ -145,21 +145,25 @@ func (c *errChecker) IsValidator(addr common.Address) (bool, error) {
 	return ok, nil
 }
 
-// TestVerifyPermissionFailOpen verifies A-2: when an eligibility lookup cannot be resolved
-// (returns an error), the peer is allowed rather than rejected — for both the self check and
-// the peer check — while a definitive "not a validator" (nil error, false) is still rejected.
-func TestVerifyPermissionFailOpen(t *testing.T) {
+// TestVerifyPermissionLookupErrors verifies how unresolved eligibility lookups are handled.
+// A failed peer lookup is rejected while self is a validator, but a failed self lookup stays open,
+// so a node without state at its head can still sync.
+func TestVerifyPermissionLookupErrors(t *testing.T) {
 	lookupErr := errors.New("stakehub unavailable")
 
-	// (1) Peer lookup fails while self is a validator → fail open (allow).
+	// (1) Peer lookup fails while self is a validator → fail closed (reject).
 	c1 := &errChecker{
 		validators: map[common.Address]struct{}{idAddr(idSelfValidator): {}},
 		failOn:     map[common.Address]struct{}{idAddr(idNonValidator): {}},
 		err:        lookupErr,
 	}
 	pp1 := &PermissionPeers{self: idSelfValidator, validators: c1}
-	if err := pp1.verifyPermission(idNonValidator, false, false); err != nil {
-		t.Errorf("peer lookup failure should fail open (allow), got %v", err)
+	if err := pp1.verifyPermission(idNonValidator, false, false); err == nil {
+		t.Errorf("peer lookup failure should fail closed (reject)")
+	}
+	// ...but a static or trusted peer is still allowed without a lookup.
+	if err := pp1.verifyPermission(idNonValidator, false, true); err != nil {
+		t.Errorf("static peer should be allowed despite lookup failure, got %v", err)
 	}
 
 	// (2) Self lookup fails → fail open (allow), regardless of the peer.
@@ -173,8 +177,7 @@ func TestVerifyPermissionFailOpen(t *testing.T) {
 		t.Errorf("self lookup failure should fail open (allow), got %v", err)
 	}
 
-	// (3) Definitive "peer is not a validator" (no error) is still rejected — fail-open must
-	// not soften a resolved negative.
+	// (3) Definitive "peer is not a validator" (no error) is still rejected.
 	c3 := &errChecker{
 		validators: map[common.Address]struct{}{idAddr(idSelfValidator): {}},
 	}
