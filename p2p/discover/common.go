@@ -59,6 +59,11 @@ type Config struct {
 	RefreshInterval         time.Duration // used in bucket refresh
 	NoFindnodeLivenessCheck bool          // turns off validation of table nodes in FINDNODE handler
 
+	// ##CROSS: discovery filter
+	// TableFilter reports whether a node may stay in the table. It is checked when a node is added
+	// or updated, and on every revalidation. If nil, all nodes are kept.
+	TableFilter func(*enode.Node) bool
+
 	// The options below are useful in very specific cases, like in unit tests.
 	V5ProtocolID *[6]byte
 	Log          log.Logger         // if set, log messages go here
