@@ -38,7 +38,31 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
 )
+
+// ##CROSS: fix upstream
+func TestTransactionArgs_SetDefaults(t *testing.T) {
+	t.Parallel()
+
+	b := newBackendMock()
+	input := hexutil.Bytes{0x01}
+	for _, tt := range []struct {
+		name string
+		auth []types.SetCodeAuthorization
+	}{
+		{"rejects authorization list without destination", []types.SetCodeAuthorization{{}}},
+		{"rejects empty authorization list without destination", []types.SetCodeAuthorization{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			args := &TransactionArgs{Input: &input, AuthorizationList: tt.auth}
+			err := args.setDefaults(context.Background(), b, sidecarConfig{})
+			require.ErrorContains(t, err, "authorizationList provided for contract creation")
+		})
+	}
+}
+
+// ##
 
 // TestSetFeeDefaults tests the logic for filling in default fee values works as expected.
 func TestSetFeeDefaults(t *testing.T) {
@@ -58,6 +82,7 @@ func TestSetFeeDefaults(t *testing.T) {
 		fortytwo = (*hexutil.Big)(big.NewInt(42))
 		maxFee   = (*hexutil.Big)(new(big.Int).Add(new(big.Int).Mul(b.current.BaseFee, big.NewInt(2)), fortytwo.ToInt()))
 		al       = &types.AccessList{types.AccessTuple{Address: common.Address{0xaa}, StorageKeys: []common.Hash{{0x01}}}}
+		authList = []types.SetCodeAuthorization{{Address: common.Address{0xbb}}}
 	)
 
 	tests := []test{
@@ -208,6 +233,15 @@ func TestSetFeeDefaults(t *testing.T) {
 			nil,
 			errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified"),
 		},
+		// ##CROSS: fix upstream 2133e01 (#35320)
+		{
+			"set gas price and authorization list",
+			"london",
+			&TransactionArgs{GasPrice: fortytwo, AuthorizationList: authList},
+			nil,
+			errors.New("both gasPrice and authorizationList specified"),
+		},
+		// ##
 		// EIP-4844
 		{
 			"set gas price and maxFee for blob transaction",
@@ -336,7 +370,7 @@ func (b *backendMock) RPCGasCap() uint64                 { return 0 }
 func (b *backendMock) RPCEVMTimeout() time.Duration      { return time.Second }
 func (b *backendMock) RPCTxFeeCap() float64              { return 0 }
 func (b *backendMock) UnprotectedAllowed() bool          { return false }
-func (b *backendMock) SetHead(number uint64)             {}
+func (b *backendMock) SetHead(number uint64) error       { return nil }
 func (b *backendMock) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Header, error) {
 	return nil, nil
 }

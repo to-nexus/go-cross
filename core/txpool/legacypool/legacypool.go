@@ -148,7 +148,7 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime time.Duration // Maximum amount of time an account can remain stale in the non-executable pool
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
@@ -799,7 +799,7 @@ func (pool *LegacyPool) add(tx *types.Transaction) (replaced bool, err error) {
 		pool.queueTxEvent(tx)
 		log.Trace("Pooled new executable transaction", "hash", hash, "from", from, "to", tx.To())
 
-		// Successful promotion, bump the heartbeat
+		// Successful replacement. If needed, bump the heartbeat giving more time to queued txs.
 		pool.queue.bump(from)
 		return old != nil, nil
 	}
@@ -892,7 +892,7 @@ func (pool *LegacyPool) promoteTx(addr common.Address, hash common.Hash, tx *typ
 	// Set the potentially new pending nonce and notify any subsystems of the new tx
 	pool.pendingNonces.set(addr, tx.Nonce()+1)
 
-	// Successful promotion, bump the heartbeat
+	// Successful promotion, bump the heartbeat, giving more time to queued txs.
 	pool.queue.bump(addr)
 	return true
 }
@@ -1429,7 +1429,8 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 
 	// promote all promotable transactions
 	promoted := make([]*types.Transaction, 0, len(promotable))
-	for i, tx := range promotable {
+	held := make(map[common.Address]struct{}) // Senders held by a fee payer budget // ##CROSS: fee delegation
+	for _, tx := range promotable {
 		from, _ := pool.signer.Sender(tx)
 		// ##CROSS: fee delegation
 		// Gate promotion on the fee payer's cumulative budget. The shared index
@@ -1438,10 +1439,12 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		// this pass (including by earlier senders sharing this fee payer). Promoting
 		// a fee-delegated tx whose cost, on top of what its fee payer already
 		// sponsors in pending, exceeds the fee payer's balance would over-commit it.
-		// readies is the contiguous promotable run, so once one tx is held the rest
-		// cannot be promoted either; put this tx and the remainder back in the queue
-		// to retry later (the balance may grow or pending txs may clear).
-		if tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
+		// promotable joins the ready runs of all accounts, so only this sender is held:
+		// its later nonces cannot be promoted either, but other senders still are.
+		// Held txs go back to the queue to retry later (the balance may grow or pending
+		// txs may clear).
+		_, isHeld := held[from]
+		if !isHeld && tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
 			payer := *tx.FeePayer()
 			committed := new(big.Int)
 			if sum := pool.feePayerCost[payer]; sum != nil {
@@ -1449,18 +1452,33 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 			}
 			need := new(big.Int).Add(committed, tx.FeePayerCost())
 			if pool.currentState.GetBalance(payer).ToBig().Cmp(need) < 0 {
-				for _, held := range promotable[i:] {
-					pool.enqueueTx(held.Hash(), held, false)
-				}
+				held[from] = struct{}{}
+				isHeld = true
 				log.Trace("Holding fee-delegated txs: fee payer cumulative budget exceeded",
-					"sender", from, "payer", payer, "held", len(promotable[i:]))
-				break
+					"sender", from, "payer", payer, "nonce", tx.Nonce())
 			}
 		}
+		if isHeld {
+			pool.enqueueTx(tx.Hash(), tx, false)
+			continue
+		}
+		// ##
 		if pool.promoteTx(from, tx.Hash(), tx) {
 			promoted = append(promoted, tx)
 		}
 	}
+	// ##CROSS: fee delegation
+	// Held txs were taken out of the queue before it applied AccountQueue, so apply it again.
+	for addr := range held {
+		list, _ := pool.queue.get(addr)
+		caps := list.Cap(int(pool.config.AccountQueue))
+		for _, tx := range caps {
+			dropped = append(dropped, tx.Hash())
+		}
+		queuedGauge.Dec(int64(len(caps)))
+		queuedRateLimitMeter.Mark(int64(len(caps)))
+	}
+	// ##
 
 	// remove all removable transactions
 	for _, hash := range dropped {
@@ -1470,6 +1488,14 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 
 	// release all accounts that have no more transactions in the pool
 	for _, addr := range removedAddresses {
+		// ##CROSS: fee delegation
+		// A held sender is back in the queue: keep its reservation and its old heartbeat, so a retry
+		// does not refresh the lifetime of txs that never left the queue.
+		if _, ok := held[addr]; ok {
+			continue
+		}
+		pool.queue.dropBeat(addr)
+		// ##
 		_, hasPending := pool.pending[addr]
 		if !hasPending {
 			pool.reserver.Release(addr)
@@ -1652,6 +1678,39 @@ func (pool *LegacyPool) demoteUnexecutables() {
 			}
 		}
 	}
+	// ##CROSS: fee delegation
+	// Check the fee payer totals, after every sender dropped its mined and unpayable txs.
+	// Demote from the highest nonce down, so the txs that the balance covers stay pending.
+	for addr, list := range pool.pending {
+		txs := list.Flatten()
+		var demoted types.Transactions
+		for i := len(txs) - 1; i >= 0; i-- {
+			tx := txs[i]
+			if tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
+				continue
+			}
+			payer := *tx.FeePayer()
+			if sum := pool.feePayerCost[payer]; sum == nil || pool.currentState.GetBalance(payer).Cmp(sum) >= 0 {
+				continue
+			}
+			if removed, cascaded := list.Remove(tx); removed {
+				demoted = append(demoted, tx)
+				demoted = append(demoted, cascaded...)
+				log.Trace("Demoting fee-delegated tx due to fee payer cumulative budget", "hash", tx.Hash())
+			}
+		}
+		for _, tx := range demoted {
+			pool.enqueueTx(tx.Hash(), tx, false)
+		}
+		pendingGauge.Dec(int64(len(demoted)))
+		if list.Empty() {
+			delete(pool.pending, addr)
+			if _, ok := pool.queue.get(addr); !ok {
+				pool.reserver.Release(addr)
+			}
+		}
+	}
+	// ##
 }
 
 // accountSet is simply a set of addresses to check for existence, and a signer

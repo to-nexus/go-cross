@@ -2,6 +2,8 @@ package ethapi
 
 import (
 	"context"
+	"errors"
+	"math"
 	"reflect"
 	"testing"
 
@@ -70,6 +72,29 @@ func TestCrossAPI_GetCheckpointProof(t *testing.T) {
 			expectErr:   "range too large",
 			want:        nil,
 		},
+		{
+			// Blocks above the head must not be hashed as nil headers.
+			blockNumber: rpc.BlockNumber(genBlocks),
+			startNumber: rpc.BlockNumber(genBlocks - 1),
+			endNumber:   rpc.BlockNumber(genBlocks + 5),
+			expectErr:   "header 101 not found",
+			want:        nil,
+		},
+		{
+			// A range ending at MaxInt64 must not loop forever.
+			blockNumber: rpc.BlockNumber(math.MaxInt64 - 1),
+			startNumber: rpc.BlockNumber(math.MaxInt64 - 1),
+			endNumber:   rpc.BlockNumber(math.MaxInt64),
+			expectErr:   "header 9223372036854775806 not found",
+			want:        nil,
+		},
+		{
+			blockNumber: rpc.BlockNumber(0),
+			startNumber: rpc.BlockNumber(0),
+			endNumber:   rpc.BlockNumber(math.MaxInt64),
+			expectErr:   "range too large",
+			want:        nil,
+		},
 	}
 
 	for i, tc := range tests {
@@ -94,4 +119,32 @@ func TestCrossAPI_GetCheckpointProof(t *testing.T) {
 			}
 		}
 	}
+
+	t.Run("range ending at MaxInt64 stops at the end", func(t *testing.T) {
+		// The backend returns a header for every number, so only the loop bound can stop it.
+		backend := &anyHeaderBackend{}
+		start := rpc.BlockNumber(math.MaxInt64 - 1)
+		_, err := NewCrossAPI(backend).GetCheckpointProof(context.Background(), start, start, math.MaxInt64)
+		if err != nil {
+			t.Fatalf("want no error, have %v", err)
+		}
+		want := []rpc.BlockNumber{math.MaxInt64 - 1, math.MaxInt64}
+		if !reflect.DeepEqual(want, backend.calls) {
+			t.Fatalf("calls mismatch, want %v, have %v", want, backend.calls)
+		}
+	})
+}
+
+// anyHeaderBackend returns an empty header for any block number and records the requested numbers.
+type anyHeaderBackend struct {
+	Backend
+	calls []rpc.BlockNumber
+}
+
+func (b *anyHeaderBackend) HeaderByNumber(_ context.Context, number rpc.BlockNumber) (*types.Header, error) {
+	b.calls = append(b.calls, number)
+	if len(b.calls) > 2 {
+		return nil, errors.New("too many calls")
+	}
+	return &types.Header{}, nil
 }

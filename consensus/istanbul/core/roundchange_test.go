@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ##CROSS: istanbul validation
@@ -139,6 +142,90 @@ func TestPreprepare_RejectsStaleRoundChangeJustification(t *testing.T) {
 	}
 }
 
+// ##CROSS: blob sidecars
+func TestRoundChange_ReproposesPreparedBlockWithSidecars(t *testing.T) {
+	valSet, keys := generateValidatorSetAndKeys(t, 4)
+	proposerAddr := valSet.GetByIndex(0).Address()
+
+	const (
+		sequence      int64 = 1
+		currentRound  int64 = 2
+		preparedRound int64 = 1
+	)
+	blobTx := types.NewTx(&types.BlobTx{BlobHashes: []common.Hash{{0x01}}})
+	prepared := makeBlockWithTime(sequence, 1).WithBody(types.Body{Transactions: []*types.Transaction{blobTx}})
+	sidecars := types.BlobSidecars{{BlockNumber: big.NewInt(sequence), BlockHash: prepared.Hash(), TxHash: blobTx.Hash()}}
+
+	// newCore returns a proposer whose backend accepts a blob block only with its sidecars, like the DA check.
+	newCore := func(t *testing.T) (*Core, *roundChangeTestBackend) {
+		c, b := newRoundChangeTestCore(t, proposerAddr, keys[proposerAddr], valSet, makeBlockWithTime(sequence, 2), sequence, currentRound)
+		b.verify = func(p istanbul.Proposal) error {
+			if len(p.Sidecars()) == 0 {
+				return errors.New("unavailable blob data")
+			}
+			return nil
+		}
+		return c, b
+	}
+	// run sends a quorum of ROUND-CHANGE messages that justify the prepared block, the i-th one carrying
+	// rcBlock(i), and returns the proposal of the PRE-PREPARE the proposer sends for the new round.
+	run := func(t *testing.T, c *Core, b *roundChangeTestBackend, rcBlock func(i int) *types.Block) istanbul.Proposal {
+		t.Helper()
+		var prepares []*protocols.Prepare
+		for i := 0; i < valSet.QuorumSize(); i++ {
+			addr := valSet.GetByIndex(uint64(i)).Address()
+			prepares = append(prepares, createSignedPrepareMessage(t, keys[addr], addr, preparedRound, prepared))
+		}
+		for i := 0; i < valSet.QuorumSize(); i++ {
+			addr := valSet.GetByIndex(uint64(i)).Address()
+			rc := createSignedRoundChangeMessage(t, keys[addr], addr, currentRound, preparedRound, rcBlock(i))
+			rc.Justification = prepares
+			payload, err := rlp.EncodeToBytes(rc)
+			require.NoError(t, err)
+			require.NoError(t, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
+		}
+		for _, bc := range b.broadcasts {
+			if bc.code == protocols.PreprepareCode {
+				msg, err := protocols.Decode(bc.code, bc.payload)
+				require.NoError(t, err)
+				return msg.(*protocols.Preprepare).Proposal
+			}
+		}
+		t.Fatal("no PRE-PREPARE broadcast")
+		return nil
+	}
+
+	t.Run("uses sidecars carried by ROUND-CHANGE", func(t *testing.T) {
+		c, b := newCore(t)
+		proposal := run(t, c, b, func(int) *types.Block { return prepared.WithSidecars(sidecars) })
+		assert.Equal(t, prepared.Hash(), proposal.Hash())
+		assert.Len(t, proposal.Sidecars(), 1)
+	})
+
+	t.Run("uses own prepared block when ROUND-CHANGE lacks sidecars", func(t *testing.T) {
+		c, b := newCore(t)
+		c.current.preparedRound = big.NewInt(preparedRound)
+		c.current.preparedBlock = prepared.WithSidecars(sidecars)
+		proposal := run(t, c, b, func(int) *types.Block { return prepared })
+		assert.Equal(t, prepared.Hash(), proposal.Hash())
+		assert.Len(t, proposal.Sidecars(), 1)
+	})
+
+	t.Run("uses sidecars from a later ROUND-CHANGE when the first lacks them", func(t *testing.T) {
+		c, b := newCore(t)
+		proposal := run(t, c, b, func(i int) *types.Block {
+			if i == 0 {
+				return prepared
+			}
+			return prepared.WithSidecars(sidecars)
+		})
+		assert.Equal(t, prepared.Hash(), proposal.Hash())
+		assert.Len(t, proposal.Sidecars(), 1)
+	})
+}
+
+// ##
+
 func newRoundChangeTestCore(
 	t *testing.T,
 	addr common.Address,
@@ -178,6 +265,8 @@ type roundChangeTestBackend struct {
 	valSet     istanbul.ValidatorSet
 	mux        *event.TypeMux
 	broadcasts []testBroadcast
+	forgotten  []common.Hash                 // hashes passed to ForgetMessage
+	verify     func(istanbul.Proposal) error // optional Verify result
 }
 
 type testBroadcast struct {
@@ -204,7 +293,10 @@ func (b *roundChangeTestBackend) Gossip(istanbul.ValidatorSet, uint64, []byte) e
 func (b *roundChangeTestBackend) Commit(istanbul.Proposal, []istanbul.SignedSeal, *big.Int) error {
 	return nil
 }
-func (b *roundChangeTestBackend) Verify(istanbul.Proposal) (time.Duration, error) {
+func (b *roundChangeTestBackend) Verify(proposal istanbul.Proposal) (time.Duration, error) {
+	if b.verify != nil {
+		return 0, b.verify(proposal)
+	}
 	return 0, nil
 }
 func (b *roundChangeTestBackend) Sign(data []byte) ([]byte, error) {
@@ -239,6 +331,9 @@ func (b *roundChangeTestBackend) ParentValidators(istanbul.Proposal) istanbul.Va
 }
 func (b *roundChangeTestBackend) HasBadProposal(common.Hash) bool {
 	return false
+}
+func (b *roundChangeTestBackend) ForgetMessage(hash common.Hash) {
+	b.forgotten = append(b.forgotten, hash)
 }
 func (b *roundChangeTestBackend) Close() error {
 	return nil

@@ -18,7 +18,9 @@ package backend
 
 import (
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
+	"slices"
 	"sync"
 	"time"
 
@@ -32,13 +34,14 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/engine"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/protocols"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 )
 
 const (
@@ -211,6 +214,15 @@ func (sb *Backend) Commit(proposal istanbul.Proposal, seals []istanbul.SignedSea
 
 	// update block's header
 	block = block.WithSeal(header)
+
+	// ##CROSS: istanbul validation
+	// Check the sealed header the way import does.
+	if err := sb.VerifyHeader(sb.chain, header); err != nil && !errors.Is(err, consensus.ErrFutureBlock) {
+		sb.logger.Error("Istanbul: committed block fails header verification", "number", header.Number, "hash", block.Hash(), "err", err)
+		rawdb.WriteBadBlock(sb.db, block)
+		return err
+	}
+	// ##
 
 	logger := sb.logger.With("author", sb.Address(), "hash", proposal.Hash(), "number", proposal.Number().Uint64())
 	// ##CROSS: bls seal
@@ -434,6 +446,14 @@ func (sb *Backend) HasBadProposal(hash common.Hash) bool {
 	return sb.hasBadBlock(sb.db, hash)
 }
 
+// ##CROSS: istanbul far future message
+// ForgetMessage implements istanbul.Backend.ForgetMessage
+func (sb *Backend) ForgetMessage(hash common.Hash) {
+	sb.knownMessages.Remove(hash)
+}
+
+// ##
+
 func (sb *Backend) Close() error {
 	return nil
 }
@@ -488,21 +508,25 @@ func (sb *Backend) ValidatorsAt(chain consensus.ChainHeaderReader, header *types
 
 // IsValidatorAt reports whether addr is a validator at the given header.
 // It returns (isValidator, err). A non-nil err means the status could not be determined
-// (a StakeHub lookup failed under PoSA); callers should treat that as "unknown". A nil err
+// (the snapshot or a StakeHub lookup failed); callers should treat that as "unknown". A nil err
 // with false means addr is genuinely not a validator at this header.
 func (sb *Backend) IsValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, validator common.Address) (bool, error) {
 	if chain == nil || header == nil {
 		return false, nil
 	}
-	if chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
-		return sb.engine.IsEligibleValidator(validator, header.Number.Uint64())
+	// ##CROSS: consensus peer permissioning
+	// A member of the consensus validator set is always admitted. After its operator rotates to a new address,
+	// the old address keeps signing until the next update, so it must stay connected or it would miss its turns.
+	// Other addresses need a current StakeHub registration under PoSA.
+	snap, err := sb.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err == nil && slices.Contains(snap.validators(), validator) {
+		return true, nil
 	}
-	for _, v := range sb.ValidatorsAt(chain, header) {
-		if v == validator {
-			return true, nil
-		}
+	if !chain.Config().IsIstanbulPoSA(header.Number, header.Time) {
+		return false, err
 	}
-	return false, nil
+	return sb.engine.IsEligibleValidator(validator, header.Number.Uint64())
+	// ##
 }
 
 // SetChainConfig updates the chain config used for signer selection.

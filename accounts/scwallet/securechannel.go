@@ -242,6 +242,11 @@ func (s *SecureChannelSession) transmitEncrypted(cla, ins, p1, p2 byte, data []b
 		return nil, err
 	}
 
+	// ##CROSS: fix upstream
+	if len(response.Data) < len(s.iv)+aes.BlockSize {
+		return nil, fmt.Errorf("invalid encrypted response length: %d", len(response.Data))
+	}
+	// ##
 	rmeta := [16]byte{byte(len(response.Data))}
 	rmac := response.Data[:len(s.iv)]
 	rdata := response.Data[len(s.iv):]
@@ -298,6 +303,10 @@ func (s *SecureChannelSession) decryptAPDU(data []byte) ([]byte, error) {
 	a, err := aes.NewCipher(s.sessionEncKey)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(data) == 0 || len(data)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("invalid ciphertext length: %d", len(data))
 	}
 
 	ret := make([]byte, len(data))

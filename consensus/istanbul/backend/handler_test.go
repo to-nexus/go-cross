@@ -29,6 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIstanbulMessage(t *testing.T) {
@@ -39,7 +41,7 @@ func TestIstanbulMessage(t *testing.T) {
 	data := []byte("data1")
 	hash := istanbul.RLPHash(data)
 	msg := makeMsg(istanbulMsg, data)
-	addr := common.BytesToAddress([]byte("address"))
+	addr := backend.Address() // ##CROSS: istanbul peer limit
 
 	// 1. this message should not be in cache
 	// for peers
@@ -69,6 +71,45 @@ func TestIstanbulMessage(t *testing.T) {
 		t.Fatalf("the cache of messages cannot be found")
 	}
 }
+
+// ##CROSS: istanbul peer limit
+func TestBackend_HandleMsg(t *testing.T) {
+	_, backend := newBlockChain(1)
+	defer backend.Stop()
+
+	t.Run("drops consensus message from non-validator peer", func(t *testing.T) {
+		data := []byte("data2")
+		addr := common.BytesToAddress([]byte("not a validator"))
+
+		handled, err := backend.HandleMsg(addr, makeMsg(istanbulMsg, data))
+		require.True(t, handled)
+		require.NoError(t, err)
+
+		_, ok := backend.recentMessages.Get(addr)
+		assert.False(t, ok, "message must be dropped before it is cached")
+		assert.False(t, backend.knownMessages.Contains(istanbul.RLPHash(data)))
+	})
+
+	// ##CROSS: istanbul far future message
+	t.Run("handles a forgotten message again", func(t *testing.T) {
+		data := []byte("data3")
+		hash := istanbul.RLPHash(data)
+
+		_, err := backend.HandleMsg(backend.Address(), makeMsg(istanbulMsg, data))
+		require.NoError(t, err)
+		require.True(t, backend.knownMessages.Contains(hash))
+
+		backend.ForgetMessage(hash)
+		require.False(t, backend.knownMessages.Contains(hash))
+
+		_, err = backend.HandleMsg(backend.Address(), makeMsg(istanbulMsg, data))
+		require.NoError(t, err)
+		assert.True(t, backend.knownMessages.Contains(hash), "the same message must pass the cache again")
+	})
+	// ##
+}
+
+// ##
 
 func makeMsg(msgcode uint64, data interface{}) p2p.Msg {
 	size, r, _ := rlp.EncodeToReader(data)

@@ -14,9 +14,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/google/uuid"
-	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
-	"github.com/prysmaticlabs/prysm/v5/crypto/bls/common"
 )
 
 const version = 1
@@ -24,8 +23,8 @@ const version = 1
 // BLSKey represents a decrypted BLS key in memory.
 type BLSKey struct {
 	Id        uuid.UUID
-	PublicKey common.PublicKey
-	SecretKey common.SecretKey
+	PublicKey bls.PublicKey
+	SecretKey bls.SecretKey
 }
 
 // KeyInfo holds metadata about a stored BLS key.
@@ -111,7 +110,7 @@ func ReadBLSPubKey(filename string) ([]byte, string, error) {
 }
 
 // StoreKey encrypts a BLS secret key and writes it to dir.
-func StoreKey(dir string, secretKey common.SecretKey, auth string, scryptN, scryptP int) (*BLSKey, string, error) {
+func StoreKey(dir string, secretKey bls.SecretKey, auth string, scryptN, scryptP int) (*BLSKey, string, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return nil, "", err
@@ -214,7 +213,7 @@ func FindKeyByPubKey(dir, pubKeyHex string) (string, error) {
 
 // keyFileName implements the naming convention for keyfiles:
 // UTC--<created_at UTC ISO8601>-<pubkey hex>
-func keyFileName(pubKey common.PublicKey) string {
+func keyFileName(pubKey bls.PublicKey) string {
 	ts := time.Now().UTC()
 	pubHex := hex.EncodeToString(pubKey.Marshal())
 	return fmt.Sprintf("UTC--%s--%s", toISO8601(ts), pubHex)

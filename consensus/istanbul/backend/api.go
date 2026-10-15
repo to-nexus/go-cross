@@ -17,7 +17,9 @@
 package backend
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -26,6 +28,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 )
+
+// maxStatusBlocks is the largest block range that Status accepts (one day of 1s blocks).
+const maxStatusBlocks = 86400 // ##CROSS: istanbul status limit
 
 // API is a user facing RPC API to dump Istanbul state
 type API struct {
@@ -191,7 +196,8 @@ func (api *API) Discard(address common.Address) {
 	delete(api.backend.candidates, address)
 }
 
-func (api *API) Status(startBlockNum *rpc.BlockNumber, endBlockNum *rpc.BlockNumber) (*Status, error) {
+// Status counts the blocks authored by each validator in the given range, or in the last 64 blocks if no range is given.
+func (api *API) Status(ctx context.Context, startBlockNum *rpc.BlockNumber, endBlockNum *rpc.BlockNumber) (*Status, error) {
 	var (
 		numBlocks   uint64
 		header      = api.chain.CurrentHeader()
@@ -202,7 +208,6 @@ func (api *API) Status(startBlockNum *rpc.BlockNumber, endBlockNum *rpc.BlockNum
 	if startBlockNum != nil && endBlockNum == nil {
 		return nil, errors.New("pass the end block number")
 	}
-
 	if startBlockNum == nil && endBlockNum != nil {
 		return nil, errors.New("pass the start block number")
 	}
@@ -219,6 +224,11 @@ func (api *API) Status(startBlockNum *rpc.BlockNumber, endBlockNum *rpc.BlockNum
 		if start > end {
 			return nil, errors.New("start block number should be less than end block number")
 		}
+		// ##CROSS: istanbul status limit
+		if end-start > maxStatusBlocks {
+			return nil, fmt.Errorf("range too large: max %d blocks", maxStatusBlocks)
+		}
+		// ##
 
 		if end > api.chain.CurrentHeader().Number.Uint64() {
 			return nil, errors.New("end block number should be less than or equal to current block height")
@@ -246,11 +256,22 @@ func (api *API) Status(startBlockNum *rpc.BlockNumber, endBlockNum *rpc.BlockNum
 	for _, s := range signers {
 		signStatus[s] = 0
 	}
+	// ##CROSS: istanbul status limit
 	for n := start; n < end; n++ {
-		blockNum := rpc.BlockNumber(int64(n))
-		s, _ := api.GetSignersFromBlock(&blockNum)
-		signStatus[s.Author]++
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		header := api.chain.GetHeaderByNumber(n)
+		if header == nil {
+			return nil, istanbul.ErrUnknownBlock
+		}
+		author, err := api.backend.Author(header)
+		if err != nil {
+			return nil, err
+		}
+		signStatus[author]++
 	}
+	// ##
 	return &Status{
 		SigningStatus: signStatus,
 		NumBlocks:     numBlocks,
