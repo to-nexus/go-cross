@@ -105,7 +105,7 @@ docker build -t to-nexus/go-cross:latest -f Dockerfile .
 
 ### Initialize the Data Directory
 
-Initialize mainnet with `init one`, or ZoneZero with `init zonezero`:
+Initialize mainnet with `init one`:
 
 ```bash
 ./build/bin/geth --datadir <YOUR_DATADIR> init one
