@@ -17,7 +17,7 @@
 package backend
 
 import (
-	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"math/big"
 	"sort"
@@ -27,10 +27,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	istcore "github.com/ethereum/go-ethereum/consensus/istanbul/core"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
+	"github.com/ethereum/go-ethereum/crypto/bls"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSign(t *testing.T) {
@@ -125,65 +129,46 @@ func (c signedSeal) Signature() []byte      { return c }
 // ##
 
 func TestCommit(t *testing.T) {
-	backend := newBackend()
+	chain, backend := newBlockChain(1)
 	defer backend.Stop()
+	block := updateIstanbulBlock(makeBlockWithoutSeal(chain, backend, chain.Genesis()), backend.Address())
+	// As the proposer, Commit hands the sealed block to Seal through commitCh.
+	backend.proposedBlockHash = block.Hash()
 
-	commitCh := make(chan *types.Block)
-	// Case: it's a proposer, so the backend.commit will receive channel result from backend.Commit function
-	testCases := []struct {
-		expectedErr       error
-		expectedSignature []istanbul.SignedSeal // ##CROSS: bls seal
-		expectedBlock     func() *types.Block
-	}{
-		{
-			// normal case
-			nil,
-			[]istanbul.SignedSeal{signedSeal(append([]byte{1}, bytes.Repeat([]byte{0x00}, types.IstanbulExtraSeal-1)...))},
-			func() *types.Block {
-				chain, engine := newBlockChain(1)
-				block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
-				return updateIstanbulBlock(block, engine.Address())
-			},
-		},
-		{
-			// invalid signature
-			istanbul.ErrInvalidCommittedSeals,
-			nil,
-			func() *types.Block {
-				chain, engine := newBlockChain(1)
-				block := makeBlockWithoutSeal(chain, engine, chain.Genesis())
-				return updateIstanbulBlock(block, engine.Address())
-			},
-		},
-	}
+	t.Run("sends the sealed block to the sealer", func(t *testing.T) {
+		err := backend.Commit(block, []istanbul.SignedSeal{commitSeal(t, backend.privateKey, block)}, big.NewInt(0))
+		require.NoError(t, err)
+		assert.Equal(t, block.Hash(), (<-backend.commitCh).Hash())
+		assert.False(t, backend.HasBadProposal(block.Hash()))
+	})
 
-	for _, test := range testCases {
-		expBlock := test.expectedBlock()
-		go func() {
-			result := <-backend.commitCh
-			commitCh <- result
-		}()
+	t.Run("rejects missing seals", func(t *testing.T) {
+		err := backend.Commit(block, nil, big.NewInt(0))
+		require.ErrorIs(t, err, istanbul.ErrInvalidCommittedSeals)
+	})
 
-		backend.proposedBlockHash = expBlock.Hash()
-		if err := backend.Commit(expBlock, test.expectedSignature, big.NewInt(0)); err != nil {
-			if err != test.expectedErr {
-				t.Errorf("error mismatch: have %v, want %v", err, test.expectedErr)
-			}
-		}
-
-		if test.expectedErr == nil {
-			// to avoid race condition is occurred by goroutine
-			select {
-			case result := <-commitCh:
-				if result.Hash() != expBlock.Hash() {
-					t.Errorf("hash mismatch: have %v, want %v", result.Hash(), expBlock.Hash())
-				}
-			case <-time.After(10 * time.Second):
-				t.Fatal("timeout")
-			}
-		}
-	}
+	// ##CROSS: istanbul validation
+	t.Run("marks a block that fails header verification as bad", func(t *testing.T) {
+		other, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		err = backend.Commit(block, []istanbul.SignedSeal{commitSeal(t, other, block)}, big.NewInt(0))
+		require.ErrorIs(t, err, istanbul.ErrInvalidCommittedSeals)
+		assert.Empty(t, backend.commitCh)
+		assert.True(t, backend.HasBadProposal(block.Hash()))
+	})
+	// ##
 }
+
+// ##CROSS: istanbul validation
+// commitSeal returns the round 0 committed seal of block signed by key.
+func commitSeal(t *testing.T, key *ecdsa.PrivateKey, block *types.Block) signedSeal {
+	t.Helper()
+	seal, err := crypto.Sign(istcore.PrepareCommittedSeal(block.Header(), 0), key)
+	require.NoError(t, err)
+	return seal
+}
+
+// ##
 
 func TestGetProposer(t *testing.T) {
 	chain, engine := newBlockChain(1)
@@ -280,3 +265,86 @@ func newBackend() (b *Backend) {
 	// ##
 	return
 }
+
+// ##CROSS: blob sidecars
+func TestBackend_Verify(t *testing.T) {
+	chain, engine := newBlockChain(1)
+	defer engine.Stop()
+	block := makeBlock(chain, engine, chain.Genesis())
+
+	t.Run("accepts block without blob data", func(t *testing.T) {
+		_, err := engine.Verify(block)
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects sidecars that do not match blob transactions", func(t *testing.T) {
+		sidecar := &types.BlobSidecar{BlockNumber: block.Number(), BlockHash: block.Hash()}
+		_, err := engine.Verify(block.WithSidecars(types.BlobSidecars{sidecar}))
+		require.ErrorIs(t, err, istanbul.ErrUnavailableBlobData)
+	})
+}
+
+// ##
+
+// ##CROSS: consensus peer permissioning
+func TestBackend_IsValidatorAt(t *testing.T) {
+	chain, engine := newBlockChain(1)
+	defer engine.Stop()
+	head := chain.CurrentHeader()
+
+	t.Run("admits a member of the validator set", func(t *testing.T) {
+		ok, err := engine.IsValidatorAt(chain, head, engine.Address())
+		require.NoError(t, err)
+		require.True(t, ok)
+	})
+
+	t.Run("rejects an unknown address", func(t *testing.T) {
+		ok, err := engine.IsValidatorAt(chain, head, common.HexToAddress("0x1234"))
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("returns an error when the snapshot is unavailable", func(t *testing.T) {
+		unknown := &types.Header{Number: big.NewInt(5), ParentHash: common.Hash{0x01}}
+		ok, err := engine.IsValidatorAt(chain, unknown, engine.Address())
+		require.Error(t, err)
+		require.False(t, ok)
+	})
+}
+
+// ##
+
+// ##CROSS: istanbul status limit
+func TestAPI_Status(t *testing.T) {
+	chain, engine := newBlockChain(1)
+	defer engine.Stop()
+
+	parent := chain.Genesis()
+	for range 3 {
+		block := makeBlock(chain, engine, parent)
+		_, err := chain.InsertChain(types.Blocks{block})
+		require.NoError(t, err)
+		require.NoError(t, engine.NewChainHead()) // move the core to the next block without waiting for a round change
+		parent = block
+	}
+
+	api := &API{chain: chain, backend: engine}
+	number := func(n int64) *rpc.BlockNumber {
+		bn := rpc.BlockNumber(n)
+		return &bn
+	}
+
+	t.Run("counts block authors", func(t *testing.T) {
+		status, err := api.Status(context.Background(), number(1), number(3))
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), status.NumBlocks)
+		require.Equal(t, map[common.Address]int{engine.Address(): 2}, status.SigningStatus)
+	})
+
+	t.Run("rejects a range over the limit", func(t *testing.T) {
+		_, err := api.Status(context.Background(), number(0), number(maxStatusBlocks+1))
+		require.ErrorContains(t, err, "range too large")
+	})
+}
+
+// ##

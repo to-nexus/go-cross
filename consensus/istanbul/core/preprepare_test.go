@@ -219,6 +219,7 @@ func (b *preprepareNumberMismatchPoCTestBackend) ParentValidators(istanbul.Propo
 func (b *preprepareNumberMismatchPoCTestBackend) HasBadProposal(common.Hash) bool {
 	return false
 }
+func (b *preprepareNumberMismatchPoCTestBackend) ForgetMessage(common.Hash) {}
 func (b *preprepareNumberMismatchPoCTestBackend) Close() error {
 	return nil
 }

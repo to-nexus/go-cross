@@ -103,4 +103,7 @@ var (
 	// ErrInvalidSignersLength is returned if the signers list length is not equal to the validators list length.
 	ErrInvalidSignersLength = errors.New("invalid signers length")
 	// ##
+
+	// ErrUnavailableBlobData is returned if a block proposal lacks valid sidecars for its blob transactions.
+	ErrUnavailableBlobData = errors.New("unavailable blob data") // ##CROSS: blob sidecars
 )

@@ -44,6 +44,11 @@ const (
 	// there to limit the number of disk lookups.
 	maxCodeLookups = 1024
 
+	// ##CROSS: limit storage range accounts
+	// maxStorageLookups is the maximum number of accounts to serve storage ranges for.
+	// Normal requests carry at most 512 accounts.
+	maxStorageLookups = 1024
+
 	// stateLookupSlack defines the ratio by how much a state response can exceed
 	// the requested limit in order to try and avoid breaking up contracts into
 	// multiple packages and proving them.
@@ -342,6 +347,12 @@ func ServiceGetStorageRangesQuery(chain *core.BlockChain, req *GetStorageRangesP
 	if req.Bytes > softResponseLimit {
 		req.Bytes = softResponseLimit
 	}
+	// ##CROSS: limit storage range accounts
+	// Accounts without storage add nothing to the response size, so cap the number of accounts too.
+	if len(req.Accounts) > maxStorageLookups {
+		req.Accounts = req.Accounts[:maxStorageLookups]
+	}
+	// ##
 	// TODO(karalabe): Do we want to enforce > 0 accounts and 1 account if origin is set?
 	// TODO(karalabe):   - Logging locally is not ideal as remote faults annoy the local user
 	// TODO(karalabe):   - Dropping the remote peer is less flexible wrt client bugs (slow is better than non-functional)

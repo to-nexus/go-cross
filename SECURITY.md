@@ -1,12 +1,22 @@
 # Security Policy
 
-## Supported Versions
+## ONE Chain Reports
 
-Please see [Releases](https://github.com/ethereum/go-ethereum/releases). We recommend using the [most recently released version](https://github.com/ethereum/go-ethereum/releases/latest).
+For vulnerabilities in ONE-specific code, obtain a verified private reporting channel from the to-nexus maintainers before sharing details.
+A dedicated ONE reporting address is not currently listed in this repository.
+Do not publish vulnerability details in public issues or pull requests.
 
-## Audit reports
+The Ethereum Foundation contact and encryption key below are upstream references, not ONE Chain reporting credentials.
+The upstream release and audit links also describe go-ethereum, not support or audit coverage for this fork.
+Consult the [go-cross releases](https://github.com/to-nexus/go-cross/releases) for this client's release notes.
 
-Audit reports are published in the `docs` folder: https://github.com/ethereum/go-ethereum/tree/master/docs/audits 
+## Upstream Supported Versions
+
+See the [upstream releases](https://github.com/ethereum/go-ethereum/releases) and [upstream security policy](https://github.com/ethereum/go-ethereum/security/policy) for go-ethereum support information.
+
+## Upstream Audit Reports
+
+Upstream audit reports are published in the [go-ethereum docs folder](https://github.com/ethereum/go-ethereum/tree/master/docs/audits).
 
 | Scope | Date | Report Link |
 | ------- | ------- | ----------- |
@@ -15,15 +25,17 @@ Audit reports are published in the `docs` folder: https://github.com/ethereum/go
 | `Discv5` | 20191015 | [pdf](https://github.com/ethereum/go-ethereum/blob/master/docs/audits/2019-10-15_Discv5_audit_LeastAuthority.pdf) |
 | `Discv5` | 20200124 | [pdf](https://github.com/ethereum/go-ethereum/blob/master/docs/audits/2020-01-24_DiscV5_audit_Cure53.pdf) |
 
-## Reporting a Vulnerability
+## Reporting an Upstream Vulnerability
 
 **Please do not file a public ticket** mentioning the vulnerability.
 
-To find out how to disclose a vulnerability in Ethereum visit [https://bounty.ethereum.org](https://bounty.ethereum.org) or email bounty@ethereum.org. Please read the [disclosure page](https://github.com/ethereum/go-ethereum/security/advisories?state=published) for more information about publicly disclosed security vulnerabilities.
+For issues affecting upstream Ethereum, consult the [Ethereum bug bounty program](https://bounty.ethereum.org) or email bounty@ethereum.org.
+See the [upstream advisories](https://github.com/ethereum/go-ethereum/security/advisories?state=published) for publicly disclosed vulnerabilities.
 
-Use the built-in `geth version-check` feature to check whether the software is affected by any known vulnerability. This command will fetch the latest [`vulnerabilities.json`](https://geth.ethereum.org/docs/vulnerabilities/vulnerabilities.json) file which contains known security vulnerabilities concerning `geth`, and cross-check the data against its own version number.
+The built-in `geth version-check` command compares the binary version with the upstream [`vulnerabilities.json`](https://geth.ethereum.org/docs/vulnerabilities/vulnerabilities.json) feed.
+ONE uses its own version numbering, so this result does not establish that this fork is free of upstream or ONE-specific vulnerabilities.
 
-The following key may be used to communicate sensitive information to developers.
+The following upstream key is retained for communication with the Ethereum security team.
 
 Fingerprint: `AE96 ED96 9E47 9B00 84F3 E17F E88D 3334 FA5F 6A0A`
 

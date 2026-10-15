@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/assert"
@@ -82,9 +83,9 @@ var customGenesisTests = []struct {
 	},
 }
 
-func TestMakeDefaultBreakpointGenesis(t *testing.T) {
+func TestMakeDefaultGenesis(t *testing.T) {
 	t.Run("reject zero validators", func(t *testing.T) {
-		_, _, err := makeDefaultBreakpointGenesis(0)
+		_, _, err := makeDefaultGenesis(0, true)
 		require.ErrorContains(t, err, "greater than zero")
 	})
 
@@ -93,15 +94,16 @@ func TestMakeDefaultBreakpointGenesis(t *testing.T) {
 	})
 
 	t.Run("print keys as JSON", func(t *testing.T) {
-		_, keys, err := makeDefaultBreakpointGenesis(2)
+		_, keys, err := makeDefaultGenesis(2, true)
 		require.NoError(t, err)
 
 		var output bytes.Buffer
 		require.NoError(t, printBreakpointGenesisKeys(&output, keys, true))
 
 		var decoded struct {
-			Admin      map[string]string `json:"admin"`
-			Validators []struct {
+			Admin       map[string]string `json:"admin"`
+			Beneficiary map[string]string `json:"beneficiary"`
+			Validators  []struct {
 				ID        string            `json:"id"`
 				Validator map[string]string `json:"validator"`
 				Operator  map[string]string `json:"operator"`
@@ -111,6 +113,8 @@ func TestMakeDefaultBreakpointGenesis(t *testing.T) {
 
 		require.NoError(t, json.Unmarshal(output.Bytes(), &decoded))
 		assert.Equal(t, crypto.PubkeyToAddress(keys.admin.PublicKey).Hex(), decoded.Admin["address"])
+		assert.Equal(t, crypto.PubkeyToAddress(keys.beneficiary.PublicKey).Hex(), decoded.Beneficiary["address"])
+		assert.NotEmpty(t, decoded.Beneficiary["privateKey"])
 		assert.Len(t, decoded.Validators, 2)
 		assert.Equal(t, "validator1", decoded.Validators[0].ID)
 		assert.NotEmpty(t, decoded.Validators[0].Validator["privateKey"])
@@ -121,9 +125,9 @@ func TestMakeDefaultBreakpointGenesis(t *testing.T) {
 
 func testMakeDefaultBreakpointGenesis(t *testing.T, validatorCount uint) {
 	originalAdmin := params.CrossDev3ChainConfig.Istanbul.PoSA.Admin
-	genesis, keys, err := makeDefaultBreakpointGenesis(validatorCount)
-
+	genesis, keys, err := makeDefaultGenesis(validatorCount, true)
 	require.NoError(t, err)
+	require.NoError(t, core.MakeGenesis(genesis, core.GenesisContracts{Breakpoint: true}))
 	assert.Len(t, keys.validators, int(validatorCount))
 	assert.Len(t, genesis.Config.Istanbul.Validators, int(validatorCount))
 	assert.Len(t, genesis.Config.Istanbul.PoSA.Validators, int(validatorCount))
@@ -136,6 +140,8 @@ func testMakeDefaultBreakpointGenesis(t *testing.T, validatorCount uint) {
 	expectedConfig.CancunTime = &zero
 	expectedConfig.PragueTime = &zero
 	expectedConfig.BreakpointTime = &zero
+	expectedConfig.BreakpointBravoTime = &zero
+	expectedConfig.OsakaTime = nil
 	expectedConfig.Istanbul = genesis.Config.Istanbul
 	assert.Equal(t, &expectedConfig, genesis.Config)
 
@@ -143,6 +149,7 @@ func testMakeDefaultBreakpointGenesis(t *testing.T, validatorCount uint) {
 	expectedPoSA := *expectedIstanbul.PoSA
 	expectedIstanbul.PoSA = &expectedPoSA
 	expectedIstanbul.Validators = genesis.Config.Istanbul.Validators
+	expectedIstanbul.Beneficiary = genesis.Config.Istanbul.Beneficiary
 	expectedPoSA.Admin = genesis.Config.Istanbul.PoSA.Admin
 	expectedPoSA.Validators = genesis.Config.Istanbul.PoSA.Validators
 	expectedPoSA.DelegationPool = contracts.DelegationPoolAddr
@@ -150,6 +157,8 @@ func testMakeDefaultBreakpointGenesis(t *testing.T, validatorCount uint) {
 	assert.Equal(t, &expectedIstanbul, genesis.Config.Istanbul)
 
 	admin := crypto.PubkeyToAddress(keys.admin.PublicKey)
+	assert.Equal(t, crypto.PubkeyToAddress(keys.beneficiary.PublicKey), *genesis.Config.Istanbul.Beneficiary)
+	assert.NotEqual(t, params.BeneficiaryCrossDev3, *genesis.Config.Istanbul.Beneficiary)
 	assert.Equal(t, admin, genesis.Config.Istanbul.PoSA.Admin)
 	assert.Equal(t, new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(params.Ether)), genesis.Alloc[admin].Balance)
 

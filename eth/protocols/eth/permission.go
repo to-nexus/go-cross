@@ -92,11 +92,13 @@ func (pp *PermissionPeers) LogSelfStatus() {
 
 // verifyPermission makes the allow/reject decision for a peer.
 func (pp *PermissionPeers) verifyPermission(id enode.ID, trusted, static bool) error {
-	// static/trusted always allowed (cheap check first, avoids the eligibility lookup).
+	// Static/trusted always allowed (cheap check first, avoids the eligibility lookup).
 	if trusted || static {
 		return nil
 	}
-	// if we are not a validator, everything is allowed (open).
+	// If we are not a validator, everything is allowed.
+	// If our own status is unknown, stay open: a non-validator node has no state at its head during snap sync,
+	// and closing here would cut it off from the peers it syncs from.
 	self, err := pp.selfIsValidatorNode()
 	if err != nil {
 		log.Warn("Consensus permissioning: self eligibility lookup failed, allowing peer (fail-open)", "id", id.String(), "err", err)
@@ -105,14 +107,12 @@ func (pp *PermissionPeers) verifyPermission(id enode.ID, trusted, static bool) e
 	if !self {
 		return nil
 	}
-	// As a validator, allow only eligible-validator peers. If the peer lookup fails we cannot
-	// classify it, so fail open rather than reject a possibly-legitimate validator. Note the
-	// error is not attacker-controllable: the lookup runs against our own local state, so a
-	// peer cannot force it to fail in order to be admitted.
+	// As a validator, allow only eligible-validator peers. If the peer lookup fails reject the peer; it can connect again once the lookup works.
+	// Peers in the consensus validator set are found in the snapshot without this lookup, so validators stay connected to each other.
 	ok, err := pp.isValidatorNode(id)
 	if err != nil {
-		log.Warn("Consensus permissioning: peer eligibility lookup failed, allowing peer (fail-open)", "id", id.String(), "err", err)
-		return nil
+		log.Warn("Consensus permissioning: peer eligibility lookup failed, rejecting peer (fail-closed)", "id", id.String(), "err", err)
+		return errPeerNotPermitted
 	}
 	if ok {
 		return nil

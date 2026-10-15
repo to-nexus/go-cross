@@ -15,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
+	"github.com/ethereum/go-ethereum/crypto/bls"
 	"github.com/urfave/cli/v2"
 )
 
