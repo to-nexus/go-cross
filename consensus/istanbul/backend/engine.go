@@ -257,10 +257,11 @@ func (sb *Backend) Seal(chain consensus.ChainHeaderReader, block *types.Block, r
 
 		// get the proposed block hash and clear it if the seal() is completed.
 		sb.sealMu.Lock()
-		sb.proposedBlockHash = block.Hash()
+		proposed := block.Hash()
+		sb.proposedBlockHash.Store(&proposed)
 
 		defer func() {
-			sb.proposedBlockHash = common.Hash{}
+			sb.proposedBlockHash.Store(nil)
 			sb.sealMu.Unlock()
 		}()
 		// post block into Istanbul engine
@@ -306,7 +307,7 @@ func (sb *Backend) Start(chain consensus.ChainHeaderReader, currentBlock func() 
 	}
 
 	// clear previous data
-	sb.proposedBlockHash = common.Hash{}
+	sb.proposedBlockHash.Store(nil)
 	if sb.commitCh != nil {
 		close(sb.commitCh)
 	}

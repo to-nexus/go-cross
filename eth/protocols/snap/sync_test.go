@@ -25,6 +25,7 @@ import (
 	mrand "math/rand"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -142,10 +143,11 @@ type testPeer struct {
 	term                  func()
 
 	// counters
-	nAccountRequests  int
-	nStorageRequests  int
-	nBytecodeRequests int
-	nTrienodeRequests int
+	// The syncer sends requests from many goroutines, so count them atomically.
+	nAccountRequests  atomic.Int64
+	nStorageRequests  atomic.Int64
+	nBytecodeRequests atomic.Int64
+	nTrienodeRequests atomic.Int64
 }
 
 func newTestPeer(id string, t *testing.T, term func()) *testPeer {
@@ -179,25 +181,25 @@ func (t *testPeer) Stats() string {
 Storage requests: %d
 Bytecode requests: %d
 Trienode requests: %d
-`, t.nAccountRequests, t.nStorageRequests, t.nBytecodeRequests, t.nTrienodeRequests)
+`, t.nAccountRequests.Load(), t.nStorageRequests.Load(), t.nBytecodeRequests.Load(), t.nTrienodeRequests.Load())
 }
 
 func (t *testPeer) RequestAccountRange(id uint64, root, origin, limit common.Hash, bytes uint64) error {
 	t.logger.Trace("Fetching range of accounts", "reqid", id, "root", root, "origin", origin, "limit", limit, "bytes", common.StorageSize(bytes))
-	t.nAccountRequests++
+	t.nAccountRequests.Add(1)
 	go t.accountRequestHandler(t, id, root, origin, limit, bytes)
 	return nil
 }
 
 func (t *testPeer) RequestTrieNodes(id uint64, root common.Hash, paths []TrieNodePathSet, bytes uint64) error {
 	t.logger.Trace("Fetching set of trie nodes", "reqid", id, "root", root, "pathsets", len(paths), "bytes", common.StorageSize(bytes))
-	t.nTrienodeRequests++
+	t.nTrienodeRequests.Add(1)
 	go t.trieRequestHandler(t, id, root, paths, bytes)
 	return nil
 }
 
 func (t *testPeer) RequestStorageRanges(id uint64, root common.Hash, accounts []common.Hash, origin, limit []byte, bytes uint64) error {
-	t.nStorageRequests++
+	t.nStorageRequests.Add(1)
 	if len(accounts) == 1 && origin != nil {
 		t.logger.Trace("Fetching range of large storage slots", "reqid", id, "root", root, "account", accounts[0], "origin", common.BytesToHash(origin), "limit", common.BytesToHash(limit), "bytes", common.StorageSize(bytes))
 	} else {
@@ -208,7 +210,7 @@ func (t *testPeer) RequestStorageRanges(id uint64, root common.Hash, accounts []
 }
 
 func (t *testPeer) RequestByteCodes(id uint64, hashes []common.Hash, bytes uint64) error {
-	t.nBytecodeRequests++
+	t.nBytecodeRequests.Add(1)
 	t.logger.Trace("Fetching set of byte codes", "reqid", id, "hashes", len(hashes), "bytes", common.StorageSize(bytes))
 	go t.codeRequestHandler(t, id, hashes, bytes)
 	return nil
@@ -830,6 +832,9 @@ func testMultiSyncManyUseless(t *testing.T, scheme string) {
 // TestMultiSyncManyUselessWithLowTimeout contains one good peer, and many which doesn't return anything valuable at all
 func TestMultiSyncManyUselessWithLowTimeout(t *testing.T) {
 	t.Parallel()
+	if raceEnabled {
+		t.Skip("the race detector makes requests slower than the 1ms timeout, so the sync stalls")
+	}
 
 	testMultiSyncManyUselessWithLowTimeout(t, rawdb.HashScheme)
 	testMultiSyncManyUselessWithLowTimeout(t, rawdb.PathScheme)
@@ -889,6 +894,9 @@ func testMultiSyncManyUselessWithLowTimeout(t *testing.T, scheme string) {
 // TestMultiSyncManyUnresponsive contains one good peer, and many which doesn't respond at all
 func TestMultiSyncManyUnresponsive(t *testing.T) {
 	t.Parallel()
+	if raceEnabled {
+		t.Skip("the race detector makes requests slower than the 1ms timeout, so the sync stalls")
+	}
 
 	testMultiSyncManyUnresponsive(t, rawdb.HashScheme)
 	testMultiSyncManyUnresponsive(t, rawdb.PathScheme)
@@ -942,6 +950,9 @@ func testMultiSyncManyUnresponsive(t *testing.T, scheme string) {
 	close(done)
 	verifyTrie(scheme, syncer.db, sourceAccountTrie.Hash(), t)
 }
+
+// raceEnabled reports whether the race detector is on.
+var raceEnabled bool
 
 func checkStall(t *testing.T, term func()) chan struct{} {
 	testDone := make(chan struct{})
@@ -1901,7 +1912,7 @@ func testSyncAccountPerformance(t *testing.T, scheme string) {
 	// sync cycle starts. When popping the queue, we do not look it up again.
 	// Doing so would bring this number down to zero in this artificial testcase,
 	// but only add extra IO for no reason in practice.
-	if have, want := src.nTrienodeRequests, 1; have != want {
+	if have, want := src.nTrienodeRequests.Load(), int64(1); have != want {
 		fmt.Print(src.Stats())
 		t.Errorf("trie node heal requests wrong, want %d, have %d", want, have)
 	}
