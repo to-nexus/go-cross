@@ -134,6 +134,8 @@ func (c *Core) IsProposer() bool {
 }
 
 func (c *Core) IsCurrentProposal(blockHash common.Hash) bool {
+	c.currentMutex.Lock()
+	defer c.currentMutex.Unlock()
 	return c.current != nil && c.current.pendingRequest != nil && c.current.pendingRequest.Proposal.Hash() == blockHash
 }
 
