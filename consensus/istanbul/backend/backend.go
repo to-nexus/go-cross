@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -70,9 +71,9 @@ type Backend struct {
 	currentBlock func() *types.Block
 	hasBadBlock  func(db ethdb.Reader, hash common.Hash) bool
 
-	commitCh          chan *types.Block // The channels for istanbul engine notifications
-	proposedBlockHash common.Hash
-	sealMu            sync.Mutex // Protects proposedBlockHash field
+	commitCh          chan *types.Block           // The channels for istanbul engine notifications
+	proposedBlockHash atomic.Pointer[common.Hash] // Commit reads it while a Seal goroutine holds sealMu
+	sealMu            sync.Mutex                  // Lets one Seal goroutine wait for its commit at a time
 	coreStarted       bool
 	coreMu            sync.RWMutex // Protects coreStarted field
 
@@ -244,7 +245,7 @@ func (sb *Backend) Commit(proposal istanbul.Proposal, seals []istanbul.SignedSea
 	// -- if success, the ChainHeadEvent event will be broadcasted, try to build
 	//    the next block and the previous Seal() will be stopped.
 	// -- otherwise, a error will be returned and a round change event will be fired.
-	if sb.proposedBlockHash == block.Hash() {
+	if proposed := sb.proposedBlockHash.Load(); proposed != nil && *proposed == block.Hash() {
 		// feed block hash to Seal() and wait the Seal() result
 		sb.commitCh <- block
 		return nil

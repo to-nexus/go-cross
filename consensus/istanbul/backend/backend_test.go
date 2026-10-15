@@ -133,7 +133,8 @@ func TestCommit(t *testing.T) {
 	defer backend.Stop()
 	block := updateIstanbulBlock(makeBlockWithoutSeal(chain, backend, chain.Genesis()), backend.Address())
 	// As the proposer, Commit hands the sealed block to Seal through commitCh.
-	backend.proposedBlockHash = block.Hash()
+	proposed := block.Hash()
+	backend.proposedBlockHash.Store(&proposed)
 
 	t.Run("sends the sealed block to the sealer", func(t *testing.T) {
 		err := backend.Commit(block, []istanbul.SignedSeal{commitSeal(t, backend.privateKey, block)}, big.NewInt(0))

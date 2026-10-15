@@ -220,4 +220,8 @@ func (valSet *defaultSet) F() int {
 	return int(math.Ceil(float64(valSet.Size())/3)) - 1
 }
 
-func (valSet *defaultSet) Policy() istanbul.ProposerPolicy { return *valSet.policy }
+// Policy returns the policy ID and sort function.
+// It does not copy the registry, which other validator sets change under the registry lock.
+func (valSet *defaultSet) Policy() istanbul.ProposerPolicy {
+	return istanbul.ProposerPolicy{Id: valSet.policy.Id, By: valSet.policy.By}
+}
