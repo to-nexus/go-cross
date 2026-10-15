@@ -530,7 +530,9 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	}
 	// ##CROSS: discovery filter
 	// Rejected nodes are not added to the bucket or to the replacements.
+	// An older record of the node in the replacements is removed too, so it can't be promoted later.
 	if !tab.allowNode(req.node) {
+		tab.deleteReplacement(b, req.node, req.isInbound)
 		return false
 	}
 	// ##
@@ -560,6 +562,17 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 // allowNode reports whether n passes the table filter.
 func (tab *Table) allowNode(n *enode.Node) bool {
 	return tab.cfg.TableFilter == nil || tab.cfg.TableFilter(n)
+}
+
+// deleteReplacement removes the replacement entry of n from bucket b, unless the entry has a newer record than n.
+// Like bumpInBucket, an inbound record replaces the entry regardless of its seq.
+func (tab *Table) deleteReplacement(b *bucket, n *enode.Node, isInbound bool) {
+	i := slices.IndexFunc(b.replacements, func(e *tableNode) bool { return e.ID() == n.ID() })
+	if i == -1 || (!isInbound && n.Seq() < b.replacements[i].Seq()) {
+		return
+	}
+	tab.removeIP(b, b.replacements[i].IPAddr())
+	b.replacements = slices.Delete(b.replacements, i, i+1)
 }
 
 // ##
@@ -744,6 +757,11 @@ func (tab *Table) waitForNodes(ctx context.Context, n int) error {
 		sub := tab.nodeFeed.Subscribe(newnode)
 		go func() {
 			defer close(notify)
+			// ##CROSS: discovery filter
+			// Unsubscribe before closing notify. The waiter may wait for tab.mutex and can't return,
+			// so its own Unsubscribe can't release a nodeFeed.Send that is blocked on newnode.
+			defer sub.Unsubscribe()
+			// ##
 			for {
 				select {
 				case <-newnode:

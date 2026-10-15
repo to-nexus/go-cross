@@ -582,6 +582,47 @@ func TestTable_TableFilter(t *testing.T) {
 		require.False(t, containsID(b.replacements, bad.ID()))
 	})
 
+	t.Run("cached replacement is removed by rejected update", func(t *testing.T) {
+		tab, db := newInactiveTestTable(newPingRecorder(), Config{TableFilter: rejectOther})
+		defer db.Close()
+
+		for i := 0; i < bucketSize; i++ {
+			n := nodeAtDistance(tab.self().ID(), 255, net.IP{10, byte(i), 0, 1})
+			require.True(t, tab.handleAddNode(addNodeOp{node: n}))
+		}
+		// Use a public IP, so it is counted in the IP limits.
+		node := nodeAtDistance(tab.self().ID(), 255, net.IP{11, 0, 0, 1})
+		tab.handleAddNode(addNodeOp{node: node})
+		b := tab.bucket(node.ID())
+		require.True(t, containsID(b.replacements, node.ID()))
+
+		tab.handleAddNode(addNodeOp{node: withOther(node)})
+		require.False(t, containsID(b.replacements, node.ID()))
+		require.False(t, b.ips.ContainsAddr(node.IPAddr()))
+		require.False(t, tab.ips.ContainsAddr(node.IPAddr()))
+	})
+
+	t.Run("cached replacement is kept by older rejected record", func(t *testing.T) {
+		tab, db := newInactiveTestTable(newPingRecorder(), Config{TableFilter: rejectOther})
+		defer db.Close()
+
+		for i := 0; i < bucketSize; i++ {
+			n := nodeAtDistance(tab.self().ID(), 255, net.IP{10, byte(i), 0, 1})
+			require.True(t, tab.handleAddNode(addNodeOp{node: n}))
+		}
+		node := nodeAtDistance(tab.self().ID(), 255, net.IP{11, 0, 0, 1})
+		older := withOther(node)
+		r := node.Record()
+		r.SetSeq(older.Seq() + 1)
+		newer := enode.SignNull(r, node.ID())
+		tab.handleAddNode(addNodeOp{node: newer})
+		tab.handleAddNode(addNodeOp{node: older})
+
+		b := tab.bucket(node.ID())
+		require.True(t, containsID(b.replacements, node.ID()))
+		require.True(t, tab.ips.ContainsAddr(node.IPAddr()))
+	})
+
 	t.Run("stored node is removed by rejected update", func(t *testing.T) {
 		tab, db := newInactiveTestTable(newPingRecorder(), Config{TableFilter: rejectOther})
 		defer db.Close()
