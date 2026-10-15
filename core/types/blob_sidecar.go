@@ -82,6 +82,11 @@ func (s *BlobSidecar) SanityCheck(blockNumber *big.Int, blockHash common.Hash) e
 	return nil
 }
 
+// Size returns the approximate encoded size of the blobs, commitments and proofs.
+func (s *BlobSidecar) Size() uint64 {
+	return s.encodedSize()
+}
+
 func (s *BlobSidecar) MarshalJSON() ([]byte, error) {
 	fields := map[string]interface{}{
 		"blockHash":   s.BlockHash,

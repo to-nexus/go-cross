@@ -167,15 +167,19 @@ func (m *RoundChange) EncodeRLP(w io.Writer) error {
 		return err
 	}
 
-	return rlp.Encode(
-		w,
+	val := []interface{}{
 		[]interface{}{
-			[]interface{}{
-				encodedPayload,
-				m.signature,
-			},
-			m.PreparedBlock, m.Justification,
-		})
+			encodedPayload,
+			m.signature,
+		},
+		m.PreparedBlock, m.Justification,
+	}
+	// ##CROSS: blob sidecars
+	if m.PreparedBlock != nil && m.PreparedBlock.Sidecars().Len() > 0 {
+		val = append(val, []any{m.PreparedBlock.Sidecars()})
+	}
+	// ##
+	return rlp.Encode(w, val)
 }
 
 func (m *RoundChange) DecodeRLP(stream *rlp.Stream) error {
@@ -284,6 +288,24 @@ func (m *RoundChange) DecodeRLP(stream *rlp.Stream) error {
 			return err
 		}
 	}
+
+	// ##CROSS: blob sidecars
+	// Optional trailing element with the sidecars of the prepared block.
+	if _, _, err = stream.Kind(); err == nil {
+		var extra struct {
+			Sidecars types.BlobSidecars
+		}
+		if err = stream.Decode(&extra); err != nil {
+			log.Error("Istanbul: Error Decode(&extra)", "err", err)
+			return err
+		}
+		if m.PreparedBlock != nil {
+			m.PreparedBlock = m.PreparedBlock.WithSidecars(extra.Sidecars)
+		}
+	} else if err != rlp.EOL {
+		return err
+	}
+	// ##
 
 	// End RoundChange Message
 	if err = stream.ListEnd(); err != nil {

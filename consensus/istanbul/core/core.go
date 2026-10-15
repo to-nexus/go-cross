@@ -36,6 +36,7 @@ var (
 	roundMeter     = metrics.NewRegisteredMeter("consensus/istanbul/core/round", nil)
 	sequenceMeter  = metrics.NewRegisteredMeter("consensus/istanbul/core/sequence", nil)
 	consensusTimer = metrics.NewRegisteredTimer("consensus/istanbul/core/consensus", nil)
+	farFutureMeter = metrics.NewRegisteredMeter("consensus/istanbul/core/farfuture", nil) // ##CROSS: istanbul far future message
 )
 
 // New creates an Istanbul consensus core
@@ -47,11 +48,13 @@ func New(backend istanbul.Backend, config *istanbul.Config) *Core {
 		handlerWg:          new(sync.WaitGroup),
 		logger:             log.New("address", backend.Address()),
 		backend:            backend,
-		backlogs:           make(map[common.Address]*prque.Prque[int64, protocols.Message]),
+		backlogs:           make(map[common.Address]*prque.Prque[int64, backlogEntry]), // ##CROSS: istanbul backlog limit
+		backlogBytes:       make(map[common.Address]int),                               // ##CROSS: istanbul backlog limit
 		backlogsMu:         new(sync.Mutex),
 		pendingRequests:    prque.New[int64, *Request](nil),
 		pendingRequestsMu:  new(sync.Mutex),
 		consensusTimestamp: time.Time{},
+		farFutureDrops:     make(map[common.Address]uint64), // ##CROSS: istanbul far future message
 	}
 
 	c.validateFn = c.checkValidatorSignature
@@ -75,8 +78,11 @@ type Core struct {
 	valSet     istanbul.ValidatorSet
 	validateFn func([]byte, []byte) (common.Address, error)
 
-	backlogs   map[common.Address]*prque.Prque[int64, protocols.Message]
-	backlogsMu *sync.Mutex
+	// ##CROSS: istanbul backlog limit
+	backlogs     map[common.Address]*prque.Prque[int64, backlogEntry]
+	backlogBytes map[common.Address]int
+	backlogsMu   *sync.Mutex
+	// ##
 
 	current      *roundState
 	currentMutex sync.Mutex
@@ -94,6 +100,11 @@ type Core struct {
 
 	newRoundMutex sync.Mutex
 	newRoundTimer *time.Timer
+
+	// ##CROSS: istanbul far future message
+	farFutureDrops  map[common.Address]uint64
+	farFutureLogged time.Time
+	// ##
 }
 
 // ##CROSS: istanbul stats
