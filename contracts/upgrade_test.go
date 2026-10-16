@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/params/forks"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -34,6 +35,32 @@ import (
 )
 
 // ##CROSS: contract upgrade
+
+func TestSystemContractUpgrade_BreakpointMainnet(t *testing.T) {
+	// Hashes come from the mainnet deployment artifacts in 1646df77cdfcf32e5f5c828560672f1384f590d2.
+	const proxyHash = "0xcb3127f93664205d6698822f13c463ceff3a816614aa2b9ef5f7ca829ab338e0"
+	expected := map[common.Address]string{
+		CrossExAddr:            "0xb377190fa28822db6f642913214aac30fcb3d2d016cbe1145a6c691dff5d2684",
+		ValidatorSetImplAddr:   "0xae5fe123044247938f39b75c97626330f3a453bdabf3dc4852c947bbb48a93fa",
+		StakeHubImplAddr:       "0x7ff6b3d4253ce7ec4a480deed975af89c4d37f867c7f7a0486e31f3bd6a3cbac",
+		RewardHubImplAddr:      "0xcf52900dfa03359b36ef0abdec7c84bee00ab851a9be87bea15f350d50478d3b",
+		ValidatorSlashImplAddr: "0x6be02b209efaa8064b46fbd1dac9910f6a60f7e8574a9f39a4efa4eff18409b9",
+		ValidatorSetAddr:       proxyHash,
+		StakeHubAddr:           proxyHash,
+		RewardHubAddr:          proxyHash,
+		ValidatorSlashAddr:     proxyHash,
+	}
+	config := params.CrossChainConfig
+	upgrade := getUpgrade(forks.Breakpoint, config.ChainID.Uint64())
+	require.Len(t, upgrade.Configs, len(expected))
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	require.NoError(t, err)
+	header := &types.Header{Number: big.NewInt(100), Time: *config.BreakpointTime}
+	require.True(t, TryUpdateSystemContract(config, header, header.Time-1, statedb, false))
+	for addr, hash := range expected {
+		assert.Equal(t, common.HexToHash(hash), crypto.Keccak256Hash(statedb.GetCode(addr)), "code at %s", addr)
+	}
+}
 
 func TestTryUpdateSystemContract(t *testing.T) {
 	forkTime := uint64(time.Now().Unix())

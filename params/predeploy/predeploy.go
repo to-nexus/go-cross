@@ -3,11 +3,11 @@ package predeploy
 import (
 	_ "embed"
 	"encoding/json"
-	"maps"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -16,7 +16,7 @@ import (
 // ##CROSS: predeploys
 
 var (
-	// breakpointAllocJSON contains uninitialized Breakpoint contract code and proxy links.
+	// breakpointAllocJSON contains uninitialized PoSA reserve and pool contract code and proxy links.
 	//go:embed breakpoint_alloc.json
 	breakpointAllocJSON []byte // ##CROSS: fork breakpoint
 
@@ -92,47 +92,32 @@ func mergeAlloc(base types.GenesisAlloc, extras ...types.GenesisAlloc) types.Gen
 // ##CROSS: fork breakpoint
 
 // BreakpointGenesisAlloc returns uninitialized contracts used to build a custom Breakpoint genesis.
+// The PoSA reserve and pool contracts come from the JSON, and the system contracts use the code in contracts/latest.
 func BreakpointGenesisAlloc() types.GenesisAlloc {
-	source := mustDecodeAlloc(breakpointAllocJSON)
-	impls := []common.Address{
-		contracts.ValidatorSetImplAddr,
-		contracts.StakeHubImplAddr,
-		contracts.RewardHubImplAddr,
-		contracts.ValidatorSlashImplAddr,
-		contracts.CrossReserveImplAddr,
-		contracts.ProtocolReserveImplAddr,
-		contracts.DelegationPoolImplAddr,
+	alloc := mustDecodeAlloc(breakpointAllocJSON)
+	systemContracts := []struct {
+		proxy, impl common.Address
+		code        string
+	}{
+		{contracts.ValidatorSetAddr, contracts.ValidatorSetImplAddr, latest.ValidatorSetMetaData.BinRuntime},
+		{contracts.StakeHubAddr, contracts.StakeHubImplAddr, latest.StakeHubMetaData.BinRuntime},
+		{contracts.RewardHubAddr, contracts.RewardHubImplAddr, latest.RewardHubMetaData.BinRuntime},
+		{contracts.ValidatorSlashAddr, contracts.ValidatorSlashImplAddr, latest.ValidatorSlashMetaData.BinRuntime},
 	}
-	proxies := map[common.Address]common.Address{
-		contracts.ValidatorSetAddr:    contracts.ValidatorSetImplAddr,
-		contracts.StakeHubAddr:        contracts.StakeHubImplAddr,
-		contracts.RewardHubAddr:       contracts.RewardHubImplAddr,
-		contracts.ValidatorSlashAddr:  contracts.ValidatorSlashImplAddr,
-		contracts.CrossReserveAddr:    contracts.CrossReserveImplAddr,
-		contracts.ProtocolReserveAddr: contracts.ProtocolReserveImplAddr,
-		contracts.DelegationPoolAddr:  contracts.DelegationPoolImplAddr,
-	}
-
-	result := make(types.GenesisAlloc, len(impls)+len(proxies))
-	for _, addr := range impls {
-		account := source[addr]
-		result[addr] = types.Account{
+	for _, c := range systemContracts {
+		// Genesis code never runs a constructor, so disable the implementation initializer here.
+		alloc[c.impl] = types.Account{
 			Balance: new(big.Int),
-			Nonce:   account.Nonce,
-			Code:    common.CopyBytes(account.Code),
-			Storage: maps.Clone(account.Storage),
+			Nonce:   1,
+			Code:    common.FromHex(c.code),
+			Storage: map[common.Hash]common.Hash{contracts.InitializableSlot: contracts.InitializersDisabled},
+		}
+		alloc[c.proxy] = types.Account{
+			Balance: new(big.Int),
+			Nonce:   1,
+			Code:    common.FromHex(predeploy.ERC1967ProxyCode),
+			Storage: map[common.Hash]common.Hash{contracts.ProxyImplSlot: common.BytesToHash(c.impl.Bytes())},
 		}
 	}
-	for addr, impl := range proxies {
-		account := source[addr]
-		result[addr] = types.Account{
-			Balance: new(big.Int),
-			Nonce:   account.Nonce,
-			Code:    common.CopyBytes(account.Code),
-			Storage: map[common.Hash]common.Hash{
-				contracts.ProxyImplSlot: common.BytesToHash(impl.Bytes()),
-			},
-		}
-	}
-	return result
+	return alloc
 }

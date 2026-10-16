@@ -101,7 +101,7 @@ type SimulatedBeacon struct {
 func payloadVersion(config *params.ChainConfig, time uint64) engine.PayloadVersion {
 	switch config.LatestFork(time) {
 	// ##CROSS: fork
-	case forks.BreakpointBravo, forks.BreakpointAlpha, forks.Breakpoint, forks.Adventure:
+	case forks.BreakpointBravo, forks.Breakpoint, forks.Adventure:
 		fallthrough
 	// ##
 	case forks.BPO5, forks.BPO4, forks.BPO3, forks.BPO2, forks.BPO1, forks.Osaka, forks.Prague, forks.Cancun:
