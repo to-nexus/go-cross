@@ -18,7 +18,6 @@ package contracts
 
 import (
 	"fmt"
-	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -60,11 +59,6 @@ var (
 )
 
 func init() {
-	// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
-	initializableSlot := common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00")
-	initializedData := common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff")
-	// ERC1967Proxy[IMPLEMENTATION] = <impl address>
-	implementationSlot := common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
 
 	upgrades[forks.Prague] = make(map[uint64]*Upgrade)
 	upgrades[forks.Prague][0] = &Upgrade{
@@ -94,7 +88,7 @@ func init() {
 				ContractAddr: ValidatorSetImplAddr,
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -103,7 +97,7 @@ func init() {
 				ContractAddr: ValidatorSetAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -133,7 +127,7 @@ func init() {
 				ContractAddr: StakeHubImplAddr,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -142,7 +136,7 @@ func init() {
 				ContractAddr: StakeHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(StakeHubImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(StakeHubImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -178,7 +172,7 @@ func init() {
 				ContractAddr: RewardHubImplAddr,
 				Code:         breakpoint.RewardHubMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -187,7 +181,7 @@ func init() {
 				ContractAddr: RewardHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(RewardHubImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(RewardHubImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -213,7 +207,7 @@ func init() {
 				ContractAddr: ValidatorSlashImplAddr,
 				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -222,7 +216,7 @@ func init() {
 				ContractAddr: ValidatorSlashAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -235,55 +229,6 @@ func init() {
 						return nil, fmt.Errorf("PoSA admin is not set")
 					}
 					return breakpoint.NewValidatorSlash().PackInitialize(admin), nil
-				},
-			},
-			// ##
-		},
-	}
-	// Contract patches for testnet
-	upgrades[forks.BreakpointAlpha] = make(map[uint64]*Upgrade)
-	upgrades[forks.BreakpointAlpha][params.ZoneZeroChainConfig.ChainID.Uint64()] = &Upgrade{
-		UpgradeName: forks.BreakpointAlpha.String(),
-		Configs: []*UpgradeConfig{
-			// ##CROSS: consensus system contract
-			{
-				Name:         "ValidatorSetImpl",
-				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
-				ContractAddr: ValidatorSetImplAddr,
-				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
-				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
-				},
-			},
-			{
-				Name:         "ValidatorSetProxy",
-				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
-				ContractAddr: ValidatorSetAddr,
-				Code:         predeploy.ERC1967ProxyCode,
-				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
-					common.HexToHash("0x86f0e39a3c4d21deb4b9249c3b1ec8d10355c59608a22092a826f5aa57331300"): common.BytesToHash(params.ZoneZeroPoSAConfig.Admin.Bytes()),
-				},
-			},
-			{
-				Name:         "ValidatorSlashImpl",
-				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
-				ContractAddr: ValidatorSlashImplAddr,
-				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
-				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
-				},
-			},
-			{
-				Name:         "ValidatorSlashProxy",
-				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
-				ContractAddr: ValidatorSlashAddr,
-				Code:         predeploy.ERC1967ProxyCode,
-				Storage: map[common.Hash]common.Hash{
-					implementationSlot:      common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
-					common.HexToHash("0x4"): common.BytesToHash(new(big.Int).SetUint64(4).Bytes()),
-					common.HexToHash("0x5"): common.BytesToHash(new(big.Int).SetUint64(50).Bytes()),
-					common.HexToHash("0x86f0e39a3c4d21deb4b9249c3b1ec8d10355c59608a22092a826f5aa57331300"): common.BytesToHash(params.ZoneZeroPoSAConfig.Admin.Bytes()),
 				},
 			},
 			// ##
@@ -312,10 +257,6 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) && isPoSAConfigured(config) {
 		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb, writeLog)
-		upgraded = true
-	}
-	if config.IsOnBreakpointAlpha(header.Number, lastBlockTime, header.Time) && isPoSAConfigured(config) {
-		applySystemContractUpgrade(getUpgrade(forks.BreakpointAlpha, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
 	return

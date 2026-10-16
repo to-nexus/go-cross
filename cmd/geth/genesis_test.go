@@ -116,7 +116,7 @@ func TestMakeDefaultGenesis(t *testing.T) {
 		assert.Equal(t, crypto.PubkeyToAddress(keys.beneficiary.PublicKey).Hex(), decoded.Beneficiary["address"])
 		assert.NotEmpty(t, decoded.Beneficiary["privateKey"])
 		assert.Len(t, decoded.Validators, 2)
-		assert.Equal(t, "validator1", decoded.Validators[0].ID)
+		assert.Equal(t, "val1", decoded.Validators[0].ID)
 		assert.NotEmpty(t, decoded.Validators[0].Validator["privateKey"])
 		assert.NotEmpty(t, decoded.Validators[0].Operator["privateKey"])
 		assert.NotEmpty(t, decoded.Validators[0].Signer["secretKey"])

@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
+// Package breakpoint contains the contract runtime bytecode deployed at the ONE mainnet Breakpoint fork.
+// Bytecode is frozen at go-cross commit 1646df77cdfcf32e5f5c828560672f1384f590d2; later upgrades need a separate package.
 package breakpoint
 
 import _ "embed"

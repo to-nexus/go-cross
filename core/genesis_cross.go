@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -220,9 +221,9 @@ func initializeBreakpointState(genesis *Genesis, statedb *state.StateDB) error {
 		data []byte
 	}{
 		{contracts.ValidatorSetAddr, packValidatorSetInitialize(admin, posa.Validators)},
-		{contracts.StakeHubAddr, breakpoint.NewStakeHub().PackInitialize(contracts.DelegationPoolAddr, admin, operators, validators, signers, ids)},
-		{contracts.RewardHubAddr, breakpoint.NewRewardHub().PackInitialize(contracts.DelegationPoolAddr, admin, one)},
-		{contracts.ValidatorSlashAddr, breakpoint.NewValidatorSlash().PackInitialize(admin)},
+		{contracts.StakeHubAddr, latest.NewStakeHub().PackInitialize(contracts.DelegationPoolAddr, admin, operators, validators, signers, ids)},
+		{contracts.RewardHubAddr, latest.NewRewardHub().PackInitialize(contracts.DelegationPoolAddr, admin, one)},
+		{contracts.ValidatorSlashAddr, latest.NewValidatorSlash().PackInitialize(admin)},
 	}
 	for _, call := range systemCalls {
 		if err := runPackedGenesisCall(genesis, statedb, system, call.to, nil, call.data); err != nil {
@@ -250,7 +251,7 @@ func packValidatorSetInitialize(admin common.Address, validatorConfig []params.P
 		validators = append(validators, validator.Validator)
 		signers = append(signers, common.CopyBytes(validator.Signer))
 	}
-	return breakpoint.NewValidatorSet().PackInitialize(admin, validators, signers)
+	return latest.NewValidatorSet().PackInitialize(admin, validators, signers)
 }
 
 type genesisCall struct {
@@ -349,11 +350,6 @@ var (
 	bridgeGenesisABI = mustGenesisABI(`[
 		{"type":"function","name":"initialize","inputs":[{"name":"owner","type":"address"},{"name":"dev","type":"address"},{"name":"threshold","type":"uint8"}]}
 	]`)
-
-	// initializableSlot is the OpenZeppelin Initializable storage slot.
-	initializableSlot = common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00")
-	// initializersDisabled is the slot value that _disableInitializers sets.
-	initializersDisabled = common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff")
 )
 
 // GenesisContracts selects the contracts that MakeGenesis adds to a custom genesis.
@@ -413,7 +409,7 @@ func MakeGenesis(genesis *Genesis, opts GenesisContracts) error {
 		extra[contracts.BridgeImplAddr] = types.Account{
 			Nonce:   1,
 			Code:    common.Hex2Bytes(predeploy.CrossBridgeImplCode),
-			Storage: map[common.Hash]common.Hash{initializableSlot: initializersDisabled},
+			Storage: map[common.Hash]common.Hash{contracts.InitializableSlot: contracts.InitializersDisabled},
 		}
 	}
 	if opts.Multicall {
@@ -469,7 +465,7 @@ func initializeGenesisBridge(genesis *Genesis, opts GenesisContracts) error {
 	if err := runGenesisCall(genesis, statedb, call); err != nil {
 		return err
 	}
-	if statedb.GetState(contracts.BridgeAddr, initializableSlot) == (common.Hash{}) {
+	if statedb.GetState(contracts.BridgeAddr, contracts.InitializableSlot) == (common.Hash{}) {
 		return errors.New("bridge is still uninitialized after its initializer ran")
 	}
 	alloc, err := dumpBreakpointState(statedb, genesis.Config)
