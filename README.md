@@ -105,7 +105,7 @@ docker build -t to-nexus/go-cross:latest -f Dockerfile .
 
 ### Initialize the Data Directory
 
-Initialize mainnet with `init one`, or ZoneZero with `init zonezero`:
+Initialize mainnet with `init one`:
 
 ```bash
 ./build/bin/geth --datadir <YOUR_DATADIR> init one
@@ -281,7 +281,7 @@ Prepare an uninitialized genesis input with your chosen `config.chainId`, funded
 "$GETH_BIN" --datadir ./custom-data init ./custom-genesis.json
 ```
 
-For `--breakpoint`, the input must have London active at genesis, a nonzero PoSA admin, positive council and validator-epoch periods, and at least one complete validator entry with an ID, operator address, validator address, and 48-byte BLS public key.
+For `--breakpoint`, the input must have London active at genesis, a nonzero PoSA admin, positive council and validator-epoch periods, and at least one complete validator entry with an ID of 3 to 9 ASCII letters or digits, operator address, validator address, and 48-byte BLS public key.
 This mode uses the configured identities and does not generate private keys; supply matching node and BLS keys when starting the nodes.
 `--validators` and `--json` are not accepted with input files.
 The builder preserves account balances, initializes the selected contract state, and sets the required execution/Breakpoint fork times to zero and `rewardStartBlock` to 1 for PoSA.

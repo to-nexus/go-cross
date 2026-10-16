@@ -301,7 +301,7 @@ func makeDefaultGenesis(validatorCount uint, breakpoint bool) (*core.Genesis, *b
 		keys.validators[i] = breakpointValidatorKeys{validator: validator, operator: operator, signer: signer}
 		validatorAddrs[i] = crypto.PubkeyToAddress(validator.PublicKey)
 		validators[i] = params.PoSAValidator{
-			ID:        fmt.Sprintf("validator%d", i+1),
+			ID:        fmt.Sprintf("val%d", i+1),
 			Operator:  crypto.PubkeyToAddress(operator.PublicKey),
 			Validator: validatorAddrs[i],
 			Signer:    signer.PublicKey().Marshal(),
@@ -349,7 +349,7 @@ func printBreakpointGenesisKeys(w io.Writer, keys *breakpointGenesisKeys, jsonOu
 		validators := make([]map[string]any, len(keys.validators))
 		for i, validatorKeys := range keys.validators {
 			validators[i] = map[string]any{
-				"id": fmt.Sprintf("validator%d", i+1),
+				"id": fmt.Sprintf("val%d", i+1),
 				"validator": map[string]string{
 					"address":    crypto.PubkeyToAddress(validatorKeys.validator.PublicKey).Hex(),
 					"privateKey": "0x" + hex.EncodeToString(crypto.FromECDSA(validatorKeys.validator)),
