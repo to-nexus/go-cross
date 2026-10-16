@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/contracts/predeploy"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -101,11 +102,15 @@ func TestMakeGenesis(t *testing.T) {
 		assert.Equal(t, reserveBalance, genesis.Alloc[contracts.CrossReserveAddr].Balance)
 		assert.Equal(t, systemBalance, genesis.Alloc[params.SystemAddress].Balance)
 		assert.Equal(t, common.Hex2Bytes(breakpoint.CrossExCode), genesis.Alloc[contracts.CrossExAddr].Code)
+		assert.Equal(t, common.FromHex(latest.ValidatorSetMetaData.BinRuntime), genesis.Alloc[contracts.ValidatorSetImplAddr].Code)
+		assert.Equal(t, common.FromHex(latest.StakeHubMetaData.BinRuntime), genesis.Alloc[contracts.StakeHubImplAddr].Code)
+		assert.Equal(t, common.FromHex(latest.RewardHubMetaData.BinRuntime), genesis.Alloc[contracts.RewardHubImplAddr].Code)
+		assert.Equal(t, common.FromHex(latest.ValidatorSlashMetaData.BinRuntime), genesis.Alloc[contracts.ValidatorSlashImplAddr].Code)
 		roundTrip(t, genesis)
 
 		backend := simulated.NewBackend(genesis.Alloc)
 		defer backend.Close()
-		validatorSet := breakpoint.NewValidatorSet()
+		validatorSet := latest.NewValidatorSet()
 		active, err := bind.Call(
 			validatorSet.Instance(backend.Client(), contracts.ValidatorSetAddr),
 			&bind.CallOpts{},
@@ -115,7 +120,7 @@ func TestMakeGenesis(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, active.ValidatorAddrs, 2)
 
-		stakeHub := breakpoint.NewStakeHub()
+		stakeHub := latest.NewStakeHub()
 		initialStake := new(big.Int).Mul(big.NewInt(1_000_000), big.NewInt(params.Ether))
 		for _, validator := range posa.Validators {
 			staked, err := bind.Call(

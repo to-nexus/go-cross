@@ -59,11 +59,6 @@ var (
 )
 
 func init() {
-	// Initializable[INITIALIZABLE_STORAGE]._initialized = type(uint64).max
-	initializableSlot := common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00")
-	initializedData := common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff")
-	// ERC1967Proxy[IMPLEMENTATION] = <impl address>
-	implementationSlot := common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
 
 	upgrades[forks.Prague] = make(map[uint64]*Upgrade)
 	upgrades[forks.Prague][0] = &Upgrade{
@@ -93,7 +88,7 @@ func init() {
 				ContractAddr: ValidatorSetImplAddr,
 				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -102,7 +97,7 @@ func init() {
 				ContractAddr: ValidatorSetAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -132,7 +127,7 @@ func init() {
 				ContractAddr: StakeHubImplAddr,
 				Code:         breakpoint.StakeHubMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -141,7 +136,7 @@ func init() {
 				ContractAddr: StakeHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(StakeHubImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(StakeHubImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -177,7 +172,7 @@ func init() {
 				ContractAddr: RewardHubImplAddr,
 				Code:         breakpoint.RewardHubMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -186,7 +181,7 @@ func init() {
 				ContractAddr: RewardHubAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(RewardHubImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(RewardHubImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config
@@ -212,7 +207,7 @@ func init() {
 				ContractAddr: ValidatorSlashImplAddr,
 				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
 				Storage: map[common.Hash]common.Hash{
-					initializableSlot: initializedData,
+					InitializableSlot: InitializersDisabled,
 				},
 			},
 			{
@@ -221,7 +216,7 @@ func init() {
 				ContractAddr: ValidatorSlashAddr,
 				Code:         predeploy.ERC1967ProxyCode,
 				Storage: map[common.Hash]common.Hash{
-					implementationSlot: common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
+					ProxyImplSlot: common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
 				},
 				Init: func(config *params.ChainConfig, header *types.Header) ([]byte, error) {
 					// PoSA configuration must be set in the Istanbul config

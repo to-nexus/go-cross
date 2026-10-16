@@ -23,6 +23,10 @@ import "github.com/ethereum/go-ethereum/common"
 var (
 	// predeploy
 	ProxyImplSlot = common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
+	// InitializableSlot is the OpenZeppelin Initializable storage slot.
+	InitializableSlot = common.HexToHash("0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00")
+	// InitializersDisabled is the InitializableSlot value that _disableInitializers sets.
+	InitializersDisabled = common.HexToHash("0x000000000000000000000000000000000000000000000000ffffffffffffffff")
 
 	CrossExAddr    = common.HexToAddress("0xfeed00000000000000000000000000000000C0DE")
 	BridgeAddr     = common.HexToAddress("0xb81d6e000000000000000000000000000000C0de")
