@@ -18,7 +18,6 @@
 package locals
 
 import (
-	"fmt"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -206,7 +205,7 @@ func (tracker *TxTracker) Start() error {
 			tracker.trackAll(transactions, false)
 			return nil
 		}); err != nil {
-			return fmt.Errorf("load local transaction journal: %w", err)
+			log.Warn("Failed to load local transaction journal", "err", err)
 		}
 		// Setup the writer for the upcoming transactions
 		if err := tracker.journal.setupWriter(); err != nil {

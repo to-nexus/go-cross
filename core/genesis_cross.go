@@ -125,8 +125,10 @@ func addBreakpointGenesisCode(genesis *Genesis) error {
 		genesis.Alloc = make(types.GenesisAlloc)
 	}
 
-	// Replacements.
-	delete(genesis.Alloc, contracts.CrossExAddr)
+	// Replacements: the Breakpoint CrossEx replaces the legacy one, keeping only its balance.
+	if crossEx, ok := genesis.Alloc[contracts.CrossExAddr]; ok {
+		genesis.Alloc[contracts.CrossExAddr] = types.Account{Balance: crossEx.Balance}
+	}
 
 	// List up the Breakpoint contracts to add.
 	tmpl := types.GenesisAlloc{

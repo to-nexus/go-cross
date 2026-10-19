@@ -182,8 +182,8 @@ func (c *Core) handleEncodedMsg(code uint64, data []byte) error {
 		return err
 	}
 
-	// Verify signatures and set source address
-	if err = c.verifySignatures(m); err != nil {
+	// Verify signature and set source address
+	if err = c.verifySignature(m); err != nil {
 		c.logger.Error("Istanbul: failed to verify signatures", "code", code, "dataSize", len(data), "err", err)
 		return err
 	}
@@ -211,6 +211,13 @@ func (c *Core) handleDecodedMessage(m protocols.Message) error {
 		}
 		return err
 	}
+
+	// ##CROSS: istanbul justification limit
+	if err := c.verifyJustification(m); err != nil {
+		c.logger.Error("Istanbul: failed to verify justification", "code", m.Code(), "err", err)
+		return err
+	}
+	// ##
 
 	return c.deliverMessage(m)
 }
@@ -273,32 +280,28 @@ func (c *Core) handleTimeoutMsg() {
 	c.broadcastRoundChange(nextRound)
 }
 
-// Verifies the signature of the message m and of any justification payloads
-// piggybacked in m, if any. It also sets the source address on the messages
-// and justification payloads.
-func (c *Core) verifySignatures(m protocols.Message) error {
-	// Anonymous function to verify the signature of a single message or payload
-	verify := func(m protocols.Message) error {
-		payload, err := m.EncodePayloadForSigning()
-		if err != nil {
-			c.currentLogger(true, m).Error("Istanbul: invalid message payload", "err", err)
-			return err
-		}
-		source, err := c.validateFn(payload, m.Signature())
-		if err != nil {
-			c.currentLogger(true, m).Error("Istanbul: invalid message signature", "err", err)
-			return errInvalidSigner
-		}
-		m.SetSource(source)
-		return nil
-	}
-
-	// Verifies the signature of the message
-	if err := verify(m); err != nil {
+// Verifies the signature of the message m or of a justification payload, and sets its source address.
+func (c *Core) verifySignature(m protocols.Message) error {
+	payload, err := m.EncodePayloadForSigning()
+	if err != nil {
+		c.currentLogger(true, m).Error("Istanbul: invalid message payload", "err", err)
 		return err
 	}
+	source, err := c.validateFn(payload, m.Signature())
+	if err != nil {
+		c.currentLogger(true, m).Error("Istanbul: invalid message signature", "err", err)
+		return errInvalidSigner
+	}
+	m.SetSource(source)
+	return nil
+}
 
-	// Verifies the signature of piggybacked justification payloads.
+// ##CROSS: istanbul justification limit
+// verifyJustification verifies the signatures of the justification payloads piggybacked in m, if any,
+// and sets their source addresses. It runs when m is handled, not when it arrives, so the limit uses
+// the validator set of m's sequence: a backlogged next-sequence message may come from a larger set.
+// ##
+func (c *Core) verifyJustification(m protocols.Message) error {
 	// ##CROSS: istanbul justification limit
 	// A justification holds at most one payload per validator. Check the length before recovering
 	// signatures, so a validator cannot make us run one ecrecover per entry of an oversized list.
@@ -321,7 +324,7 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 			if p == nil {
 				return errInvalidMessage
 			}
-			if err := verify(p); err != nil {
+			if err := c.verifySignature(p); err != nil {
 				return err
 			}
 		}
@@ -339,7 +342,7 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 			if p == nil {
 				return errInvalidMessage
 			}
-			if err := verify(p); err != nil {
+			if err := c.verifySignature(p); err != nil {
 				return err
 			}
 		}
@@ -349,7 +352,7 @@ func (c *Core) verifySignatures(m protocols.Message) error {
 			if p == nil {
 				return errInvalidMessage
 			}
-			if err := verify(p); err != nil {
+			if err := c.verifySignature(p); err != nil {
 				return err
 			}
 		}

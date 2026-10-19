@@ -108,13 +108,6 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 
 	logger.Info("Istanbul: handle ROUND-CHANGE message", "higherRoundChanges.count", higherNum, "currentRoundChanges.count", currentNum)
 
-	// ##CROSS: istanbul round limit
-	if view.Round.Cmp(currentRound) > 0 && !c.roundChangeSet.keepHighestFuture(roundChange.Source(), currentRound, view.Round, c.valSet.QuorumSize(), c.hasBadProposal) {
-		logger.Debug("Istanbul: ignoring ROUND-CHANGE below a higher future round from the same validator")
-		return nil
-	}
-	// ##
-
 	// Add ROUND-CHANGE message to message set
 	if view.Round.Cmp(currentRound) >= 0 {
 		var prepareMessages []*protocols.Prepare = nil
@@ -146,6 +139,13 @@ func (c *Core) handleRoundChange(roundChange *protocols.RoundChange) error {
 				pb = roundChange.PreparedBlock
 			}
 		}
+		// ##CROSS: istanbul round limit
+		// Prune only after validation, so a rejected message cannot drop the sender's lower future round.
+		if view.Round.Cmp(currentRound) > 0 && !c.roundChangeSet.keepHighestFuture(roundChange.Source(), currentRound, view.Round, c.valSet.QuorumSize(), c.hasBadProposal) {
+			logger.Debug("Istanbul: ignoring ROUND-CHANGE below a higher future round from the same validator")
+			return nil
+		}
+		// ##
 		err := c.roundChangeSet.Add(view.Round, roundChange, pr, pb, prepareMessages, c.valSet.QuorumSize(), c.hasBadProposal)
 		if err != nil {
 			logger.Warn("Istanbul: failed to add ROUND-CHANGE message", "err", err)

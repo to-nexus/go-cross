@@ -89,6 +89,21 @@ func TestCore_VerifySignatures(t *testing.T) {
 		assert.Equal(t, errInvalidMessage, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
 	})
 
+	t.Run("backlogs next sequence justification longer than validator set", func(t *testing.T) {
+		// The validator set may grow at the next sequence, so the limit applies when the message is handled.
+		next := makeBlockWithTime(2, 1)
+		roundChange := protocols.NewRoundChange(big.NewInt(2), big.NewInt(1), big.NewInt(0), next)
+		roundChange.SetSource(src)
+		signProtocolMessage(t, roundChange, keys[src])
+		for i := 0; i <= valSet.Size(); i++ {
+			roundChange.Justification = append(roundChange.Justification, protocols.NewPrepareWithSigAndSource(big.NewInt(2), big.NewInt(0), next.Hash(), nil, src))
+		}
+		payload, err := rlp.EncodeToBytes(roundChange)
+		require.NoError(t, err)
+		assert.Equal(t, errFutureMessage, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
+		assert.Equal(t, 1, c.backlogs[src].Size())
+	})
+
 	// Justification was rejected before any signature recovery and returns errInvalidMessage.
 	block := makeBlockWithTime(1, 1)
 	unsigned := protocols.NewPrepareWithSigAndSource(big.NewInt(1), big.NewInt(0), block.Hash(), nil, src)
@@ -96,13 +111,13 @@ func TestCore_VerifySignatures(t *testing.T) {
 	t.Run("accepts prepares with a prepared block", func(t *testing.T) {
 		roundChange := createSignedRoundChangeMessage(t, keys[src], src, 1, 0, block)
 		roundChange.Justification = []*protocols.Prepare{createSignedPrepareMessage(t, keys[src], src, 0, block)}
-		assert.NoError(t, c.verifySignatures(roundChange))
+		assert.NoError(t, c.verifyJustification(roundChange))
 	})
 
 	t.Run("rejects prepares without a prepared block before signature recovery", func(t *testing.T) {
 		roundChange := createSignedRoundChangeMessage(t, keys[src], src, 1, 0, nil)
 		roundChange.Justification = []*protocols.Prepare{unsigned}
-		assert.Equal(t, errInvalidMessage, c.verifySignatures(roundChange))
+		assert.Equal(t, errInvalidMessage, c.verifyJustification(roundChange))
 	})
 
 	t.Run("rejects round 0 PRE-PREPARE justification before signature recovery", func(t *testing.T) {
@@ -110,11 +125,11 @@ func TestCore_VerifySignatures(t *testing.T) {
 		signProtocolMessage(t, preprepare, keys[src])
 
 		preprepare.JustificationPrepares = []*protocols.Prepare{unsigned}
-		assert.Equal(t, errInvalidMessage, c.verifySignatures(preprepare))
+		assert.Equal(t, errInvalidMessage, c.verifyJustification(preprepare))
 
 		preprepare.JustificationPrepares = nil
 		preprepare.JustificationRoundChanges = []*protocols.SignedRoundChangePayload{&protocols.NewRoundChange(big.NewInt(1), big.NewInt(1), nil, nil).SignedRoundChangePayload}
-		assert.Equal(t, errInvalidMessage, c.verifySignatures(preprepare))
+		assert.Equal(t, errInvalidMessage, c.verifyJustification(preprepare))
 	})
 }
 
@@ -199,6 +214,20 @@ func TestCore_HandleRoundChange(t *testing.T) {
 		// A lower future round from the same validator is ignored.
 		send(t, c, attacker, currentRound+50)
 		assert.Equal(t, []uint64{currentRound + 100}, futureRounds(c))
+	})
+
+	t.Run("keeps the lower future round if the higher one is rejected", func(t *testing.T) {
+		c, _ := newRoundChangeTestCore(t, addr, keys[addr], valSet, makeBlockWithTime(1, 1), 1, currentRound)
+		send(t, c, attacker, currentRound+1)
+
+		// One PREPARE is below quorum, so the prepared justification is rejected.
+		block := makeBlockWithTime(1, 1)
+		msg := createSignedRoundChangeMessage(t, keys[attacker], attacker, currentRound+2, 0, block)
+		msg.Justification = []*protocols.Prepare{createSignedPrepareMessage(t, keys[attacker], attacker, 0, block)}
+		payload, err := rlp.EncodeToBytes(msg)
+		require.NoError(t, err)
+		require.Equal(t, errInvalidPreparedBlock, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
+		assert.Equal(t, []uint64{currentRound + 1}, futureRounds(c))
 	})
 
 	t.Run("F+1 validators still move to the lowest future round", func(t *testing.T) {
