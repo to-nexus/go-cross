@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -311,19 +312,25 @@ func TestTxTracker_Start(t *testing.T) {
 		seed := newTxJournal(path)
 		require.NoError(t, seed.setupWriter())
 		require.NoError(t, seed.insert(tx))
+
 		_, err := seed.writer.Write([]byte{0xff})
 		require.NoError(t, err)
 		require.NoError(t, seed.close())
+
 		before, err := os.ReadFile(path)
 		require.NoError(t, err)
+
 		tracker := New(path, time.Hour, gspec.Config, nil)
-		require.Error(t, tracker.Start())
-		require.False(t, tracker.Ready())
-		require.Nil(t, tracker.journal.writer)
-		require.Contains(t, tracker.all, tx.Hash())
+		require.NoError(t, tracker.Start())
+		defer tracker.Stop()
+
+		assert.True(t, tracker.Ready())
+		assert.NotNil(t, tracker.journal.writer)
+		assert.Contains(t, tracker.all, tx.Hash())
+
 		after, err := os.ReadFile(path)
 		require.NoError(t, err)
-		require.Equal(t, before, after)
+		assert.Equal(t, before, after)
 	})
 }
 
@@ -344,16 +351,19 @@ func (w *failingJournalWriter) Close() error {
 func TestTxTracker_JournalErrors(t *testing.T) {
 	tracker := New(filepath.Join(t.TempDir(), "transactions.rlp"), time.Hour, gspec.Config, nil)
 	require.NoError(t, tracker.Start())
+
 	failure := errors.New("journal I/O failure")
 	tracker.mu.Lock()
 	tracker.journal.writer = &failingJournalWriter{tracker.journal.writer, failure}
 	tracker.mu.Unlock()
+
 	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{GasPrice: big.NewInt(params.GWei)})
 	require.NoError(t, tracker.Track(tx))
 	require.ErrorIs(t, tracker.Stop(), failure)
-	require.Contains(t, tracker.all, tx.Hash())
-	require.False(t, tracker.Ready())
-	require.Nil(t, tracker.journal.writer)
+
+	assert.Contains(t, tracker.all, tx.Hash())
+	assert.False(t, tracker.Ready())
+	assert.Nil(t, tracker.journal.writer)
 }
 
 // ##

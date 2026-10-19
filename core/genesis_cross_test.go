@@ -89,10 +89,11 @@ func TestMakeGenesis(t *testing.T) {
 		posa := genesis.Config.Istanbul.PoSA
 		posa.DelegationPool, posa.RewardStartBlock = common.Address{}, nil
 		coinbase := common.HexToAddress("0x1234")
-		reserveBalance, systemBalance := big.NewInt(12345), big.NewInt(7)
+		reserveBalance, systemBalance, crossExBalance := big.NewInt(12345), big.NewInt(7), big.NewInt(3)
 		genesis.Coinbase = coinbase
 		genesis.Alloc[contracts.CrossReserveAddr] = types.Account{Balance: reserveBalance}
 		genesis.Alloc[params.SystemAddress] = types.Account{Balance: systemBalance}
+		genesis.Alloc[contracts.CrossExAddr] = types.Account{Balance: crossExBalance, Nonce: 1, Code: common.Hex2Bytes(predeploy.CrossExCode)}
 		require.NoError(t, core.MakeGenesis(genesis, core.GenesisContracts{Breakpoint: true}))
 
 		assert.Equal(t, coinbase, genesis.Coinbase)
@@ -102,6 +103,7 @@ func TestMakeGenesis(t *testing.T) {
 		assert.Equal(t, reserveBalance, genesis.Alloc[contracts.CrossReserveAddr].Balance)
 		assert.Equal(t, systemBalance, genesis.Alloc[params.SystemAddress].Balance)
 		assert.Equal(t, common.Hex2Bytes(breakpoint.CrossExCode), genesis.Alloc[contracts.CrossExAddr].Code)
+		assert.Equal(t, crossExBalance, genesis.Alloc[contracts.CrossExAddr].Balance)
 		assert.Equal(t, common.FromHex(latest.ValidatorSetMetaData.BinRuntime), genesis.Alloc[contracts.ValidatorSetImplAddr].Code)
 		assert.Equal(t, common.FromHex(latest.StakeHubMetaData.BinRuntime), genesis.Alloc[contracts.StakeHubImplAddr].Code)
 		assert.Equal(t, common.FromHex(latest.RewardHubMetaData.BinRuntime), genesis.Alloc[contracts.RewardHubImplAddr].Code)
