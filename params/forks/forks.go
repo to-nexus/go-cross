@@ -42,6 +42,7 @@ const (
 	Prague
 	// ##CROSS: fork breakpoint
 	Breakpoint
+	BreakpointAlpha
 	BreakpointBravo
 	// ##
 	Osaka
@@ -85,6 +86,7 @@ var forkToString = map[Fork]string{
 	Prague:           "Prague",
 	// ##CROSS: fork breakpoint
 	Breakpoint:      "Breakpoint",
+	BreakpointAlpha: "BreakpointAlpha",
 	BreakpointBravo: "BreakpointBravo",
 	// ##
 	Osaka:     "Osaka",
