@@ -196,7 +196,7 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
-	common.BytesToAddress([]byte{0xc0}):      &blsSignatureVerification{}, // ##CROSS: bls seal
+	common.BytesToAddress([]byte{0xc0}):      &blsSignatureVerification{osaka: true}, // ##CROSS: bls seal
 }
 
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
@@ -1498,7 +1498,9 @@ func (c *p256Verify) Name() string {
 // ##CROSS: bls seal
 
 // blsSignatureVerification implements bls signature verification precompile.
-type blsSignatureVerification struct{}
+type blsSignatureVerification struct {
+	osaka bool // ##CROSS: HUNT-9061 - Osaka reprices the base gas; see RequiredGas
+}
 
 const (
 	msgHashLength         = uint64(32)
@@ -1514,13 +1516,17 @@ var (
 
 // RequiredGas estimates the gas required for running the bls signature verification precompile.
 func (c *blsSignatureVerification) RequiredGas(input []byte) uint64 {
+	base := params.BlsSignatureVerifyBaseGas
+	if c.osaka {
+		base = params.BlsSignatureVerifyBaseGasOsaka
+	}
 	inputLen := uint64(len(input))
 	if inputLen <= msgAndSigLength ||
 		(inputLen-msgAndSigLength)%singleBlsPubkeyLength != 0 {
-		return params.BlsSignatureVerifyBaseGas
+		return base
 	}
 	pubKeyNumber := (inputLen - msgAndSigLength) / singleBlsPubkeyLength
-	return params.BlsSignatureVerifyBaseGas + pubKeyNumber*params.BlsSignatureVerifyPerKeyGas
+	return base + pubKeyNumber*params.BlsSignatureVerifyPerKeyGas
 }
 
 // Run executes the bls signature verification precompile.

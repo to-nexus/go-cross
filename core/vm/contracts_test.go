@@ -68,6 +68,12 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x0f, 0x10}): &bls12381MapG2{},
 
 	common.BytesToAddress([]byte{0x0b}): &p256Verify{},
+
+	// ##CROSS: bls seal
+	// 0xc0 is the pre-Osaka price, 0xc1 is a test-only alias for the Osaka reprice.
+	common.BytesToAddress([]byte{0xc0}): &blsSignatureVerification{},
+	common.BytesToAddress([]byte{0xc1}): &blsSignatureVerification{osaka: true},
+	// ##
 }
 
 // EIP-152 test vectors
@@ -339,6 +345,16 @@ func TestPrecompiledBLS12381G2MultiExp(t *testing.T) { testJson("blsG2MultiExp",
 func TestPrecompiledBLS12381Pairing(t *testing.T)    { testJson("blsPairing", "f0e", t) }
 func TestPrecompiledBLS12381MapG1(t *testing.T)      { testJson("blsMapG1", "f0f", t) }
 func TestPrecompiledBLS12381MapG2(t *testing.T)      { testJson("blsMapG2", "f10", t) }
+
+// ##CROSS: bls seal
+func TestPrecompiledBLSSignatureVerification(t *testing.T) {
+	testJson("blsSignatureVerification", "c0", t)
+}
+func TestPrecompiledBLSSignatureVerificationOsaka(t *testing.T) {
+	testJson("blsSignatureVerificationOsaka", "c1", t)
+}
+
+// ##
 
 func TestPrecompiledPointEvaluation(t *testing.T) { testJson("pointEvaluation", "0a", t) }
 
