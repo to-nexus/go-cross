@@ -83,6 +83,13 @@ func (beacon *Beacon) Author(header *types.Header) (common.Address, error) {
 // VerifyHeader checks whether a header conforms to the consensus rules of the
 // stock Ethereum consensus engine.
 func (beacon *Beacon) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
+	// ##CROSS: istanbul
+	if chain.Config().IsIstanbulConsensus() {
+		// Verify every header with Istanbul rules.
+		return beacon.ethone.VerifyHeader(chain, header)
+	}
+	// ##
+
 	// During the live merge transition, the consensus engine used the terminal
 	// total difficulty to detect when PoW (PoA) switched to PoS. Maintaining the
 	// total difficulty values however require applying all the blocks from the
@@ -139,6 +146,12 @@ func (beacon *Beacon) splitHeaders(headers []*types.Header) ([]*types.Header, []
 // a results channel to retrieve the async verifications.
 // VerifyHeaders expect the headers to be ordered and continuous.
 func (beacon *Beacon) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header) (chan<- struct{}, <-chan error) {
+	// ##CROSS: istanbul
+	if chain.Config().IsIstanbulConsensus() {
+		// Verify every header with Istanbul rules.
+		return beacon.ethone.VerifyHeaders(chain, headers)
+	}
+	// ##
 	preHeaders, postHeaders := beacon.splitHeaders(headers)
 	if len(postHeaders) == 0 {
 		return beacon.ethone.VerifyHeaders(chain, headers)
@@ -328,9 +341,11 @@ func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.H
 
 // Finalize implements consensus.Engine and processes withdrawals on top.
 func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, txs *[]*types.Transaction, receipts *types.Receipts, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
-	if !beacon.IsPoSHeader(header) {
+	// ##CROSS: istanbul
+	if chain.Config().IsIstanbulConsensus() || !beacon.IsPoSHeader(header) {
 		return beacon.ethone.Finalize(chain, header, state, body, txs, receipts, systemTxs, usedGas, tracer)
 	}
+	// ##
 	// Withdrawals processing.
 	for _, w := range body.Withdrawals {
 		// Convert amount from gwei to wei.
@@ -345,7 +360,8 @@ func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.
 // FinalizeAndAssemble implements consensus.Engine, setting the final state and
 // assembling the block.
 func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
-	if !beacon.IsPoSHeader(header) {
+	// ##CROSS: istanbul
+	if chain.Config().IsIstanbulConsensus() || !beacon.IsPoSHeader(header) {
 		return beacon.ethone.FinalizeAndAssemble(chain, header, state, body, receipts, tracer)
 	}
 	shanghai := chain.Config().IsShanghai(header.Number, header.Time)
