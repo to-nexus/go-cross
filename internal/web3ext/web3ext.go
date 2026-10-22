@@ -160,6 +160,11 @@ web3._extend({
 			name: 'stopWS',
 			call: 'admin_stopWS'
 		}),
+		new web3._extend.Method({
+			name: 'suspendIstanbulValidator',
+			call: 'admin_suspendIstanbulValidator',
+			params: 1
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
