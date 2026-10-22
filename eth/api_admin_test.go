@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
@@ -166,6 +167,35 @@ func TestAdminAPI_SuspendIstanbulValidator(t *testing.T) {
 		res := <-done
 		require.NoError(t, res.err)
 		assert.Equal(t, resent.Hash(), res.hash)
+	})
+
+	t.Run("takes the tx as dropped when another tx takes the nonce before the pool adds it", func(t *testing.T) {
+		key, _ := crypto.GenerateKey()
+		addr := crypto.PubkeyToAddress(key.PublicKey)
+		service, insert := newService(t, key, addr)
+		api := NewAdminAPI(service)
+
+		// Nonce 0 is read for the suspend tx, then another tx takes it and the pool is updated before the suspend tx is added.
+		insert(types.MustSignNewTx(key, types.LatestSignerForChainID(service.BlockChain().Config().ChainID), &types.DynamicFeeTx{
+			ChainID:   service.BlockChain().Config().ChainID,
+			GasTipCap: big.NewInt(params.GWei),
+			GasFeeCap: big.NewInt(10 * params.GWei),
+			Gas:       params.TxGas,
+			To:        &addr,
+		}))
+		require.Eventually(t, func() bool { return service.TxPool().Nonce(addr) == 1 }, 5*time.Second, 10*time.Millisecond)
+
+		nonce, to := hexutil.Uint64(0), contracts.StakeHubAddr
+		input := hexutil.Bytes(latest.NewStakeHub().PackSuspendByValidator(new(big.Int).SetUint64(endTime)))
+		tx, err := api.sendSuspendTx(context.Background(), key, ethapi.TransactionArgs{From: &addr, To: &to, Input: &input, Nonce: &nonce})
+		require.NoError(t, err)
+
+		// It returns without a new head, so the retry loop sends the tx again right away.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		included, err := api.waitSuspendTx(ctx, tx, addr, nil)
+		require.NoError(t, err)
+		assert.False(t, included)
 	})
 
 	t.Run("fails when the included tx reverts", func(t *testing.T) {

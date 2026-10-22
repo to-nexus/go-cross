@@ -201,9 +201,9 @@ func (api *AdminAPI) SuspendIstanbulValidator(ctx context.Context, endTime uint6
 			return tx.Hash(), err
 		}
 		if attempt == suspendTxAttempts {
-			return common.Hash{}, fmt.Errorf("suspend tx is dropped %d times, as system txs took the nonce", attempt)
+			return common.Hash{}, fmt.Errorf("suspend tx is dropped %d times", attempt)
 		}
-		log.Warn("Suspend tx is dropped, as a system tx took the nonce; sending it again", "hash", tx.Hash(), "nonce", tx.Nonce())
+		log.Warn("Suspend tx is dropped; sending it again", "hash", tx.Hash(), "nonce", tx.Nonce())
 
 		// The pool may still hold the dropped tx, so take the nonce from the chain.
 		statedb, err := bc.State()
@@ -226,7 +226,8 @@ func (api *AdminAPI) sendSuspendTx(ctx context.Context, key *ecdsa.PrivateKey, a
 	if err != nil {
 		return nil, err
 	}
-	if _, err := ethapi.SubmitTransaction(ctx, api.eth.APIBackend, tx); err != nil {
+	// A system tx can take the nonce before the pool adds tx; waitSuspendTx then finds tx dropped, and it is sent again.
+	if _, err := ethapi.SubmitTransaction(ctx, api.eth.APIBackend, tx); err != nil && !errors.Is(err, core.ErrNonceTooLow) {
 		return nil, err
 	}
 	return tx, nil
@@ -287,7 +288,7 @@ func (api *AdminAPI) suspendTxFailure(ctx context.Context, tx *types.Transaction
 	case len(res.Revert()) > 0:
 		return fmt.Errorf("%w: %s", res.Err, stakeHubRevertReason(res.Revert()))
 	default:
-		return res.Err // e.g. out of gas
+		return res.Err
 	}
 }
 
