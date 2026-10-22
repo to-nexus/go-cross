@@ -156,7 +156,7 @@ func (e *Engine) IsSystemContract(to *common.Address) bool {
 
 const (
 	systemTxsGasBreakpoint = 3_000_000
-	systemTxsGasNewPeriod  = 1_000_000
+	systemTxsGasNewPeriod  = 2_000_000
 	systemTxsGasUsual      = 900_000
 )
 
@@ -170,10 +170,10 @@ func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, head
 	if parent != nil {
 		// Possible system transactions and approx. gas costs:
 		//   Initialize system contracts (on hardfork): 2,200,000 on Breakpoint
-		//   Slash and jail a validator: 300,000
-		//   Distribute rewards: 200,000
-		//   Reduce slash counters (on new day block): 30,000
-		//   Update validator set (on new day block): 70,000
+		//   Slash and jail a validator: 326,000
+		//   Distribute rewards: 384,000
+		//   Mitigate slash counters (on new day block): 82,000
+		//   Update validator set (on new day block): 786,000
 		if chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
 			return systemTxsGasBreakpoint
 		}
