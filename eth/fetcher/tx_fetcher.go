@@ -341,6 +341,15 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 
 			default:
 				otherreject++
+
+				// ##CROSS: fee delegation
+				// The hash of a fee-delegated tx does not cover the fee payer fields,
+				// so a rejected one may be a forged copy of an honest tx.
+				// Keep tracking its hash so that other peers can still deliver it.
+				if batch[j].Type() == types.FeeDelegatedDynamicFeeTxType {
+					continue
+				}
+				// ##
 			}
 			added = append(added, batch[j].Hash())
 			metas = append(metas, txMetadata{
@@ -640,10 +649,11 @@ func (f *TxFetcher) loop() {
 				if _, ok := f.waitlist[hash]; ok {
 					for peer, txset := range f.waitslots {
 						if meta := txset[hash]; meta != nil {
-							if delivery.metas[i].kind != meta.kind {
+							feeDelegationPair := isFeeDelegationPair(delivery.metas[i].kind, meta.kind) // ##CROSS: fee delegation
+							if !feeDelegationPair && delivery.metas[i].kind != meta.kind {
 								log.Warn("Announced transaction type mismatch", "peer", peer, "tx", hash, "type", delivery.metas[i].kind, "ann", meta.kind)
 								f.dropPeer(peer)
-							} else if delivery.metas[i].size != meta.size {
+							} else if !feeDelegationPair && delivery.metas[i].size != meta.size {
 								if math.Abs(float64(delivery.metas[i].size)-float64(meta.size)) > 8 {
 									log.Warn("Announced transaction size mismatch", "peer", peer, "tx", hash, "size", delivery.metas[i].size, "ann", meta.size)
 
@@ -666,10 +676,11 @@ func (f *TxFetcher) loop() {
 				} else {
 					for peer, txset := range f.announces {
 						if meta := txset[hash]; meta != nil {
-							if delivery.metas[i].kind != meta.kind {
+							feeDelegationPair := isFeeDelegationPair(delivery.metas[i].kind, meta.kind) // ##CROSS: fee delegation
+							if !feeDelegationPair && delivery.metas[i].kind != meta.kind {
 								log.Warn("Announced transaction type mismatch", "peer", peer, "tx", hash, "type", delivery.metas[i].kind, "ann", meta.kind)
 								f.dropPeer(peer)
-							} else if delivery.metas[i].size != meta.size {
+							} else if !feeDelegationPair && delivery.metas[i].size != meta.size {
 								if math.Abs(float64(delivery.metas[i].size)-float64(meta.size)) > 8 {
 									log.Warn("Announced transaction size mismatch", "peer", peer, "tx", hash, "size", delivery.metas[i].size, "ann", meta.size)
 
@@ -1042,3 +1053,12 @@ func rotateStrings(slice []string, n int) {
 		slice[i] = orig[(i+n)%len(orig)]
 	}
 }
+
+// ##CROSS: fee delegation
+// isFeeDelegationPair reports whether one type is a dynamic fee tx and the other is a fee-delegated tx.
+func isFeeDelegationPair(a, b byte) bool {
+	return (a == types.DynamicFeeTxType && b == types.FeeDelegatedDynamicFeeTxType) ||
+		(a == types.FeeDelegatedDynamicFeeTxType && b == types.DynamicFeeTxType)
+}
+
+// ##

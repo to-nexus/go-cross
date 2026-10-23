@@ -34,6 +34,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -2483,3 +2485,136 @@ func TestTransactionForgotten(t *testing.T) {
 		t.Errorf("wrong final underpriced cache size: got %d, want 1", size)
 	}
 }
+
+// ##CROSS: fee delegation
+// TestTxFetcher_FeeDelegationPair tests that peers announcing a dynamic fee tx or the fee-delegated tx that
+// wraps it (same hash) are not dropped, while other type mismatches still drop the peer.
+// Also tests that a forged fee-delegated tx with the same hash does not stop the fetcher from getting the honest tx.
+func TestTxFetcher_FeeDelegationPair(t *testing.T) {
+	chainID := big.NewInt(1)
+	senderKey, _ := crypto.GenerateKey()
+	payerKey, _ := crypto.GenerateKey()
+	payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+
+	plain := types.MustSignNewTx(senderKey, types.NewLondonSigner(chainID), &types.DynamicFeeTx{
+		ChainID: chainID, GasTipCap: big.NewInt(1), GasFeeCap: big.NewInt(2), Gas: 21_000, To: &common.Address{0x01},
+	})
+	inner := *plain.GetTxData().(*types.DynamicFeeTx)
+	wrapped := types.MustSignNewTx(payerKey, types.NewFeeDelegationSigner(chainID), types.NewFeeDelegatedDynamicFeeTx(&payer, inner))
+
+	// forged has the same hash but an invalid fee payer signature, which anyone can make for free.
+	forged := types.NewTx(&types.FeeDelegatedDynamicFeeTx{SenderTx: inner, FeePayer: &payer, FV: big.NewInt(0), FR: big.NewInt(1), FS: big.NewInt(1)})
+	require.Equal(t, plain.Hash(), wrapped.Hash())
+	require.Equal(t, plain.Hash(), forged.Hash())
+	require.Greater(t, wrapped.Size(), plain.Size()+8)
+
+	hash := plain.Hash()
+	notify := func(peer string, kind byte, size uint64) doTxNotify {
+		return doTxNotify{peer: peer, hashes: []common.Hash{hash}, types: []byte{kind}, sizes: []uint32{uint32(size)}}
+	}
+	ann := func(tx *types.Transaction) announce {
+		return announce{hash, tx.Type(), uint32(tx.Size())}
+	}
+	// run executes the steps and returns the dropped peers.
+	run := func(t *testing.T, steps ...interface{}) []string {
+		drop := make(chan string, 4)
+		testTransactionFetcher(t, txFetcherTest{
+			init: func() *TxFetcher {
+				return NewTxFetcher(
+					func(common.Hash) bool { return false },
+					func(txs []*types.Transaction) []error {
+						// Reject fee-delegated txs with an invalid fee payer signature, like the pool.
+						errs := make([]error, len(txs))
+						for i, tx := range txs {
+							if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
+								_, errs[i] = tx.FeePayerValidated(chainID)
+							}
+						}
+						return errs
+					},
+					func(string, []common.Hash) error { return nil },
+					func(peer string) { drop <- peer },
+				)
+			},
+			steps: steps,
+		})
+		var dropped []string
+		for len(drop) > 0 {
+			dropped = append(dropped, <-drop)
+		}
+		return dropped
+	}
+
+	t.Run("both types announced, dynamic fee tx fetched", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", plain.Type(), plain.Size()),
+			notify("B", wrapped.Type(), wrapped.Size()),
+			doWait{time: txArriveTimeout, step: true},
+			doTxEnqueue{peer: "A", txs: []*types.Transaction{plain}, direct: true},
+		)
+		assert.Empty(t, dropped)
+	})
+	t.Run("both types announced, fee-delegated tx fetched", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", wrapped.Type(), wrapped.Size()),
+			notify("B", plain.Type(), plain.Size()),
+			doWait{time: txArriveTimeout, step: true},
+			doTxEnqueue{peer: "A", txs: []*types.Transaction{wrapped}, direct: true},
+		)
+		assert.Empty(t, dropped)
+	})
+	t.Run("dynamic fee tx announced, fee-delegated tx broadcast", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", plain.Type(), plain.Size()),
+			doTxEnqueue{peer: "C", txs: []*types.Transaction{wrapped}, direct: false},
+		)
+		assert.Empty(t, dropped)
+	})
+	t.Run("other type mismatch still drops", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", types.BlobTxType, plain.Size()),
+			doTxEnqueue{peer: "C", txs: []*types.Transaction{plain}, direct: false},
+		)
+		assert.Equal(t, []string{"A"}, dropped)
+	})
+	t.Run("size mismatch with the same type still drops", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", wrapped.Type(), plain.Size()),
+			doTxEnqueue{peer: "C", txs: []*types.Transaction{wrapped}, direct: false},
+		)
+		assert.Equal(t, []string{"A"}, dropped)
+	})
+	t.Run("forged fee-delegated tx broadcast keeps honest announcements", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", plain.Type(), plain.Size()),
+			notify("B", plain.Type(), plain.Size()),
+			doTxEnqueue{peer: "X", txs: []*types.Transaction{forged}, direct: false},
+			isWaiting(map[string][]announce{"A": {ann(plain)}, "B": {ann(plain)}}),
+			doWait{time: txArriveTimeout, step: true},
+			isScheduled{
+				tracking: map[string][]announce{"A": {ann(plain)}, "B": {ann(plain)}},
+				fetching: map[string][]common.Hash{"A": {hash}},
+			},
+		)
+		assert.Empty(t, dropped)
+	})
+	t.Run("forged fee-delegated tx reply reschedules to honest peer", func(t *testing.T) {
+		dropped := run(t,
+			notify("X", forged.Type(), forged.Size()),
+			doWait{time: txArriveTimeout, step: true},
+			notify("A", plain.Type(), plain.Size()),
+			isScheduled{
+				tracking: map[string][]announce{"X": {ann(forged)}, "A": {ann(plain)}},
+				fetching: map[string][]common.Hash{"X": {hash}},
+			},
+			doTxEnqueue{peer: "X", txs: []*types.Transaction{forged}, direct: true},
+			isScheduled{
+				tracking: map[string][]announce{"A": {ann(plain)}},
+				fetching: map[string][]common.Hash{"A": {hash}},
+			},
+		)
+		assert.Empty(t, dropped)
+	})
+}
+
+// ##
