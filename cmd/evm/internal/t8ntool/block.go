@@ -56,6 +56,7 @@ type header struct {
 	BlobGasUsed           *uint64           `json:"blobGasUsed"   rlp:"optional"`
 	ExcessBlobGas         *uint64           `json:"excessBlobGas"   rlp:"optional"`
 	ParentBeaconBlockRoot *common.Hash      `json:"parentBeaconBlockRoot" rlp:"optional"`
+	RequestsHash          *common.Hash      `json:"requestsHash" rlp:"optional"`
 }
 
 type headerMarshaling struct {
@@ -136,6 +137,7 @@ func (i *bbInput) ToBlock() *types.Block {
 		BlobGasUsed:      i.Header.BlobGasUsed,
 		ExcessBlobGas:    i.Header.ExcessBlobGas,
 		ParentBeaconRoot: i.Header.ParentBeaconBlockRoot,
+		RequestsHash:     i.Header.RequestsHash,
 	}
 
 	// Fill optional values.
