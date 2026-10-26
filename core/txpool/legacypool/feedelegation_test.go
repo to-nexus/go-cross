@@ -730,6 +730,57 @@ func TestLegacyPoolDemoteUnexecutables(t *testing.T) {
 		assert.NotNil(t, pool.pending[sender].txs.Get(txs[0].Nonce()))
 		require.NoError(t, validatePoolInternals(pool))
 	})
+
+	t.Run("counts the fee payer's own pending txs", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		testAddBalance(pool, payer, big.NewInt(500_000))
+		senderKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		testAddBalance(pool, crypto.PubkeyToAddress(senderKey.PublicKey), new(big.Int).SetUint64(params.Ether))
+
+		// The payer sponsors 200000 and spends 200100 on its own tx.
+		require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)))
+		require.NoError(t, pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(2), payerKey)))
+
+		// A new head lowers the balance to 300000: each tx still fits alone, but both together do not.
+		pool.mu.Lock()
+		pool.currentState.SetBalance(payer, uint256.NewInt(300_000), tracing.BalanceChangeUnspecified)
+		pool.demoteUnexecutables()
+		pool.mu.Unlock()
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 1, pending)
+		assert.Equal(t, 1, queued)
+		assert.NotNil(t, pool.pending[payer], "the payer's own tx stays pending")
+		require.NoError(t, validatePoolInternals(pool))
+	})
+
+	t.Run("counts a self-sponsored tx once", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		key, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		addr := crypto.PubkeyToAddress(key.PublicKey)
+		// The tx costs 200100 in full. The balance covers it once, not twice.
+		testAddBalance(pool, addr, big.NewInt(300_000))
+		require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), key, key)))
+
+		pool.mu.Lock()
+		pool.demoteUnexecutables()
+		pool.mu.Unlock()
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 1, pending)
+		assert.Zero(t, queued)
+		assert.Zero(t, payerCost(pool, addr).Sign(), "a self-sponsored tx is not indexed")
+		require.NoError(t, validatePoolInternals(pool))
+	})
 }
 
 // TestLegacyPool_PromoteExecutables covers how promotion holds senders whose fee
@@ -820,4 +871,102 @@ func TestLegacyPool_PromoteExecutables(t *testing.T) {
 		assert.False(t, pool.Has(txs[4].Hash()))
 		require.NoError(t, validatePoolInternals(pool))
 	})
+
+	t.Run("counts the fee payer's own pending txs", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		testAddBalance(pool, payer, big.NewInt(300_000))
+		senderKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+		testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+
+		// The sponsored tx waits behind a nonce gap while the payer's own tx (200100) becomes pending.
+		delegated := feeDelegatedDynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)
+		require.NoError(t, pool.addRemoteSync(delegated))
+		require.NoError(t, pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(2), payerKey)))
+
+		// Filling the gap must not promote the sponsored tx: 200100 + 200000 exceeds 300000.
+		require.NoError(t, pool.addRemoteSync(transaction(0, 100000, senderKey)))
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 2, pending)
+		assert.Equal(t, 1, queued)
+		assert.Nil(t, pool.pending[sender].txs.Get(delegated.Nonce()))
+		require.NoError(t, validatePoolInternals(pool))
+	})
+
+	t.Run("holds a fee payer's own tx over what it sponsors", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		testAddBalance(pool, payer, big.NewInt(300_000))
+		senderKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+		testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+
+		// The payer's own tx (200100) waits behind a nonce gap before the payer sponsors 200000.
+		own := pricedTransaction(1, 100000, big.NewInt(2), payerKey)
+		require.NoError(t, pool.addRemoteSync(own))
+		require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)))
+
+		// Filling the gap (21100) must not promote the own tx: 21100 + 200100 + 200000 exceeds 300000.
+		require.NoError(t, pool.addRemoteSync(pricedTransaction(0, 21000, big.NewInt(1), payerKey)))
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 2, pending)
+		assert.Equal(t, 1, queued)
+		assert.Nil(t, pool.pending[payer].txs.Get(own.Nonce()))
+
+		// The sponsored tx keeps its place after a reset.
+		<-pool.requestReset(nil, nil)
+		assert.NotNil(t, pool.pending[sender], "the sponsored tx stays pending")
+		require.NoError(t, validatePoolInternals(pool))
+	})
 }
+
+func TestLegacyPool_ValidateTx(t *testing.T) {
+	t.Parallel()
+
+	t.Run("rejects a fee payer's own tx over what it sponsors", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		testAddBalance(pool, crypto.PubkeyToAddress(payerKey.PublicKey), big.NewInt(300_000))
+		senderKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		testAddBalance(pool, crypto.PubkeyToAddress(senderKey.PublicKey), new(big.Int).SetUint64(params.Ether))
+
+		// The payer sponsors 200000, so its own tx of 200100 no longer fits the balance of 300000.
+		require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)))
+		err = pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(2), payerKey))
+		require.ErrorIs(t, err, core.ErrInsufficientFunds)
+	})
+
+	t.Run("replaces a self-sponsored tx within the balance", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		key, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		testAddBalance(pool, crypto.PubkeyToAddress(key.PublicKey), big.NewInt(350_000))
+
+		// The replacement (300100) replaces the old tx (200100) instead of adding to it.
+		require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), key, key)))
+		replacement := feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), big.NewInt(100), key, key)
+		require.NoError(t, pool.addRemoteSync(replacement))
+		assert.True(t, pool.Has(replacement.Hash()))
+	})
+}
+
+// ##

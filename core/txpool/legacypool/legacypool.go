@@ -245,10 +245,10 @@ type LegacyPool struct {
 
 	// ##CROSS: fee delegation
 	// feePayerCost is a pool-level index mapping each fee payer to the cumulative
-	// FeePayerCost of all fee-delegated transactions it sponsors across every
-	// pending list. It is maintained by the pending lists (see list.feePayerCost)
-	// and lets validation reject fee payers that would be over-committed across
-	// multiple pooled transactions in O(1).
+	// FeePayerCost of all fee-delegated transactions it sponsors for other senders
+	// across every pending list. It is maintained by the pending lists (see
+	// list.feePayerCost) and lets validation reject fee payers that would be
+	// over-committed across multiple pooled transactions in O(1).
 	feePayerCost map[common.Address]*uint256.Int
 
 	reqResetCh      chan *txpoolResetRequest
@@ -588,7 +588,7 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction) error {
 			return nil
 		},
 		// Return the cumulative fee-payer cost already committed by feePayer across
-		// every pending fee-delegated tx, via the O(1) pool-level index, excluding
+		// every pending tx it sponsors, via the O(1) pool-level index, excluding
 		// the tx currently occupying the (addr, nonce) slot the incoming tx would
 		// replace (its cost is already counted in the index).
 		ExistingFeePayerExpenditure: func(feePayer common.Address, addr common.Address, nonce uint64) *big.Int { // ##CROSS: fee delegation
@@ -597,9 +597,7 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction) error {
 				total = sum.ToBig()
 			}
 			if list := pool.pending[addr]; list != nil {
-				if old := list.txs.Get(nonce); old != nil &&
-					old.Type() == types.FeeDelegatedDynamicFeeTxType &&
-					old.FeePayer() != nil && *old.FeePayer() == feePayer {
+				if old := list.txs.Get(nonce); old != nil && sponsored(old) && *old.FeePayer() == feePayer {
 					total.Sub(total, old.FeePayerCost())
 				}
 			}
@@ -1433,29 +1431,22 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 	for _, tx := range promotable {
 		from, _ := pool.signer.Sender(tx)
 		// ##CROSS: fee delegation
-		// Gate promotion on the fee payer's cumulative budget. The shared index
-		// pool.feePayerCost only counts pending transactions and is updated by
-		// promoteTx as we go, so it already reflects everything promoted earlier in
-		// this pass (including by earlier senders sharing this fee payer). Promoting
-		// a fee-delegated tx whose cost, on top of what its fee payer already
-		// sponsors in pending, exceeds the fee payer's balance would over-commit it.
+		// Gate promotion on cumulative budgets (see overCommits). payerSpent only counts
+		// pending transactions, which promoteTx updates as we go, so it already
+		// reflects everything promoted earlier in this pass (including by earlier
+		// senders sharing this fee payer). Txs already pending keep their place, as in
+		// validateTx: the tx that would over-commit an account waits.
 		// promotable joins the ready runs of all accounts, so only this sender is held:
 		// its later nonces cannot be promoted either, but other senders still are.
 		// Held txs go back to the queue to retry later (the balance may grow or pending
 		// txs may clear).
 		_, isHeld := held[from]
-		if !isHeld && tx.Type() == types.FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil {
-			payer := *tx.FeePayer()
-			committed := new(big.Int)
-			if sum := pool.feePayerCost[payer]; sum != nil {
-				committed = sum.ToBig()
-			}
-			need := new(big.Int).Add(committed, tx.FeePayerCost())
-			if pool.currentState.GetBalance(payer).ToBig().Cmp(need) < 0 {
+		if !isHeld {
+			if account, over := pool.overCommits(from, tx); over {
 				held[from] = struct{}{}
 				isHeld = true
-				log.Trace("Holding fee-delegated txs: fee payer cumulative budget exceeded",
-					"sender", from, "payer", payer, "nonce", tx.Nonce())
+				log.Trace("Holding txs: cumulative budget exceeded",
+					"sender", from, "account", account, "nonce", tx.Nonce())
 			}
 		}
 		if isHeld {
@@ -1681,16 +1672,17 @@ func (pool *LegacyPool) demoteUnexecutables() {
 	// ##CROSS: fee delegation
 	// Check the fee payer totals, after every sender dropped its mined and unpayable txs.
 	// Demote from the highest nonce down, so the txs that the balance covers stay pending.
+	// Only sponsored txs are demoted here: the fee payer's own txs keep their place.
 	for addr, list := range pool.pending {
 		txs := list.Flatten()
 		var demoted types.Transactions
 		for i := len(txs) - 1; i >= 0; i-- {
 			tx := txs[i]
-			if tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
+			if !sponsored(tx) {
 				continue
 			}
 			payer := *tx.FeePayer()
-			if sum := pool.feePayerCost[payer]; sum == nil || pool.currentState.GetBalance(payer).Cmp(sum) >= 0 {
+			if pool.currentState.GetBalance(payer).ToBig().Cmp(pool.payerSpent(payer)) >= 0 {
 				continue
 			}
 			if removed, cascaded := list.Remove(tx); removed {
@@ -1712,6 +1704,39 @@ func (pool *LegacyPool) demoteUnexecutables() {
 	}
 	// ##
 }
+
+// ##CROSS: fee delegation
+// payerSpent returns what pending txs already draw from addr's balance: its own
+// pending txs plus the txs it sponsors for other senders.
+func (pool *LegacyPool) payerSpent(addr common.Address) *big.Int {
+	spent := new(big.Int)
+	if list := pool.pending[addr]; list != nil {
+		spent = list.totalcost.ToBig()
+	}
+	if sum := pool.feePayerCost[addr]; sum != nil {
+		spent.Add(spent, sum.ToBig())
+	}
+	return spent
+}
+
+// overCommits reports the account that promoting tx would push over its balance:
+// the fee payer of a sponsored tx, or a sender that sponsors txs of other senders.
+// A sender that sponsors nobody is not checked, as upstream promotes its queued txs.
+func (pool *LegacyPool) overCommits(from common.Address, tx *types.Transaction) (common.Address, bool) {
+	exceeds := func(addr common.Address, cost *big.Int) bool {
+		need := new(big.Int).Add(pool.payerSpent(addr), cost)
+		return pool.currentState.GetBalance(addr).ToBig().Cmp(need) < 0
+	}
+	if sponsored(tx) && exceeds(*tx.FeePayer(), tx.FeePayerCost()) {
+		return *tx.FeePayer(), true
+	}
+	if pool.feePayerCost[from] != nil && exceeds(from, tx.Cost()) {
+		return from, true
+	}
+	return common.Address{}, false
+}
+
+// ##
 
 // accountSet is simply a set of addresses to check for existence, and a signer
 // capable of deriving addresses from transactions.

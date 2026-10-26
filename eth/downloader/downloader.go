@@ -116,8 +116,9 @@ type Downloader struct {
 	blockchain BlockChain
 
 	// Callbacks
-	dropPeer peerDropFn // Drops a peer for misbehaving
-	badBlock badBlockFn // Reports a block as rejected by the chain
+	dropPeer    peerDropFn // Drops a peer for misbehaving
+	badBlock    badBlockFn // Reports a block as rejected by the chain
+	disableSnap func()     // Turns off snap sync once the pivot block is committed // ##CROSS: legacy sync
 
 	// Status
 	synchroniseMock func(id string, hash common.Hash) error // Replacement for synchronise during testing // ##CROSS: legacy sync
@@ -219,7 +220,7 @@ type BlockChain interface {
 }
 
 // New creates a new downloader to fetch hashes and blocks from remote peers.
-func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, dropPeer peerDropFn, success func()) *Downloader {
+func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, dropPeer peerDropFn, success func(), disableSnap func()) *Downloader {
 	dl := &Downloader{
 		stateDB:        stateDb,
 		mux:            mux,
@@ -227,6 +228,7 @@ func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, dropPeer 
 		peers:          newPeerSet(),
 		blockchain:     chain,
 		dropPeer:       dropPeer,
+		disableSnap:    disableSnap, // ##CROSS: legacy sync
 		headerProcCh:   make(chan *headerTask, 1),
 		quitCh:         make(chan struct{}),
 		SnapSyncer:     snap.NewSyncer(stateDb, chain.TrieDB().Scheme()),
@@ -1478,7 +1480,17 @@ func (d *Downloader) commitPivotBlock(result *fetchResult) error {
 	if err := d.blockchain.SnapSyncCommitHead(block.Hash()); err != nil {
 		return err
 	}
+	d.pivotLock.Lock()
 	d.committed.Store(true)
+	d.pivotLock.Unlock()
+
+	// ##CROSS: legacy sync
+	// The chain has a stateful head now. Turn off snap sync right away, so a cycle
+	// that fails before importing the remaining blocks doesn't run snap sync again.
+	if d.disableSnap != nil {
+		d.disableSnap()
+	}
+	// ##
 	return nil
 }
 
