@@ -900,6 +900,43 @@ func TestLegacyPool_PromoteExecutables(t *testing.T) {
 		require.NoError(t, validatePoolInternals(pool))
 	})
 
+	t.Run("promotes a held tx on the reset that frees its budget", func(t *testing.T) {
+		pool, _ := setupAdventurePool()
+		defer pool.Close()
+
+		payerKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		payer := crypto.PubkeyToAddress(payerKey.PublicKey)
+		testAddBalance(pool, payer, big.NewInt(300_000))
+		senderKey, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+		testAddBalance(pool, sender, new(big.Int).SetUint64(params.Ether))
+
+		// The sponsored tx (200000) is held behind the payer's own pending tx (200100).
+		delegated := feeDelegatedDynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(1), big.NewInt(100), senderKey, payerKey)
+		require.NoError(t, pool.addRemoteSync(delegated))
+		require.NoError(t, pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(2), payerKey)))
+		require.NoError(t, pool.addRemoteSync(transaction(0, 100000, senderKey)))
+		require.Nil(t, pool.pending[sender].txs.Get(delegated.Nonce()))
+
+		// A block includes both nonce 0 txs, and the payer actually pays 42100.
+		// The payer's mined tx no longer counts: 200000 fits in 257900.
+		pool.mu.Lock()
+		pool.currentState.SetNonce(sender, 1, tracing.NonceChangeUnspecified)
+		pool.currentState.SetNonce(payer, 1, tracing.NonceChangeUnspecified)
+		pool.currentState.SetBalance(payer, uint256.NewInt(257_900), tracing.BalanceChangeUnspecified)
+		pool.mu.Unlock()
+		<-pool.requestReset(nil, nil)
+
+		pending, queued := pool.Stats()
+		assert.Equal(t, 1, pending)
+		assert.Equal(t, 0, queued)
+		require.NotNil(t, pool.pending[sender])
+		assert.Equal(t, delegated.Hash(), pool.pending[sender].txs.Get(delegated.Nonce()).Hash())
+		require.NoError(t, validatePoolInternals(pool))
+	})
+
 	t.Run("holds a fee payer's own tx over what it sponsors", func(t *testing.T) {
 		pool, _ := setupAdventurePool()
 		defer pool.Close()

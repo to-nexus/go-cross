@@ -4402,3 +4402,30 @@ func TestBlockChainAPI_GetProof(t *testing.T) {
 		require.Len(t, res.StorageProof, maxGetProofKeys)
 	})
 }
+
+// ##CROSS: fix upstream
+func TestBlockChainAPI_EstimateGas(t *testing.T) {
+	t.Parallel()
+
+	t.Run("estimates with a time override before Cancun", func(t *testing.T) {
+		config := *params.MergedTestChainConfig
+		cancun := uint64(5)
+		config.CancunTime, config.PragueTime, config.OsakaTime = &cancun, &cancun, &cancun
+		accounts := newAccounts(2)
+		genesis := &core.Genesis{
+			Config: &config,
+			Alloc:  types.GenesisAlloc{accounts[0].addr: {Balance: big.NewInt(params.Ether)}},
+		}
+		// The latest block is past Cancun, so it carries excess blob gas.
+		api := NewBlockChainAPI(newTestBackend(t, 2, genesis, beacon.New(ethash.NewFaker()), nil))
+		latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+		ts := hexutil.Uint64(1)
+		args := TransactionArgs{From: &accounts[0].addr, To: &accounts[1].addr, Value: (*hexutil.Big)(big.NewInt(1))}
+
+		gas, err := api.EstimateGas(context.Background(), args, &latest, nil, &override.BlockOverrides{Time: &ts})
+		require.NoError(t, err)
+		require.Equal(t, hexutil.Uint64(params.TxGas), gas)
+	})
+}
+
+// ##

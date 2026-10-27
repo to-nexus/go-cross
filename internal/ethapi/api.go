@@ -919,6 +919,14 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 			return 0, err
 		}
 		header = blockOverrides.MakeHeader(header)
+		// ##CROSS: fix upstream
+		// MakeHeader keeps the blob gas fields of the base block.
+		// Before Cancun there is no blob schedule to price the excess blob gas with, so drop them.
+		if !b.ChainConfig().IsCancun(header.Number, header.Time) {
+			header.ExcessBlobGas = nil
+			header.BlobGasUsed = nil
+		}
+		// ##
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
 	precompiles := vm.ActivePrecompiledContracts(rules)

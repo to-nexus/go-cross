@@ -1271,13 +1271,21 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		promoteAddrs = pool.queue.addresses()
 	}
 	// Check for pending transactions for every account that sent new ones
-	promoted := pool.promoteExecutables(promoteAddrs)
+	promoted, held := pool.promoteExecutables(promoteAddrs) // ##CROSS: fee delegation
 
 	// If a new block appeared, validate the pool of pending transactions. This will
 	// remove any transaction that has been included in the block or was invalidated
 	// because of another transaction (e.g. higher gas price).
 	if reset != nil {
 		pool.demoteUnexecutables()
+		// ##CROSS: fee delegation
+		// Promotion ran before demotion removed the txs included in the new block.
+		// Retry the held senders against the new totals.
+		if len(held) > 0 {
+			retried, _ := pool.promoteExecutables(held)
+			promoted = append(promoted, retried...)
+		}
+		// ##
 		if reset.newHead != nil {
 			if pool.chainconfig.IsLondon(new(big.Int).Add(reset.newHead.Number, big.NewInt(1))) {
 				pendingBaseFee := eip1559.CalcBaseFee(pool.chainconfig, reset.newHead)
@@ -1421,7 +1429,8 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 // promoteExecutables moves transactions that have become processable from the
 // future queue to the set of pending transactions. During this process, all
 // invalidated transactions (low nonce, low balance) are deleted.
-func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.Transaction {
+// It also returns the senders held by a fee payer budget.
+func (pool *LegacyPool) promoteExecutables(accounts []common.Address) ([]*types.Transaction, []common.Address) {
 	gasLimit := pool.currentHead.Load().GasLimit
 	promotable, dropped, removedAddresses := pool.queue.promoteExecutables(accounts, gasLimit, pool.currentState, pool.pendingNonces)
 
@@ -1460,7 +1469,9 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 	}
 	// ##CROSS: fee delegation
 	// Held txs were taken out of the queue before it applied AccountQueue, so apply it again.
+	heldAddrs := make([]common.Address, 0, len(held))
 	for addr := range held {
+		heldAddrs = append(heldAddrs, addr)
 		list, _ := pool.queue.get(addr)
 		caps := list.Cap(int(pool.config.AccountQueue))
 		for _, tx := range caps {
@@ -1492,7 +1503,7 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 			pool.reserver.Release(addr)
 		}
 	}
-	return promoted
+	return promoted, heldAddrs
 }
 
 // truncatePending removes transactions from the pending queue if the pool is above the
