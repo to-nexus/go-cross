@@ -44,15 +44,17 @@ type Filter struct {
 	begin, end int64        // Range interval if filtering multiple blocks
 
 	rangeLogsTestHook chan rangeLogsTestEvent
+	rangeLimit        uint64
 }
 
 // NewRangeFilter creates a new filter which uses a bloom filter on blocks to
 // figure out whether a particular block is interesting or not.
-func (sys *FilterSystem) NewRangeFilter(begin, end int64, addresses []common.Address, topics [][]common.Hash) *Filter {
+func (sys *FilterSystem) NewRangeFilter(begin, end int64, addresses []common.Address, topics [][]common.Hash, rangeLimit uint64) *Filter {
 	// Create a generic filter and convert it into a range filter
 	filter := newFilter(sys, addresses, topics)
 	filter.begin = begin
 	filter.end = end
+	filter.rangeLimit = rangeLimit
 
 	return filter
 }
@@ -143,6 +145,25 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 	if err != nil {
 		return nil, err
 	}
+	// ##CROSS: fix upstream (bnb-chain/bsc#3783)
+	if f.rangeLimit != 0 {
+		// "latest"/"pending" resolve to MaxUint64 here and are only translated to
+		// the real head inside rangeLogs, so clamp them to the current head before
+		// measuring the range, otherwise any query up to head is falsely rejected.
+		lo, hi := begin, end
+		if view := f.sys.backend.CurrentView(); view != nil {
+			if lo == math.MaxUint64 {
+				lo = view.HeadNumber()
+			}
+			if hi == math.MaxUint64 {
+				hi = view.HeadNumber()
+			}
+		}
+		if hi >= lo && hi-lo > f.rangeLimit {
+			return nil, invalidParamsErr("exceed maximum block range %d", f.rangeLimit)
+		}
+	}
+	// ##
 	return f.rangeLogs(ctx, begin, end)
 }
 
@@ -221,6 +242,12 @@ func (s *searchSession) updateChainView() error {
 	if lastBlock == math.MaxUint64 {
 		lastBlock = head
 	}
+	// ##CROSS: fix upstream
+	// Check the range limit and adjust the last block if it exceeds the allowed range.
+	if limit := s.filter.rangeLimit; limit != 0 && firstBlock <= lastBlock && lastBlock-firstBlock > limit {
+		lastBlock = firstBlock + limit
+	}
+	// ##
 	if firstBlock > lastBlock {
 		return errInvalidBlockRange
 	}
@@ -494,7 +521,7 @@ func (f *Filter) checkMatches(ctx context.Context, header *types.Header) ([]*typ
 
 // filterLogs creates a slice of logs matching the given criteria.
 func filterLogs(logs []*types.Log, fromBlock, toBlock *big.Int, addresses []common.Address, topics [][]common.Hash) []*types.Log {
-	var check = func(log *types.Log) bool {
+	check := func(log *types.Log) bool {
 		if fromBlock != nil && fromBlock.Int64() >= 0 && fromBlock.Uint64() > log.BlockNumber {
 			return false
 		}

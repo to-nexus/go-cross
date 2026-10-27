@@ -82,6 +82,7 @@ var (
 
 	stateIndexHistoryTimer      = metrics.NewRegisteredResettingTimer("pathdb/history/state/index/time", nil)
 	stateUnindexHistoryTimer    = metrics.NewRegisteredResettingTimer("pathdb/history/state/unindex/time", nil)
+	statePruneHistoryIndexTimer = metrics.NewRegisteredResettingTimer("pathdb/history/state/prune/time", nil)
 	trienodeIndexHistoryTimer   = metrics.NewRegisteredResettingTimer("pathdb/history/trienode/index/time", nil)
 	trienodeUnindexHistoryTimer = metrics.NewRegisteredResettingTimer("pathdb/history/trienode/unindex/time", nil)
 

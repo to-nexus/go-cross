@@ -791,6 +791,17 @@ func TestEstimateGas(t *testing.T) {
 			expectErr: core.ErrInsufficientFunds,
 			want:      21000,
 		},
+		// block override gas limit should bound estimation search space.
+		{
+			blockNumber: rpc.LatestBlockNumber,
+			call: TransactionArgs{
+				From:  &accounts[0].addr,
+				Input: hex2Bytes("6080604052348015600f57600080fd5b50483a1015601c57600080fd5b60003a111560315760004811603057600080fd5b5b603f80603e6000396000f3fe6080604052600080fdfea264697066735822122060729c2cee02b10748fae5200f1c9da4661963354973d9154c13a8e9ce9dee1564736f6c63430008130033"),
+				Gas:   func() *hexutil.Uint64 { v := hexutil.Uint64(0); return &v }(),
+			},
+			blockOverrides: override.BlockOverrides{GasLimit: func() *hexutil.Uint64 { v := hexutil.Uint64(50000); return &v }()},
+			expectErr:      errors.New("gas required exceeds allowance (50000)"),
+		},
 		// empty create
 		{
 			blockNumber: rpc.LatestBlockNumber,
@@ -871,6 +882,19 @@ func TestEstimateGas(t *testing.T) {
 				BlobFeeCap: (*hexutil.Big)(big.NewInt(1)),
 			},
 			want: 21000,
+		},
+		// blob base fee block override should be applied during estimation.
+		{
+			blockNumber: rpc.LatestBlockNumber,
+			call: TransactionArgs{
+				From:       &accounts[0].addr,
+				To:         &accounts[1].addr,
+				Value:      (*hexutil.Big)(big.NewInt(1)),
+				BlobHashes: []common.Hash{{0x01, 0x22}},
+				BlobFeeCap: (*hexutil.Big)(big.NewInt(1)),
+			},
+			blockOverrides: override.BlockOverrides{BlobBaseFee: (*hexutil.Big)(big.NewInt(2))},
+			expectErr:      core.ErrBlobFeeCapTooLow,
 		},
 		// // SPDX-License-Identifier: GPL-3.0
 		//pragma solidity >=0.8.2 <0.9.0;
@@ -4335,6 +4359,73 @@ func TestSendRawTransactionSync_RPC(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ##
+
+func TestBlockChainAPI_GetProof(t *testing.T) {
+	t.Parallel()
+
+	var (
+		account = newAccounts(1)[0]
+		genesis = &core.Genesis{
+			Config: params.MergedTestChainConfig,
+			Alloc:  types.GenesisAlloc{account.addr: {Balance: big.NewInt(params.Ether)}},
+		}
+		api    = NewBlockChainAPI(newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), nil))
+		latest = rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	)
+	keys := func(n int) []string {
+		keys := make([]string, n)
+		for i := range keys {
+			keys[i] = hexutil.EncodeUint64(uint64(i))
+		}
+		return keys
+	}
+
+	t.Run("rejects more storage keys than the limit", func(t *testing.T) {
+		_, err := api.GetProof(context.Background(), account.addr, keys(maxGetProofKeys+1), latest)
+		var paramsErr *invalidParamsError
+		require.ErrorAs(t, err, &paramsErr)
+	})
+
+	t.Run("stops proving keys when the request is canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := api.GetProof(ctx, account.addr, keys(maxGetProofKeys), latest)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("proves storage keys up to the limit", func(t *testing.T) {
+		res, err := api.GetProof(context.Background(), account.addr, keys(maxGetProofKeys), latest)
+		require.NoError(t, err)
+		require.Len(t, res.StorageProof, maxGetProofKeys)
+	})
+}
+
+// ##CROSS: fix upstream
+func TestBlockChainAPI_EstimateGas(t *testing.T) {
+	t.Parallel()
+
+	t.Run("estimates with a time override before Cancun", func(t *testing.T) {
+		config := *params.MergedTestChainConfig
+		cancun := uint64(5)
+		config.CancunTime, config.PragueTime, config.OsakaTime = &cancun, &cancun, &cancun
+		accounts := newAccounts(2)
+		genesis := &core.Genesis{
+			Config: &config,
+			Alloc:  types.GenesisAlloc{accounts[0].addr: {Balance: big.NewInt(params.Ether)}},
+		}
+		// The latest block is past Cancun, so it carries excess blob gas.
+		api := NewBlockChainAPI(newTestBackend(t, 2, genesis, beacon.New(ethash.NewFaker()), nil))
+		latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+		ts := hexutil.Uint64(1)
+		args := TransactionArgs{From: &accounts[0].addr, To: &accounts[1].addr, Value: (*hexutil.Big)(big.NewInt(1))}
+
+		gas, err := api.EstimateGas(context.Background(), args, &latest, nil, &override.BlockOverrides{Time: &ts})
+		require.NoError(t, err)
+		require.Equal(t, hexutil.Uint64(params.TxGas), gas)
+	})
 }
 
 // ##

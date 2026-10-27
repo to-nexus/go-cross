@@ -27,6 +27,7 @@ import (
 	"path"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -161,7 +162,7 @@ func testBlockChainImport(chain types.Blocks, blockchain *BlockChain) error {
 		if err != nil {
 			return err
 		}
-		res, err := blockchain.processor.Process(block, statedb, vm.Config{})
+		res, err := blockchain.processor.Process(block, statedb, vm.Config{}, nil)
 		if err != nil {
 			blockchain.reportBlock(block, res, err)
 			return err
@@ -4585,6 +4586,69 @@ func TestBlockChain_ProcessBlock(t *testing.T) {
 		assert.Equal(t, 2, *calls)
 	})
 	// ##
+}
+
+// ##
+
+// ##CROSS: fix upstream ff44a796
+func TestStatePrefetcher_Prefetch(t *testing.T) {
+	t.Run("submits heavy txs first and keeps the rest in block order", func(t *testing.T) {
+		var txs types.Transactions
+		for i, gas := range []uint64{21_000, 2_000_000, 50_000, gomath.MaxUint64 / 2, 1_000_000, 30_000} {
+			txs = append(txs, types.NewTransaction(uint64(i), common.Address{}, nil, gas, nil, nil))
+		}
+		// The Istanbul system tx gas (MaxUint64/2) is the heaviest, so it goes first.
+		assert.Equal(t, []int{3, 1, 4, 0, 2, 5}, prefetchOrder(txs))
+	})
+
+	var (
+		key, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+		addr   = crypto.PubkeyToAddress(key.PublicKey)
+		gspec  = &Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{addr: {Balance: big.NewInt(params.Ether)}}}
+		signer = types.LatestSigner(gspec.Config)
+	)
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 1, func(i int, gen *BlockGen) {
+		for j := 0; j < 16; j++ {
+			tx, err := types.SignTx(types.NewTransaction(gen.TxNonce(addr), common.Address{byte(j + 1)}, big.NewInt(1), params.TxGas, gen.header.BaseFee, nil), signer, key)
+			if err != nil {
+				t.Fatalf("failed to sign tx: %v", err)
+			}
+			gen.AddTx(tx)
+		}
+	})
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	if err != nil {
+		t.Fatalf("failed to create chain: %v", err)
+	}
+	defer chain.Stop()
+
+	// reads prefetches the block with the given progress and returns the number of state reads it made.
+	reads := func(t *testing.T, execIndex *atomic.Int64) int64 {
+		root := chain.Genesis().Root()
+		reader, _, err := chain.statedb.ReadersWithCacheStats(root)
+		if err != nil {
+			t.Fatalf("failed to create reader: %v", err)
+		}
+		statedb, err := state.NewWithReader(root, chain.statedb, reader)
+		if err != nil {
+			t.Fatalf("failed to create state: %v", err)
+		}
+		chain.prefetcher.Prefetch(blocks[0], statedb, vm.Config{}, nil, execIndex)
+		stats := reader.GetStats()
+		return stats.AccountHit + stats.AccountMiss + stats.StorageHit + stats.StorageMiss
+	}
+
+	t.Run("skips txs the main pass has reached", func(t *testing.T) {
+		var execIndex atomic.Int64
+		execIndex.Store(int64(blocks[0].Transactions().Len() - 1))
+		assert.Zero(t, reads(t, &execIndex))
+	})
+	t.Run("prefetches txs the main pass hasn't reached", func(t *testing.T) {
+		var execIndex atomic.Int64
+		execIndex.Store(-1)
+		assert.NotZero(t, reads(t, &execIndex))
+		assert.NotZero(t, reads(t, nil))
+	})
 }
 
 // ##

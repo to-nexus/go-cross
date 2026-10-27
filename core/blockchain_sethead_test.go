@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,11 +34,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // rewindTest is a test case for chain rollback upon user request.
@@ -2202,3 +2206,59 @@ func verifyCutoff(t *testing.T, chain *BlockChain, canonical bool, inserted type
 func uint64ptr(n uint64) *uint64 {
 	return &n
 }
+
+// ##CROSS: fix upstream 76e3dc6b
+// syncCounter counts SyncKeyValue calls, the fsync that pathdb runs on each state recovery.
+type syncCounter struct {
+	ethdb.KeyValueStore
+	n atomic.Int64
+}
+
+func (s *syncCounter) SyncKeyValue() error {
+	s.n.Add(1)
+	return s.KeyValueStore.SyncKeyValue()
+}
+
+func TestBlockChain_SetHead(t *testing.T) {
+	t.Run("path mode recovers the state once for a deep rewind", func(t *testing.T) {
+		const (
+			total  = 100
+			target = 20
+		)
+		kv := &syncCounter{KeyValueStore: memorydb.New()}
+		db, err := rawdb.Open(kv, rawdb.OpenOptions{Ancient: t.TempDir()})
+		require.NoError(t, err)
+		defer db.Close()
+
+		gspec := &Genesis{BaseFee: big.NewInt(params.InitialBaseFee), Config: params.AllEthashProtocolChanges}
+		require.NoError(t, db.SetupFreezerEnv(&ethdb.FreezerEnv{
+			ChainCfg:         gspec.Config,
+			BlobExtraReserve: params.DefaultExtraReserveForBlobRequests,
+		}))
+		engine := ethash.NewFullFaker()
+		chain, err := NewBlockChain(db, gspec, engine, DefaultConfig().WithStateScheme(rawdb.PathScheme))
+		require.NoError(t, err)
+		defer chain.Stop()
+
+		blocks, _ := GenerateChain(gspec.Config, gspec.ToBlock(), engine, rawdb.NewMemoryDatabase(), total, func(i int, b *BlockGen) {
+			b.SetCoinbase(common.Address{byte(i), 0x02})
+		})
+		_, err = chain.InsertChain(blocks)
+		require.NoError(t, err)
+
+		// Flush all diff layers, so every older state is only recoverable from the state history.
+		require.NoError(t, chain.triedb.Commit(blocks[total-1].Root(), false))
+		require.False(t, chain.HasState(blocks[target-1].Root()))
+
+		before := kv.n.Load()
+		require.NoError(t, chain.SetHead(target))
+
+		head := chain.CurrentBlock()
+		assert.Equal(t, uint64(target), head.Number.Uint64())
+		assert.True(t, chain.HasState(head.Root))
+		// One rollback for the whole range, not one per rewound block.
+		assert.LessOrEqual(t, kv.n.Load()-before, int64(2))
+	})
+}
+
+// ##

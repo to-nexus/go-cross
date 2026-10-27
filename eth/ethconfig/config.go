@@ -73,6 +73,7 @@ var Defaults = Config{
 	GPO:                  FullNodeGPO,
 	TxSyncDefaultTimeout: 20 * time.Second,
 	TxSyncMaxTimeout:     1 * time.Minute,
+	RangeLimit:           0,
 
 	// ##CROSS: basefee
 	RPCTxFeeCap: 0,
@@ -197,6 +198,9 @@ type Config struct {
 	// EIP-7966: eth_sendRawTransactionSync timeouts
 	TxSyncDefaultTimeout time.Duration `toml:",omitempty"`
 	TxSyncMaxTimeout     time.Duration `toml:",omitempty"`
+
+	// RangeLimit restricts the maximum range (end - start) for range queries.
+	RangeLimit uint64 `toml:",omitempty"`
 
 	// blob setting
 	BlobExtraReserve uint64 // ##CROSS: blob sidecars
