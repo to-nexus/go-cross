@@ -64,6 +64,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideVerkle          *uint64       `toml:",omitempty"`
 		TxSyncDefaultTimeout    time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout        time.Duration `toml:",omitempty"`
+		RangeLimit              uint64        `toml:",omitempty"`
 		BlobExtraReserve        uint64
 	}
 	var enc Config
@@ -114,6 +115,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.TxSyncDefaultTimeout = c.TxSyncDefaultTimeout
 	enc.TxSyncMaxTimeout = c.TxSyncMaxTimeout
+	enc.RangeLimit = c.RangeLimit
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	return &enc, nil
 }
@@ -168,6 +170,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideVerkle          *uint64        `toml:",omitempty"`
 		TxSyncDefaultTimeout    *time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout        *time.Duration `toml:",omitempty"`
+		RangeLimit              *uint64        `toml:",omitempty"`
 		BlobExtraReserve        *uint64
 	}
 	var dec Config
@@ -314,6 +317,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.TxSyncMaxTimeout != nil {
 		c.TxSyncMaxTimeout = *dec.TxSyncMaxTimeout
+	}
+	if dec.RangeLimit != nil {
+		c.RangeLimit = *dec.RangeLimit
 	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve

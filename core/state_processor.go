@@ -19,6 +19,7 @@ package core
 import (
 	"fmt"
 	"math/big"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -58,7 +59,7 @@ func (p *StateProcessor) chainConfig() *params.ChainConfig {
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
-func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*ProcessResult, error) {
+func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config, execIndex *atomic.Int64) (*ProcessResult, error) {
 	var (
 		config      = p.chainConfig()
 		receipts    types.Receipts
@@ -104,6 +105,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
+		// Publish the progress, letting the prefetcher skip caught up work.
+		if execIndex != nil {
+			execIndex.Store(int64(i))
+		}
 		// ##CROSS: consensus system contract
 		if ie != nil {
 			if isSystemTx, err := ie.IsSystemTransaction(tx, header); err != nil {

@@ -707,6 +707,9 @@ func (b *Block) resolveHeader(ctx context.Context) (*types.Header, error) {
 	if err != nil {
 		return nil, err
 	}
+	if b.header == nil {
+		return nil, nil
+	}
 	if b.hash == (common.Hash{}) {
 		b.hash = b.header.Hash()
 	}
@@ -1418,7 +1421,7 @@ func (r *Resolver) Logs(ctx context.Context, args struct{ Filter FilterCriteria 
 	if args.Filter.ToBlock != nil {
 		end = int64(*args.Filter.ToBlock)
 	}
-	if begin > 0 && end > 0 && begin > end {
+	if begin >= 0 && end >= 0 && begin > end {
 		return nil, errInvalidBlockRange
 	}
 	var addresses []common.Address
@@ -1430,7 +1433,7 @@ func (r *Resolver) Logs(ctx context.Context, args struct{ Filter FilterCriteria 
 		topics = *args.Filter.Topics
 	}
 	// Construct the range filter
-	filter := r.filterSystem.NewRangeFilter(begin, end, addresses, topics)
+	filter := r.filterSystem.NewRangeFilter(begin, end, addresses, topics, 0)
 	return runFilter(ctx, r, filter)
 }
 

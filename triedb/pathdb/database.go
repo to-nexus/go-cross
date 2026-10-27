@@ -410,6 +410,14 @@ func (db *Database) Enable(root common.Hash) error {
 	if stored != root {
 		return fmt.Errorf("state root mismatch: stored %x, synced %x", stored, root)
 	}
+	// ##CROSS: fix upstream 32fea34c4 (#35936)
+	// Stop the history indexers before the histories are purged: they work in
+	// the background, and one still indexing the old histories would write
+	// their index back after the purge.
+	if db.stateIndexer != nil {
+		db.stateIndexer.close()
+	}
+	// ##
 	// Drop the stale state journal in persistent database and
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
@@ -443,11 +451,9 @@ func (db *Database) Enable(root common.Hash) error {
 	db.tree.init(generateSnapshot(db, root, db.isVerkle || db.config.SnapshotNoBuild))
 
 	// After snap sync, the state of the database may have changed completely.
-	// To ensure the history indexer always matches the current state, we must:
-	//   1. Close any existing indexer
-	//   2. Re-initialize the indexer so it starts indexing from the new state root.
+	// The indexer of the old state was stopped before the purge: start a new
+	// one, indexing from the new state root.
 	if db.stateIndexer != nil && db.stateFreezer != nil && db.config.EnableStateIndexing {
-		db.stateIndexer.close()
 		db.stateIndexer = newHistoryIndexer(db.diskdb, db.stateFreezer, db.tree.bottom().stateID(), typeStateHistory)
 		log.Info("Re-enabled state history indexing")
 	}
@@ -472,7 +478,7 @@ func (db *Database) Recover(root common.Hash) error {
 		return errors.New("state rollback is non-supported")
 	}
 	// Short circuit if the target state is not recoverable
-	if !db.Recoverable(root) {
+	if !db.recoverable(root) { // ##CROSS: fix upstream
 		return errStateUnrecoverable
 	}
 	// Apply the state histories upon the disk layer in order
@@ -514,6 +520,20 @@ func (db *Database) Recover(root common.Hash) error {
 //
 // The supplied root must be a valid trie hash value.
 func (db *Database) Recoverable(root common.Hash) bool {
+	// ##CROSS: fix upstream
+	// Hold the read lock, as Disable and Enable change waitSync under the lock.
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	return db.recoverable(root)
+	// ##
+}
+
+func (db *Database) recoverable(root common.Hash) bool {
+	// Nothing is recoverable while a state sync is in progress.
+	if db.waitSync {
+		return false
+	}
 	// Ensure the requested state is a known state.
 	id := rawdb.ReadStateID(db.diskdb, root)
 	if id == nil {
@@ -533,15 +553,15 @@ func (db *Database) Recoverable(root common.Hash) bool {
 	if db.stateFreezer == nil {
 		return false
 	}
-	// Ensure the requested state is a canonical state and all state
-	// histories in range [id+1, dl.ID] are present and complete.
-	return checkStateHistories(db.stateFreezer, *id+1, dl.stateID()-*id, func(m *meta) error {
-		if m.parent != root {
-			return errors.New("unexpected state history")
-		}
-		root = m.root
-		return nil
-	}) == nil
+	blob := rawdb.ReadStateHistoryMeta(db.stateFreezer, *id+1)
+	if len(blob) == 0 {
+		return false // pruned from the tail or otherwise unavailable
+	}
+	var m meta
+	if err := m.decode(blob); err != nil {
+		return false
+	}
+	return m.parent == root
 }
 
 // Close closes the trie database and the held freezer.

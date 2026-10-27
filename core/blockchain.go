@@ -106,6 +106,7 @@ var (
 	blockPrefetchInterruptMeter  = metrics.NewRegisteredMeter("chain/prefetch/interrupts", nil)
 	blockPrefetchTxsInvalidMeter = metrics.NewRegisteredMeter("chain/prefetch/txs/invalid", nil)
 	blockPrefetchTxsValidMeter   = metrics.NewRegisteredMeter("chain/prefetch/txs/valid", nil)
+	blockPrefetchTxsSkippedMeter = metrics.NewRegisteredMeter("chain/prefetch/txs/skipped", nil)
 
 	errInsertionInterrupted = errors.New("insertion is interrupted")
 	errChainStopped         = errors.New("blockchain is stopped")
@@ -923,7 +924,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 
 		// noState represents if the target state requested for search
 		// is unavailable and impossible to be recovered.
-		noState = !bc.HasState(root) && !bc.stateRecoverable(root)
+		noState = !bc.HasState(root) && !bc.StateRecoverable(root)
 
 		start  = time.Now() // Timestamp the rewinding is restarted
 		logged = time.Now() // Timestamp last progress log was printed
@@ -950,7 +951,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 		}
 		// Check if the associated state is available or recoverable if
 		// the requested root has already been crossed.
-		if beyondRoot && (bc.HasState(head.Root) || bc.stateRecoverable(head.Root)) {
+		if beyondRoot && (bc.HasState(head.Root) || bc.StateRecoverable(head.Root)) {
 			break
 		}
 		// If pivot block is reached, return the genesis block as the
@@ -976,13 +977,11 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 			return head, rootNumber
 		}
 	}
-	// Recover if the target state if it's not available yet.
-	if !bc.HasState(head.Root) {
-		if err := bc.triedb.Recover(head.Root); err != nil {
-			log.Crit("Failed to rollback state", "err", err)
-		}
-	}
-	log.Info("Rewound to block with state", "number", head.Number, "hash", head.Hash())
+	// Note, the state of the located head may not be physically present yet if
+	// it's only recoverable. The actual recovery is intentionally deferred once
+	// the new head is finalized, so that a deep rewind rolls the state back in
+	// one shot.
+	log.Info("Rewound to block with available state", "number", head.Number, "hash", head.Hash())
 	return head, rootNumber
 }
 
@@ -1047,17 +1046,9 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			// ##
 			headBlockGauge.Update(int64(newHeadBlock.Number.Uint64()))
 
-			// The head state is missing, which is only possible in the path-based
-			// scheme. This situation occurs when the chain head is rewound below
-			// the pivot point. In this scenario, there is no possible recovery
-			// approach except for rerunning a snap sync. Do nothing here until the
-			// state syncer picks it up.
-			if !bc.HasState(newHeadBlock.Root) {
-				if newHeadBlock.Number.Uint64() != 0 {
-					log.Crit("Chain is stateless at a non-genesis block")
-				}
-				log.Info("Chain is stateless, wait state sync", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash())
-			}
+			// Note, the located head state might not be physically present yet; in
+			// the path-based scheme a recoverable state is materialized in a single
+			// shot once the rewind is finalized.
 		}
 		// Rewind the snap block in a simpleton way to the target head
 		if currentSnapBlock := bc.CurrentSnapBlock(); currentSnapBlock != nil && header.Number.Uint64() < currentSnapBlock.Number.Uint64() {
@@ -1126,6 +1117,31 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		} else {
 			log.Warn("Rewinding blockchain to block", "target", head)
 			bc.hc.SetHead(head, updateFn, delFn)
+		}
+	}
+	// In the path-based scheme, the rewind loop above only locates the new head
+	// without materializing its state, so the potentially deep rollback is done
+	// here in a single shot. This rolls back the whole rewound range at once,
+	// performing a single fsync rather than one per block, which is critical when
+	// rewinding a large number of blocks.
+	if newHeadBlock := bc.CurrentBlock(); !bc.HasState(newHeadBlock.Root) {
+		switch {
+		case bc.StateRecoverable(newHeadBlock.Root):
+			if err := bc.triedb.Recover(newHeadBlock.Root); err != nil {
+				// The state was confirmed recoverable just above, so a failure here
+				// can only stem from an unexpected I/O error. There is no safe way to
+				// continue with a half-rolled-back state, hence crash hard.
+				log.Crit("Failed to recover state", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash(), "err", err)
+			}
+		case newHeadBlock.Number.Uint64() != 0:
+			// rewindHead only returns a non-genesis head when its state is present
+			// or recoverable, so this branch should be unreachable.
+			log.Crit("Chain is stateless at a non-genesis block", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash())
+		default:
+			// The chain head was rewound below the snap-sync pivot to a stateless
+			// genesis. There is no recovery approach except rerunning a snap sync;
+			// do nothing here until the state syncer picks it up.
+			log.Info("Chain is stateless, wait state sync", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash())
 		}
 	}
 	// Clear out any stale content from the caches
@@ -2275,8 +2291,10 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, c
 		startTime = time.Now()
 		statedb   *state.StateDB
 		interrupt atomic.Bool
+		execIndex atomic.Int64
 	)
 	defer interrupt.Store(true) // terminate the prefetch at the end
+	execIndex.Store(-1)         // no transaction executed yet
 
 	// The live tracer in bc.cfg.VmConfig is a node-wide singleton that is only safe to drive from
 	// the chain-insertion goroutine, so it is attached only when the caller opts in via EnableTracer.
@@ -2323,7 +2341,7 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, c
 			// Disable tracing for prefetcher executions.
 			vmCfg := bc.cfg.VmConfig
 			vmCfg.Tracer = nil
-			bc.prefetcher.Prefetch(block, throwaway, vmCfg, &interrupt)
+			bc.prefetcher.Prefetch(block, throwaway, vmCfg, &interrupt, &execIndex)
 
 			blockPrefetchExecuteTimer.Update(time.Since(start))
 			if interrupt.Load() {
@@ -2376,7 +2394,7 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, c
 
 	// Process block using the parent state as reference point
 	pstart := time.Now()
-	res, err := bc.processor.Process(block, statedb, vmConfig)
+	res, err := bc.processor.Process(block, statedb, vmConfig, &execIndex)
 	if err != nil {
 		bc.reportBlock(block, res, err)
 		return nil, err
@@ -2550,7 +2568,7 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator, ma
 	)
 	parent := it.previous()
 	for parent != nil && !bc.HasState(parent.Root) {
-		if bc.stateRecoverable(parent.Root) {
+		if bc.StateRecoverable(parent.Root) {
 			if err := bc.triedb.Recover(parent.Root); err != nil {
 				return nil, 0, err
 			}
@@ -2612,7 +2630,7 @@ func (bc *BlockChain) recoverAncestors(block *types.Block, makeWitness bool) (co
 		parent  = block
 	)
 	for parent != nil && !bc.HasState(parent.Root()) {
-		if bc.stateRecoverable(parent.Root()) {
+		if bc.StateRecoverable(parent.Root()) {
 			if err := bc.triedb.Recover(parent.Root()); err != nil {
 				return common.Hash{}, err
 			}
