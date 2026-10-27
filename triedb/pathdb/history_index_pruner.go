@@ -209,7 +209,13 @@ func (p *indexPruner) prunePrefix(prefix []byte, elemType elementType, tail uint
 	for {
 		// Terminate if iterator is exhausted
 		if !it.Next() {
+			// ##CROSS: fix upstream
+			err := it.Error()
 			it.Release()
+			if err != nil {
+				return pruned, err
+			}
+			// ##
 			break
 		}
 		// Check termination or pause request

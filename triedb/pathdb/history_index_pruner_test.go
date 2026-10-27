@@ -17,6 +17,7 @@
 package pathdb
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/stretchr/testify/require"
 )
 
 func writeMultiBlockIndex(t *testing.T, db ethdb.Database, ident stateIdent, startID uint64) []*indexBlockDesc {
@@ -318,3 +320,26 @@ func TestPrunePauseResume(t *testing.T) {
 		t.Fatal("First block of early account should have been pruned")
 	}
 }
+
+// ##CROSS: fix upstream
+type (
+	failingIterDB struct{ ethdb.KeyValueStore }
+	failingIter   struct{ ethdb.Iterator }
+)
+
+func (db failingIterDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
+	return failingIter{db.KeyValueStore.NewIterator(prefix, start)}
+}
+func (failingIter) Next() bool   { return false }
+func (failingIter) Error() error { return errors.New("read failed") }
+
+func TestIndexPruner_Process(t *testing.T) {
+	t.Run("returns an iterator error", func(t *testing.T) {
+		pruner := newIndexPruner(failingIterDB{rawdb.NewMemoryDatabase()}, typeStateHistory)
+		defer pruner.close()
+
+		require.EqualError(t, pruner.process(1), "read failed")
+	})
+}
+
+// ##

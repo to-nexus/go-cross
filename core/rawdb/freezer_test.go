@@ -536,8 +536,8 @@ func TestFreezerSuite(t *testing.T) {
 // ##CROSS: fix upstream 7368b34a
 func TestFreezer_ModifyAncients(t *testing.T) {
 	t.Run("keeps the table usable when the completed file can't be reopened", func(t *testing.T) {
-		if os.Geteuid() == 0 {
-			t.Skip("root ignores file permissions")
+		if os.Geteuid() <= 0 {
+			t.Skip("requires non-root Unix permission checks")
 		}
 		f, dir := newFreezerForTesting(t, freezerTestTableDef) // 2049 bytes per file
 		defer f.Close()
