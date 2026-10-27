@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -530,3 +532,47 @@ func TestFreezerSuite(t *testing.T) {
 		return f
 	})
 }
+
+// ##CROSS: fix upstream 7368b34a
+func TestFreezer_ModifyAncients(t *testing.T) {
+	t.Run("keeps the table usable when the completed file can't be reopened", func(t *testing.T) {
+		if os.Geteuid() <= 0 {
+			t.Skip("requires non-root Unix permission checks")
+		}
+		f, dir := newFreezerForTesting(t, freezerTestTableDef) // 2049 bytes per file
+		defer f.Close()
+
+		appendItem := func(n uint64) error {
+			_, err := f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+				return op.AppendRaw("test", n, make([]byte, 2048))
+			})
+			return err
+		}
+		require.NoError(t, appendItem(0)) // item 0 fills test.0000.rdat
+
+		// The next item rolls over to a new file, but the completed one can't be reopened.
+		file := filepath.Join(dir, "test.0000.rdat")
+		require.NoError(t, os.Chmod(file, 0))
+		require.Error(t, appendItem(1))
+
+		frozen, err := f.Ancients()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), frozen)
+
+		_, err = f.Ancient("test", 0)
+		require.NoError(t, err)
+
+		// Once the fault is gone, the same append succeeds.
+		require.NoError(t, os.Chmod(file, 0o644))
+		require.NoError(t, appendItem(1))
+
+		frozen, err = f.Ancients()
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), frozen)
+
+		_, err = f.Ancient("test", 0)
+		require.NoError(t, err)
+	})
+}
+
+// ##

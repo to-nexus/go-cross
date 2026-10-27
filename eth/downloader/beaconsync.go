@@ -304,8 +304,12 @@ func (d *Downloader) fetchBeaconHeaders(from uint64) error {
 		}
 		// If the pivot became stale (older than 2*64-8 (bit of wiggle room)),
 		// move it ahead to HEAD-64
+		//
+		// Note the pivot is only moved before its commitment. Once the pivot
+		// is committed, the chain obtains a stateful head and pivot block should
+		// be on longer advanced.
 		d.pivotLock.Lock()
-		if d.pivotHeader != nil {
+		if d.pivotHeader != nil && !d.committed.Load() {
 			if head.Number.Uint64() > d.pivotHeader.Number.Uint64()+2*uint64(fsMinFullBlocks)-8 {
 				// Retrieve the next pivot header, either from skeleton chain
 				// or the filled chain
@@ -330,8 +334,8 @@ func (d *Downloader) fetchBeaconHeaders(from uint64) error {
 					return errNoPivotHeader
 				}
 				// Write out the pivot into the database so a rollback beyond
-				// it will reenable snap sync and update the state root that
-				// the state syncer will be downloading
+				// it can be detected, and update the state root that the
+				// state syncer will be downloading
 				rawdb.WriteLastPivotNumber(d.stateDB, d.pivotHeader.Number.Uint64())
 			}
 		}
@@ -485,10 +489,18 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 					log.Warn("Peer sent invalid pivot confirmer", "have", have, "want", want)
 					return fmt.Errorf("%w: next pivot confirmer number %d != requested %d", errInvalidChain, have, want)
 				}
+				d.pivotLock.Lock()
+				// ##CROSS: legacy sync
+				// The pivot is only moved before its commitment. Once the pivot is committed,
+				// the chain has a stateful head and the pivot marker must not pass it.
+				if d.committed.Load() {
+					d.pivotLock.Unlock()
+					pivoting = false
+					continue
+				}
+				// ##
 				log.Warn("Pivot seemingly stale, moving", "old", pivot, "new", headers[0].Number)
 				pivot = headers[0].Number.Uint64()
-
-				d.pivotLock.Lock()
 				d.pivotHeader = headers[0]
 				d.pivotLock.Unlock()
 

@@ -240,7 +240,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
 	}
 	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, h.enableSyncedFeatures)
+	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, h.enableSyncedFeatures, h.disableSnapSync)
 
 	// ##CROSS: legacy sync
 	// Construct the fetcher (short sync)
@@ -825,6 +825,17 @@ func (h *handler) enableSyncedFeatures() {
 		h.snapSync.Store(false)
 	}
 }
+
+// ##CROSS: legacy sync
+// disableSnapSync turns off snap sync once the downloader commits the pivot block.
+// It doesn't mark the node as synced, because the blocks after the pivot are not imported yet.
+func (h *handler) disableSnapSync() {
+	if h.snapSync.CompareAndSwap(true, false) {
+		log.Info("Snap sync pivot committed, auto disabling future snap cycles")
+	}
+}
+
+// ##
 
 // blockRangeState holds the state of the block range update broadcasting mechanism.
 type blockRangeState struct {
