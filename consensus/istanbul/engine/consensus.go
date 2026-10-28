@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -22,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -433,7 +435,7 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 		return nil
 	}
 
-	slashed, err := e.offlineProposers(cx.Chain, parent)
+	slashed, err := e.offlineProposers(cx.Chain, header)
 	if err != nil {
 		return err
 	}
@@ -481,18 +483,22 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 	return err
 }
 
-// offlineProposers collects the offline proposers of the given header.
+// offlineProposers collects the proposers that missed their rounds at the parent of the given header.
 func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
-	if header == nil || header.Number.Uint64() == 0 {
+	if header == nil || header.Number.Uint64() < 2 {
 		return nil, nil
 	}
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-	if parent == nil || parent.Number.Uint64() == 0 {
+	if parent == nil {
+		return nil, nil
+	}
+	grandparent := chain.GetHeader(parent.ParentHash, parent.Number.Uint64()-1)
+	if grandparent == nil || grandparent.Number.Uint64() == 0 {
 		return nil, nil
 	}
 
 	// Only round robin policy is supported
-	policy := e.cfg.GetConfig(header.Number).ProposerPolicy
+	policy := e.cfg.GetConfig(parent.Number).ProposerPolicy
 	if policy == nil || policy.Id != istanbul.RoundRobin {
 		return nil, nil
 	}
@@ -501,36 +507,109 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 	policy = istanbul.NewProposerPolicyByIdAndSortFunc(policy.Id, istanbul.ValidatorSortByByte())
 	// ##
 
-	extra, err := types.ExtractIstanbulExtra(header)
+	round, err := parentRound(chain.Config(), header, parent)
 	if err != nil {
 		return nil, err
 	}
-	if extra.Round == 0 {
+	if round == 0 {
 		// No extra round, so no proposers to slash
 		return nil, nil
 	}
 
-	// If extra.Round > 0, collect proposers of previous rounds; select proposers from the parent snapshot validator set
+	// If round > 0, collect proposers of previous rounds; select proposers from the validator set that sealed the parent
 	var validators []common.Address
 	if ie := consensus.ToIstanbulEngine(e.consensus); ie != nil {
-		validators = ie.ValidatorsAt(chain, parent)
+		validators = ie.ValidatorsAt(chain, grandparent)
 	}
 	if len(validators) == 0 {
-		log.Warn("No validators at block", "number", header.Number.Uint64())
+		log.Warn("No validators at block", "number", parent.Number.Uint64())
 		return nil, nil
 	}
 
 	valSet := validator.NewSet(validators, nil, policy)
-	lastProposer, _ := e.Author(parent)
-	proposers := make([]common.Address, 0, extra.Round)
-	for round := uint32(0); round < extra.Round; round++ {
-		valSet.CalcProposer(lastProposer, uint64(round))
+	lastProposer, _ := e.Author(grandparent)
+	proposers := make([]common.Address, 0, round)
+	for r := range uint64(round) {
+		valSet.CalcProposer(lastProposer, r)
 		proposer := valSet.GetProposer()
 		proposers = append(proposers, proposer.Address())
 	}
 
+	// ##CROSS: parent commit
+	// Skip proposers that signed a recent commit.
+	if chain.Config().IsBreakpointBravo(header.Number, header.Time) {
+		return e.filterRecentlyActive(chain, header, proposers, 2*len(validators))
+	}
+	// ##
+
 	return proposers, nil
 }
+
+// ##CROSS: parent commit
+// parentRound returns the round the parent was committed in.
+// The parent's own round is not part of its hash and can differ between nodes that committed it in different rounds.
+// From BreakpointBravo it is read from the parent commit in the header, and a header without one slashes nobody.
+func parentRound(config *params.ChainConfig, header, parent *types.Header) (uint32, error) {
+	if !config.IsBreakpointBravo(header.Number, header.Time) {
+		extra, err := types.ExtractIstanbulExtra(parent)
+		if err != nil {
+			return 0, err
+		}
+		return extra.Round, nil
+	}
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
+		return 0, err
+	}
+	if extra.ParentCommit == nil {
+		return 0, nil
+	}
+	return extra.ParentCommit.Round, nil
+}
+
+// filterRecentlyActive drops the proposers that signed any parent commit in the window of headers ending at header.
+// The commits are part of the block hashes, so every node gets the same result.
+func (e *Engine) filterRecentlyActive(chain consensus.ChainHeaderReader, header *types.Header, proposers []common.Address, window int) ([]common.Address, error) {
+	ie := consensus.ToIstanbulEngine(e.consensus)
+	if ie == nil {
+		return proposers, nil
+	}
+
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent == nil {
+		return nil, consensus.ErrUnknownAncestor
+	}
+	active := make(map[common.Address]bool)
+	for range window {
+		extra, err := types.ExtractIstanbulExtra(header)
+		if err != nil {
+			return nil, err
+		}
+		if extra.ParentCommit == nil {
+			break // reached the blocks before BreakpointBravo
+		}
+		grandparent := chain.GetHeader(parent.ParentHash, parent.Number.Uint64()-1)
+		if grandparent == nil {
+			return nil, consensus.ErrUnknownAncestor
+		}
+
+		validators := ie.ValidatorsAt(chain, grandparent)
+		if len(validators) == 0 {
+			return nil, fmt.Errorf("no validators at block %d", grandparent.Number.Uint64())
+		}
+		signers := bitset.From(extra.ParentCommit.SignersBitset)
+		for index, validator := range validators {
+			if signers.Test(uint(index)) {
+				active[validator] = true
+			}
+		}
+
+		header, parent = parent, grandparent
+	}
+	return slices.DeleteFunc(proposers, func(proposer common.Address) bool { return active[proposer] }), nil
+}
+
+// ##
 
 // mitigateSlashedValidators mitigates the slashed validators by configured rate
 func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateDB, cx *chainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {

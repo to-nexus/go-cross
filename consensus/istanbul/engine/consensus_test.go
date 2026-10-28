@@ -618,8 +618,10 @@ func TestOfflineProposers(t *testing.T) {
 	headers := make(map[common.Hash]*types.Header)
 	h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
 	h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[1], validators, 3)
+	h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[2], validators, 0)
 	headers[h0.Hash()] = h0
 	headers[h1.Hash()] = h1
+	headers[h2.Hash()] = h2
 
 	mockChain := &mockChainHeaderReader{
 		headers: headers,
@@ -632,11 +634,119 @@ func TestOfflineProposers(t *testing.T) {
 		consensus: &mockIstanbulEngine{validators: validators},
 	}
 
-	proposers, err := engine.offlineProposers(mockChain, h1)
+	proposers, err := engine.offlineProposers(mockChain, h2)
 
 	require.NoError(t, err)
 	assert.Equal(t, []common.Address{validators[1], validators[2], validators[0]}, proposers)
 }
+
+// ##CROSS: parent commit
+func TestOfflineProposersParentCommit(t *testing.T) {
+	validators := []common.Address{addr1, addr2, addr3}
+	const (
+		withoutMissed = uint64(0b101) // addr1 and addr3 signed
+		withMissed    = uint64(0b111) // addr2 signed as well
+	)
+
+	bravo := *params.CrossTestChainConfig
+	bravo.BreakpointBravoTime = newUint64(0)
+	noBravo := *params.CrossTestChainConfig
+	noBravo.BreakpointBravoTime = nil
+
+	// newChain builds a genesis, block 1, and one more block per commit.
+	// Block i carries the commit of block i-1 signed by commits[i-2], or none if it is zero.
+	// Every block is proposed by addr1, so addr2 is the round 0 proposer that missed each parent.
+	// The local rounds are 3 while the commits say 1, so the result shows which one was read.
+	newChain := func(t *testing.T, config *params.ChainConfig, commits ...uint64) (*mockChainHeaderReader, *types.Header) {
+		chain := &mockChainHeaderReader{headers: map[common.Hash]*types.Header{}, config: config}
+		var header *types.Header
+		for i := 0; i <= len(commits)+1; i++ {
+			var parentHash common.Hash
+			if header != nil {
+				parentHash = header.Hash()
+			}
+			header = createHeaderWithIstanbulExtra(t, uint64(i), parentHash, addr1, validators, 3)
+			header.Time = uint64(i + 1)
+			if i > 1 && commits[i-2] != 0 {
+				setParentCommit(t, header, &types.ParentCommit{Round: 1, SignersBitset: []uint64{commits[i-2]}})
+			}
+			chain.headers[header.Hash()] = header
+		}
+		return chain, header
+	}
+	engine := &Engine{
+		cfg:       &istanbul.Config{ProposerPolicy: istanbul.NewRoundRobinProposerPolicy()},
+		consensus: &mockIstanbulEngine{validators: validators},
+	}
+
+	for _, tt := range []struct {
+		name    string
+		config  *params.ChainConfig
+		commits []uint64
+		want    []common.Address
+	}{
+		{
+			name:    "round is read from the parent commit",
+			config:  &bravo,
+			commits: []uint64{withoutMissed, withoutMissed, withoutMissed},
+			want:    []common.Address{addr2},
+		},
+		{
+			name:    "a header without parent commit slashes nobody",
+			config:  &bravo,
+			commits: []uint64{withoutMissed, withoutMissed, 0},
+		},
+		{
+			name:    "a proposer that signed the parent is not slashed",
+			config:  &bravo,
+			commits: []uint64{withoutMissed, withoutMissed, withMissed},
+		},
+		{
+			name:    "a proposer that signed within the window is not slashed",
+			config:  &bravo,
+			commits: []uint64{withoutMissed, withMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed},
+		},
+		{
+			name:    "a signature before the window does not count",
+			config:  &bravo,
+			commits: []uint64{withMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed},
+			want:    []common.Address{addr2},
+		},
+		{
+			name:    "the window stops at a header without parent commit",
+			config:  &bravo,
+			commits: []uint64{withMissed, 0, withoutMissed, withoutMissed},
+			want:    []common.Address{addr2},
+		},
+		{
+			name:    "before BreakpointBravo the local round is used without filter",
+			config:  &noBravo,
+			commits: []uint64{withMissed, withMissed, withMissed},
+			want:    []common.Address{addr2, addr3, addr1},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			chain, header := newChain(t, tt.config, tt.commits...)
+			got, err := engine.offlineProposers(chain, header)
+			require.NoError(t, err)
+			if tt.want == nil {
+				assert.Empty(t, got)
+			} else {
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func setParentCommit(t *testing.T, header *types.Header, parentCommit *types.ParentCommit) {
+	t.Helper()
+	require.NoError(t, ApplyHeaderIstanbulExtra(header, func(extra *types.IstanbulExtra) error {
+		extra.ParentCommit = parentCommit
+		return nil
+	}))
+}
+
+// ##
 
 // mockChainHeaderReader implements consensus.ChainHeaderReader for testing
 type mockChainHeaderReader struct {
@@ -815,6 +925,12 @@ func newSlashTestEngine(t *testing.T, bravoTime *uint64) (*Engine, *mockChainHea
 		}
 		header = createHeaderWithIstanbulExtra(t, uint64(98+i), parentHash, h.coinbase, validators, h.round)
 		header.Time = uint64(i + 1) // PoSA starts after the Breakpoint time
+		chain.headers[header.Hash()] = header
+	}
+	if bravoTime != nil {
+		// From BreakpointBravo the round of block 99 comes from block 100. addr2 missed round 0 and did not sign.
+		delete(chain.headers, header.Hash())
+		setParentCommit(t, header, &types.ParentCommit{Round: 1, SignersBitset: []uint64{0b101}})
 		chain.headers[header.Hash()] = header
 	}
 
