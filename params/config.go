@@ -165,8 +165,8 @@ var (
 		CancunTime:              newUint64(1770076800),
 		PragueTime:              newUint64(1770076800),
 		BreakpointTime:          newUint64(1781164800), // ##CROSS: fork breakpoint
-		BreakpointBravoTime:     newUint64(1789970400), // 2026-09-21 06:00:00 UTC // ##CROSS: fork breakpoint
-		OsakaTime:               newUint64(1789970400), // 2026-09-21 06:00:00 UTC
+		BreakpointBravoTime:     newUint64(1793260800), // 2026-10-29 17:00:00 UTC // ##CROSS: fork breakpoint
+		OsakaTime:               newUint64(1793260800), // 2026-10-29 17:00:00 UTC
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
@@ -223,8 +223,8 @@ var (
 		CancunTime:              newUint64(1770076800),
 		PragueTime:              newUint64(1770076800),
 		BreakpointTime:          newUint64(1781164800), // ##CROSS: fork breakpoint
-		BreakpointBravoTime:     newUint64(1789970400), // 2026-09-21 06:00:00 UTC // ##CROSS: fork breakpoint
-		OsakaTime:               newUint64(1789970400), // 2026-09-21 06:00:00 UTC
+		BreakpointBravoTime:     newUint64(1793260800), // 2026-10-29 17:00:00 UTC // ##CROSS: fork breakpoint
+		OsakaTime:               newUint64(1793260800), // 2026-10-29 17:00:00 UTC
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
