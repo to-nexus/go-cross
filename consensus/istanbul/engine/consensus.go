@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -322,11 +323,20 @@ func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) (bool, 
 	return result, nil
 }
 
-// queryEligibleValidator performs the actual StakeHub lookups. Per-address eligibility is
-// not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
+// queryEligibleValidator performs the actual StakeHub lookups. It first calls isEligibleValidator, and falls back to
+// the separate lookups below if the call fails (the StakeHub at this block does not have it yet).
+// Per-address eligibility is not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
 func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) (bool, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
+
+	// 0) isEligibleValidator does steps 1-5 in a single call.
+	stakeHubLatest := latest.NewStakeHub()
+	eligible, err := bind.Call(stakeHubInstance, callopts, stakeHubLatest.PackIsEligibleValidator(addr), stakeHubLatest.UnpackIsEligibleValidator)
+	if err == nil {
+		return eligible, nil
+	}
+	log.Debug("Failed to call isEligibleValidator, falling back", "addr", addr, "number", number, "err", err)
 
 	// 1) validator (nodekey) address → operator address. 0 means not registered.
 	operator, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackValidatorToOperator(addr), e.stakeHub.UnpackValidatorToOperator)

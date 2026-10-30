@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -1811,6 +1812,28 @@ func TestEngine_QueryEligibleValidator(t *testing.T) {
 	t.Run("returns an error when the current address cannot be read", func(t *testing.T) {
 		_, err := newEngine(nil).queryEligibleValidator(addr, 1)
 		require.Error(t, err)
+	})
+
+	// The cases above have no isEligibleValidator response, so they cover the fallback path.
+	t.Run("uses isEligibleValidator when available", func(t *testing.T) {
+		stakeHubLatest := latest.NewStakeHub()
+		for _, tc := range []struct {
+			current  []byte
+			eligible bool
+		}{
+			{current: nil, eligible: true},           // the fallback would fail
+			{current: addr.Bytes(), eligible: false}, // the fallback would return true
+		} {
+			e := newEngine(tc.current)
+			var result byte
+			if tc.eligible {
+				result = 1
+			}
+			e.contractBackend.(*mockContractBackend).callResponses[selector(stakeHubLatest.PackIsEligibleValidator(addr))] = [][]byte{word([]byte{result})}
+			ok, err := e.queryEligibleValidator(addr, 1)
+			require.NoError(t, err)
+			assert.Equal(t, tc.eligible, ok)
+		}
 	})
 }
 
