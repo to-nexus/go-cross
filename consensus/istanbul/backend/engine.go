@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
+	"github.com/ethereum/go-ethereum/consensus/istanbul/engine"
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -114,8 +115,37 @@ func (sb *Backend) verifyHeader(chain consensus.ChainHeaderReader, header *types
 		return err
 	}
 
-	return sb.Engine().VerifyHeader(chain, header, parents, snap.ValSet)
+	if err := sb.Engine().VerifyHeader(chain, header, parents, snap.ValSet); err != nil {
+		return err
+	}
+	return sb.verifyParentCommit(chain, header, parents) // ##CROSS: parent commit
 }
+
+// ##CROSS: parent commit
+// verifyParentCommit checks the parent commit certificate against the validators that sealed the parent.
+func (sb *Backend) verifyParentCommit(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
+	var parent *types.Header
+	if len(parents) > 0 {
+		parent, parents = parents[len(parents)-1], parents[:len(parents)-1]
+	} else {
+		parent = chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	}
+	if parent == nil || parent.Hash() != header.ParentHash {
+		return consensus.ErrUnknownAncestor
+	}
+
+	var validators istanbul.ValidatorSet
+	if engine.ParentCommitRequired(chain.Config(), header, parent) {
+		snap, err := sb.snapshot(chain, parent.Number.Uint64()-1, parent.ParentHash, parents)
+		if err != nil {
+			return err
+		}
+		validators = snap.ValSet
+	}
+	return sb.Engine().VerifyParentCommit(chain, header, parent, validators)
+}
+
+// ##
 
 // VerifyHeaders is similar to VerifyHeader, but verifies a batch of headers
 // concurrently. The method returns a quit channel to abort the operations and

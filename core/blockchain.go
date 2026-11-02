@@ -1903,7 +1903,8 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	}
 
 	// ##CROSS: istanbul
-	if bc.chainConfig.IsIstanbulConsensus() {
+	// Only a real Istanbul block (Difficulty>0) may be marked safe/finalized; never a diff-0 block.
+	if bc.chainConfig.IsIstanbulConsensus() && block.Difficulty().Sign() > 0 {
 		// In Istanbul consensus engine, the latest block is always safe and finalized.
 		bc.SetSafe(block.Header())
 		bc.SetFinalized(block.Header())
@@ -1943,6 +1944,17 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	if len(chain) == 0 {
 		return 0, nil
 	}
+
+	// ##CROSS: istanbul
+	// Istanbul PoSA chain never transitions to PoS.
+	if bc.chainConfig.IsIstanbulConsensus() {
+		for i, block := range chain {
+			if block.Difficulty().Sign() == 0 {
+				return i, fmt.Errorf("rejecting post-merge (difficulty 0) block #%d [%x..] on istanbul chain", block.NumberU64(), block.Hash().Bytes()[:4])
+			}
+		}
+	}
+	// ##
 
 	// Do a sanity check that the provided chain is actually ordered and linked.
 	for i := 1; i < len(chain); i++ {

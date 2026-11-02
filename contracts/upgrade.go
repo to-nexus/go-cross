@@ -18,6 +18,7 @@ package contracts
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -71,6 +72,10 @@ func init() {
 			},
 		},
 	}
+	// ##CROSS: fork breakpoint
+	// This upgrade corresponds to the Cross mainnet.
+	// The ZoneZero upgrade has been replaced, so if the new ZoneZero node starts from scratch, it will fail to sync.
+	// To avoid this issue, the new ZoneZero node should use the existing database.
 	upgrades[forks.Breakpoint] = make(map[uint64]*Upgrade)
 	upgrades[forks.Breakpoint][0] = &Upgrade{
 		UpgradeName: forks.Breakpoint.String(),
@@ -81,7 +86,6 @@ func init() {
 				ContractAddr: CrossExAddr,
 				Code:         breakpoint.CrossExCode,
 			},
-			// ##CROSS: consensus system contract
 			{
 				Name:         "ValidatorSetImpl",
 				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
@@ -160,8 +164,7 @@ func init() {
 						operators = append(operators, validator.Operator)
 						validators = append(validators, validator.Validator)
 						ids = append(ids, validator.ID)
-						// ##CROSS: bls seal
-						signers = append(signers, validator.Signer)
+						signers = append(signers, validator.Signer) // ##CROSS: bls seal
 					}
 					return breakpoint.NewStakeHub().PackInitialize(pool, admin, operators, validators, signers, ids), nil
 				},
@@ -231,9 +234,56 @@ func init() {
 					return breakpoint.NewValidatorSlash().PackInitialize(admin), nil
 				},
 			},
-			// ##
 		},
 	}
+	// Contract patches for testnet
+	upgrades[forks.BreakpointAlpha] = make(map[uint64]*Upgrade)
+	upgrades[forks.BreakpointAlpha][params.ZoneZeroChainConfig.ChainID.Uint64()] = &Upgrade{
+		UpgradeName: forks.BreakpointAlpha.String(),
+		Configs: []*UpgradeConfig{
+			{
+				Name:         "ValidatorSetImpl",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSetImplAddr,
+				Code:         breakpoint.ValidatorSetMetaData.BinRuntime,
+				Storage: map[common.Hash]common.Hash{
+					InitializableSlot: InitializersDisabled,
+				},
+			},
+			{
+				Name:         "ValidatorSetProxy",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSetAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Storage: map[common.Hash]common.Hash{
+					ProxyImplSlot: common.BytesToHash(ValidatorSetImplAddr.Bytes()),
+					common.HexToHash("0x86f0e39a3c4d21deb4b9249c3b1ec8d10355c59608a22092a826f5aa57331300"): common.BytesToHash(params.ZoneZeroPoSAConfig.Admin.Bytes()),
+				},
+			},
+			{
+				Name:         "ValidatorSlashImpl",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSlashImplAddr,
+				Code:         breakpoint.ValidatorSlashMetaData.BinRuntime,
+				Storage: map[common.Hash]common.Hash{
+					InitializableSlot: InitializersDisabled,
+				},
+			},
+			{
+				Name:         "ValidatorSlashProxy",
+				Commit:       "5cbc608bd77ef186120308ec8219a016197efba2",
+				ContractAddr: ValidatorSlashAddr,
+				Code:         predeploy.ERC1967ProxyCode,
+				Storage: map[common.Hash]common.Hash{
+					ProxyImplSlot:           common.BytesToHash(ValidatorSlashImplAddr.Bytes()),
+					common.HexToHash("0x4"): common.BytesToHash(new(big.Int).SetUint64(4).Bytes()),
+					common.HexToHash("0x5"): common.BytesToHash(new(big.Int).SetUint64(50).Bytes()),
+					common.HexToHash("0x86f0e39a3c4d21deb4b9249c3b1ec8d10355c59608a22092a826f5aa57331300"): common.BytesToHash(params.ZoneZeroPoSAConfig.Admin.Bytes()),
+				},
+			},
+		},
+	}
+	// ##
 }
 
 func getUpgrade(fork forks.Fork, chainID uint64) *Upgrade {
@@ -257,6 +307,10 @@ func TryUpdateSystemContract(config *params.ChainConfig, header *types.Header, l
 	}
 	if config.IsOnBreakpoint(header.Number, lastBlockTime, header.Time) && isPoSAConfigured(config) {
 		applySystemContractUpgrade(getUpgrade(forks.Breakpoint, chainID), header, statedb, writeLog)
+		upgraded = true
+	}
+	if config.IsOnBreakpointAlpha(header.Number, lastBlockTime, header.Time) && isPoSAConfigured(config) {
+		applySystemContractUpgrade(getUpgrade(forks.BreakpointAlpha, chainID), header, statedb, writeLog)
 		upgraded = true
 	}
 	return

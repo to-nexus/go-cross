@@ -60,13 +60,14 @@ func TestEnginePrepare(t *testing.T) {
 		fork   *uint64
 		digest common.Hash
 		posa   bool
+		commit bool // the next block carries the parent commit
 	}{
-		{"disabled", nil, types.IstanbulDigest, true},
-		{"before bravo", newUint64(parent.Time + 2), types.IstanbulDigest, true},
-		{"at bravo", newUint64(parent.Time + 1), types.IstanbulDigestV2, true},
-		{"after bravo", newUint64(parent.Time), types.IstanbulDigestV2, true},
-		{"bravo at genesis", newUint64(0), types.IstanbulDigestV2, true},
-		{"bravo without posa", newUint64(0), types.IstanbulDigestV2, false},
+		{"disabled", nil, types.IstanbulDigest, true, false},
+		{"before bravo", newUint64(parent.Time + 2), types.IstanbulDigest, true, true}, // the next block is at bravo
+		{"at bravo", newUint64(parent.Time + 1), types.IstanbulDigestV2, true, true},
+		{"after bravo", newUint64(parent.Time), types.IstanbulDigestV2, true, true},
+		{"bravo at genesis", newUint64(0), types.IstanbulDigestV2, true, true},
+		{"bravo without posa", newUint64(0), types.IstanbulDigestV2, false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			config := &params.ChainConfig{
@@ -157,6 +158,20 @@ func TestEnginePrepare(t *testing.T) {
 			err = engine.Prepare(chain, next, valSet)
 			require.NoError(t, err)
 
+			// ##CROSS: parent commit
+			extra, err := types.ExtractIstanbulExtra(next)
+			require.NoError(t, err)
+
+			if test.commit {
+				want, err := extractParentCommit(header)
+				require.NoError(t, err)
+				assert.Equal(t, want, extra.ParentCommit)
+			} else {
+				assert.Nil(t, extra.ParentCommit)
+			}
+			require.NoError(t, engine.VerifyParentCommit(chain, next, header, valSet))
+			// ##
+
 			next.Coinbase = address
 			err = engine.VerifyHeader(chain, next, nil, valSet)
 			assert.ErrorIs(t, err, istanbul.ErrEmptyCommittedSeals)
@@ -231,6 +246,93 @@ func TestEngineVerifyCommittedSeals(t *testing.T) {
 		}
 	}
 }
+
+// ##CROSS: parent commit
+func TestEngineVerifyParentCommit(t *testing.T) {
+	var (
+		addrs   []common.Address
+		pubkeys []types.BLSPublicKey
+		keys    []bls.SecretKey
+	)
+	for i := range 4 {
+		key, err := bls.RandKey()
+		require.NoError(t, err)
+		keys = append(keys, key)
+		addrs = append(addrs, common.Address{byte(i + 1)}) // byte-sorted, so key i is bit i
+		pubkeys = append(pubkeys, types.BytesToBLSPublicKey(key.PublicKey().Marshal()))
+	}
+	valSet := validator.NewSet(addrs, pubkeys, istanbul.NewRoundRobinProposerPolicy()) // quorum is 3
+	bravo := &params.ChainConfig{LondonBlock: big.NewInt(0), BreakpointTime: newUint64(0), BreakpointBravoTime: newUint64(0), Istanbul: &params.IstanbulConfig{PoSA: &params.PoSAConfig{ValidatorEpochLength: 1000}}}
+	noBravo := *bravo
+	noBravo.BreakpointBravoTime = nil
+	engine := NewEngine(istanbul.NewConfig(bravo), common.Address{}, nil, nil, nil, nil, nil)
+
+	parent := &types.Header{Number: big.NewInt(2), Time: 2, MixDigest: types.IstanbulDigestV2}
+	require.NoError(t, ApplyHeaderIstanbulExtra(parent))
+
+	// commit seals a copy of the parent in the round by the signers and returns the certificate a proposer would copy.
+	commit := func(round uint32, signers ...int) *types.ParentCommit {
+		sealed := types.CopyHeader(parent)
+		seals := make([]istanbul.SignedSeal, 0, len(signers))
+		for _, i := range signers {
+			seals = append(seals, signedSeal{uint(i), keys[i].Sign(PrepareCommittedSeal(parent, round)).Marshal()})
+		}
+		require.NoError(t, engine.CommitHeader(&chainMock{config: bravo}, sealed, seals, big.NewInt(int64(round))))
+		assert.Equal(t, parent.Hash(), sealed.Hash())
+		pc, err := extractParentCommit(sealed)
+		require.NoError(t, err)
+		return pc
+	}
+
+	for _, tt := range []struct {
+		name         string
+		config       *params.ChainConfig
+		parent       *types.Header
+		parentCommit func() *types.ParentCommit
+		valid        bool
+	}{
+		{"quorum", bravo, parent, func() *types.ParentCommit { return commit(0, 0, 1, 3) }, true},
+		{"all validators in a later round", bravo, parent, func() *types.ParentCommit { return commit(2, 0, 1, 2, 3) }, true},
+		{"missing", bravo, parent, func() *types.ParentCommit { return nil }, false},
+		{"below quorum", bravo, parent, func() *types.ParentCommit { return commit(0, 0, 1) }, false},
+		{"signer that did not sign", bravo, parent, func() *types.ParentCommit {
+			pc := commit(0, 0, 1, 3)
+			pc.SignersBitset = []uint64{pc.SignersBitset[0] | 1<<2}
+			return pc
+		}, false},
+		{"signer outside the validators", bravo, parent, func() *types.ParentCommit {
+			pc := commit(0, 0, 1, 3)
+			pc.SignersBitset = []uint64{pc.SignersBitset[0] | 1<<4}
+			return pc
+		}, false},
+		{"other round", bravo, parent, func() *types.ParentCommit {
+			pc := commit(0, 0, 1, 3)
+			pc.Round = 1
+			return pc
+		}, false},
+		{"before BreakpointBravo", &noBravo, parent, func() *types.ParentCommit { return commit(0, 0, 1, 3) }, false},
+		{"none before BreakpointBravo", &noBravo, parent, func() *types.ParentCommit { return nil }, true},
+		{"genesis parent", bravo, &types.Header{Number: big.NewInt(0)}, func() *types.ParentCommit { return commit(0, 0, 1, 3) }, false},
+		{"none on genesis parent", bravo, &types.Header{Number: big.NewInt(0)}, func() *types.ParentCommit { return nil }, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			header := &types.Header{Number: new(big.Int).Add(tt.parent.Number, common.Big1), Time: 3, ParentHash: tt.parent.Hash(), MixDigest: types.IstanbulDigestV2}
+			pc := tt.parentCommit()
+			require.NoError(t, ApplyHeaderIstanbulExtra(header, func(extra *types.IstanbulExtra) error {
+				extra.ParentCommit = pc
+				return nil
+			}))
+			err := engine.VerifyParentCommit(&chainMock{config: tt.config}, header, tt.parent, valSet)
+			if tt.valid {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorIs(t, err, istanbul.ErrInvalidParentCommit)
+			}
+		})
+	}
+}
+
+// ##
 
 // ##CROSS: istanbul posa
 func TestEngineVerifyBlockProposal(t *testing.T) {
