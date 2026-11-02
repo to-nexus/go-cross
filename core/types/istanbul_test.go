@@ -179,6 +179,39 @@ func TestHeaderHash(t *testing.T) {
 	}
 }
 
+// ##CROSS: parent commit
+func TestIstanbulExtraParentCommit(t *testing.T) {
+	pc := &ParentCommit{Round: 2, SignersBitset: []uint64{0b1011}, CommittedSeal: []byte{1, 2, 3}}
+	encoded, err := rlp.EncodeToBytes(&IstanbulExtra{Round: 3, CommittedSeal: [][]byte{{1}}, ParentCommit: pc})
+	require.NoError(t, err)
+	decoded := IstanbulExtra{ParentCommit: &ParentCommit{Round: 9}}
+	require.NoError(t, rlp.DecodeBytes(encoded, &decoded))
+	assert.Equal(t, pc, decoded.ParentCommit)
+
+	// An extra without it must clear the old value.
+	encoded, err = rlp.EncodeToBytes(&IstanbulExtra{Round: 3})
+	require.NoError(t, err)
+	require.NoError(t, rlp.DecodeBytes(encoded, &decoded))
+	assert.Nil(t, decoded.ParentCommit)
+
+	// The parent commit is part of the block hash, unlike the block's own round and seals.
+	header := func(round uint32, seal []byte, pc *ParentCommit) *Header {
+		extra, err := rlp.EncodeToBytes(&IstanbulExtra{
+			VanityData: make([]byte, IstanbulExtraVanity), Round: round,
+			CommittedSeal: [][]byte{seal}, SignersBitset: []uint64{uint64(len(seal))}, ParentCommit: pc,
+		})
+		require.NoError(t, err)
+		return &Header{MixDigest: IstanbulDigestV2, Extra: extra}
+	}
+	hash := header(0, []byte{1}, pc).Hash()
+	assert.Equal(t, hash, header(1, []byte{2, 3}, pc).Hash())
+	assert.NotEqual(t, hash, header(0, []byte{1}, &ParentCommit{Round: 2, SignersBitset: []uint64{0b0011}, CommittedSeal: []byte{1, 2, 3}}).Hash())
+	assert.NotEqual(t, hash, header(0, []byte{1}, &ParentCommit{Round: 1, SignersBitset: []uint64{0b1011}, CommittedSeal: []byte{1, 2, 3}}).Hash())
+	assert.NotEqual(t, hash, header(0, []byte{1}, nil).Hash())
+}
+
+// ##
+
 func TestExtractToIstanbulExtra(t *testing.T) {
 	testCases := []struct {
 		istRawData     []byte

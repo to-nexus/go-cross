@@ -652,6 +652,7 @@ A validator also earns block commissions in addition to the pool rewards on its 
 #### Offline Slashing
 
 1. Validators that fail to produce a block (round timeout) are counted via the `slashOffline([...])` system call.
+   - From BreakpointBravo, each block header carries the commit certificate (round, signers, aggregated BLS signature) of its parent, and the round and signers are read from it. A missed proposer is not counted if it signed any commit in the last `2 × validator count` blocks.
 2. Once the cumulative count reaches **`offlineSlashThreshold` (default 50)**, `StakeHub.penalizeOffline` is invoked.
 3. Penalty:
    - Slash **10,000 ONE** from the operator's stake (moved from DelegationPool to ProtocolReserve)

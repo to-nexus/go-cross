@@ -214,8 +214,14 @@ type worker struct {
 	mux          *event.TypeMux
 	txsCh        chan core.NewTxsEvent
 	txsSub       event.Subscription
-	chainHeadCh  chan core.ChainHeadEvent
+	chainHeadCh  chan core.ChainHeadEvent // Subscription for this worker.
 	chainHeadSub event.Subscription
+
+	// ##CROSS: istanbul
+	// Subscription for istanbul consensus engine.
+	istanbulChainHeadCh  chan core.ChainHeadEvent
+	istanbulChainHeadSub event.Subscription
+	// ##
 
 	// Channels
 	newWorkCh          chan *newWorkReq
@@ -306,6 +312,13 @@ func newWorker(config *minerconfig.Config, chainConfig *params.ChainConfig, engi
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 
+	// ##CROSS: istanbul
+	if worker.istanbulBackend != nil {
+		worker.istanbulChainHeadCh = make(chan core.ChainHeadEvent, chainHeadChanSize)
+		worker.istanbulChainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.istanbulChainHeadCh)
+	}
+	// ##
+
 	// Sanitize recommit interval if the user-specified one is too short.
 	recommit := worker.config.Recommit
 	if recommit < minRecommitInterval {
@@ -330,6 +343,14 @@ func newWorker(config *minerconfig.Config, chainConfig *params.ChainConfig, engi
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+
+	// ##CROSS: istanbul
+	// Notify consensus of new heads on its own goroutine.
+	if worker.istanbulBackend != nil {
+		worker.wg.Add(1)
+		go worker.istanbulNewHeadLoop()
+	}
+	// ##
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -518,11 +539,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 
 		case head := <-w.chainHeadCh:
 			// ##CROSS: istanbul
-			if w.istanbulBackend != nil {
-				w.istanbulBackend.NewChainHead()
-			}
-			// ##
-
+			// Consensus is notified of the new head by istanbulNewHeadLoop, so it is not delayed by a busy work loop here.
 			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			commit(commitInterruptNewHead)
@@ -570,6 +587,25 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 				w.resubmitHook(minRecommit, recommit)
 			}
 
+		case <-w.exitCh:
+			return
+		}
+	}
+}
+
+// istanbulNewHeadLoop notifies the Istanbul consensus engine of new chain heads on a dedicated subscription.
+// NewChainHead only posts an event asynchronously, so this loop drains quickly and
+// consensus progress is never gated by the miner's work loop, even when block build is slow.
+func (w *worker) istanbulNewHeadLoop() {
+	defer w.wg.Done()
+	defer w.istanbulChainHeadSub.Unsubscribe()
+
+	for {
+		select {
+		case <-w.istanbulChainHeadCh:
+			w.istanbulBackend.NewChainHead()
+		case <-w.istanbulChainHeadSub.Err():
+			return
 		case <-w.exitCh:
 			return
 		}
@@ -1314,6 +1350,19 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 	if err != nil {
 		return
 	}
+	// ##CROSS: istanbul build limit
+	// Bound the wall-clock time spent filling transactions.
+	// The signal is polled between transactions, so the build cannot run
+	// far past the round timeout and a proposal is always sealed in time.
+	if w.chainConfig.IsIstanbulConsensus() && w.newpayloadTimeout > 0 {
+		timer := time.AfterFunc(w.newpayloadTimeout, func() {
+			// The interrupt is shared with newWorkLoop; keep an earlier reason.
+			interrupt.CompareAndSwap(commitInterruptNone, commitInterruptTimeout)
+		})
+		defer timer.Stop()
+	}
+	// ##
+
 	// Fill pending transactions from the txpool into the block.
 	err = w.fillTransactions(interrupt, work)
 	switch {
@@ -1321,6 +1370,13 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 		// The entire block is filled, decrease resubmit interval in case
 		// of current interval is larger than the user-specified one.
 		w.adjustResubmitInterval(&intervalAdjust{inc: false})
+
+	case errors.Is(err, errBlockInterruptedByTimeout):
+		// ##CROSS: istanbul build limit
+		// Seal the partial block so a proposal exists before the consensus round times out.
+		log.Warn("Block building interrupted by timeout, sealing partial block",
+			"allowance", common.PrettyDuration(w.newpayloadTimeout), "number", work.header.Number.Uint64())
+		// ##
 
 	case errors.Is(err, errBlockInterruptedByRecommit):
 		// Notify resubmit loop to increase resubmitting interval if the
