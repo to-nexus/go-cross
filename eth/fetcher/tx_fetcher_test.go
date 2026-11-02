@@ -28,6 +28,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -2508,6 +2511,18 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 	require.Equal(t, plain.Hash(), forged.Hash())
 	require.Greater(t, wrapped.Size(), plain.Size()+8)
 
+	sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	require.NoError(t, err)
+	statedb.AddBalance(sender, uint256.NewInt(1_000_000), tracing.BalanceChangeUnspecified)
+	statedb.AddBalance(payer, uint256.NewInt(1_000_000), tracing.BalanceChangeUnspecified)
+	signer := types.NewAdventureSigner(chainID)
+	opts := &txpool.ValidationOptionsWithState{
+		State:               statedb,
+		ExistingExpenditure: func(common.Address) *big.Int { return new(big.Int) },
+		ExistingCost:        func(common.Address, uint64) *big.Int { return nil },
+	}
+
 	hash := plain.Hash()
 	notify := func(peer string, kind byte, size uint64) doTxNotify {
 		return doTxNotify{peer: peer, hashes: []common.Hash{hash}, types: []byte{kind}, sizes: []uint32{uint32(size)}}
@@ -2523,12 +2538,9 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 				return NewTxFetcher(
 					func(common.Hash) bool { return false },
 					func(txs []*types.Transaction) []error {
-						// Reject fee-delegated txs with an invalid fee payer signature, like the pool.
 						errs := make([]error, len(txs))
 						for i, tx := range txs {
-							if tx.Type() == types.FeeDelegatedDynamicFeeTxType {
-								_, errs[i] = tx.FeePayerValidated(chainID)
-							}
+							errs[i] = txpool.ValidateTransactionWithState(tx, signer, opts)
 						}
 						return errs
 					},
@@ -2614,6 +2626,43 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 			},
 		)
 		assert.Empty(t, dropped)
+	})
+	t.Run("unfunded sender", func(t *testing.T) {
+		statedb.SetBalance(sender, new(uint256.Int), tracing.BalanceChangeUnspecified)
+		require.ErrorIs(t, txpool.ValidateTransactionWithState(plain, signer, opts), core.ErrInsufficientFunds)
+		require.NoError(t, txpool.ValidateTransactionWithState(wrapped, signer, opts))
+
+		t.Run("inner broadcast keeps sponsored announcements", func(t *testing.T) {
+			dropped := run(t,
+				notify("A", wrapped.Type(), wrapped.Size()),
+				notify("B", wrapped.Type(), wrapped.Size()),
+				doTxEnqueue{peer: "X", txs: []*types.Transaction{plain}, direct: false},
+				isWaiting(map[string][]announce{"A": {ann(wrapped)}, "B": {ann(wrapped)}}),
+				doWait{time: txArriveTimeout, step: true},
+				isScheduled{
+					tracking: map[string][]announce{"A": {ann(wrapped)}, "B": {ann(wrapped)}},
+					fetching: map[string][]common.Hash{"A": {hash}},
+				},
+				doTxEnqueue{peer: "A", txs: []*types.Transaction{wrapped}, direct: true},
+				isScheduled{},
+			)
+			assert.Empty(t, dropped)
+		})
+		t.Run("inner reply retries sponsored form from honest peer", func(t *testing.T) {
+			dropped := run(t,
+				notify("X", plain.Type(), plain.Size()),
+				doWait{time: txArriveTimeout, step: true},
+				notify("A", wrapped.Type(), wrapped.Size()),
+				doTxEnqueue{peer: "X", txs: []*types.Transaction{plain}, direct: true},
+				isScheduled{
+					tracking: map[string][]announce{"A": {ann(wrapped)}},
+					fetching: map[string][]common.Hash{"A": {hash}},
+				},
+				doTxEnqueue{peer: "A", txs: []*types.Transaction{wrapped}, direct: true},
+				isScheduled{},
+			)
+			assert.Empty(t, dropped)
+		})
 	})
 }
 

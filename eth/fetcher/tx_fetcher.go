@@ -343,10 +343,9 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 				otherreject++
 
 				// ##CROSS: fee delegation
-				// The hash of a fee-delegated tx does not cover the fee payer fields,
-				// so a rejected one may be a forged copy of an honest tx.
-				// Keep tracking its hash so that other peers can still deliver it.
-				if batch[j].Type() == types.FeeDelegatedDynamicFeeTxType {
+				// A rejected wrapper or inner dynamic-fee tx can share a hash with a valid sponsored tx.
+				// Keep tracking its hash so that other peers can still deliver the valid form.
+				if batch[j].Type() == types.FeeDelegatedDynamicFeeTxType || batch[j].Type() == types.DynamicFeeTxType {
 					continue
 				}
 				// ##
