@@ -1,7 +1,7 @@
 # ONE Chain
 
 **This repository** is the official execution client for the **ONE** blockchain by to-nexus.
-It is based on **go-ethereum v1.16.9**, with ONE-specific consensus, networking, and fee handling.
+It is based on **go-ethereum**, with ONE-specific consensus, networking, and fee handling.
 The **Breakpoint** hard fork activates **PoSA (Proof of Staked Authority)** using Istanbul BFT and BLS aggregate signatures.
 Ethereum execution features are enabled according to each network's fork configuration.
 
@@ -32,17 +32,6 @@ See [Naming Compatibility](#naming-compatibility) for historical identifiers.
 - **Staking**: a shared pool with stake-based council selection and on-chain rewards.
 - **Operation**: full/RPC nodes, archive nodes, and validators with separate node and BLS keys.
 
-### Version Information
-
-| Item | Value |
-|---|---|
-| Client version | **1.4.0-stable** (see [version/version.go](version/version.go)) |
-| Upstream execution client base | **go-ethereum v1.16.9**, with subsequent backports |
-| Fork configuration | Network-specific; see [Networks](#networks) and [params/config.go](params/config.go) |
-| Go version | **1.25 or higher** |
-
-Use `./build/bin/geth version` to check the version and commit of the installed binary.
-
 ### Related Repositories
 
 | Repository | Purpose |
@@ -54,18 +43,12 @@ Use `./build/bin/geth version` to check the version and commit of the installed 
 
 ## Networks
 
-| Network | Flag | Chain ID | Breakpoint (UTC) | Notes |
-|---|---|---|---|---|
-| ONE Mainnet | `--one` | **612055** | 2026-06-01 03:00:00 | Production |
-| ZoneZero (testnet) | `--zonezero` | 612044 | 2026-05-15 03:00:00 | Official public testnet |
+| Network | Flag | Chain ID | Notes |
+|---|---|---|---|
+| ONE Mainnet | `--one` | **612055** | Production |
+| ZoneZero (testnet) | `--zonezero` | 612044 | Official public testnet |
 
-Selected fork settings for mainnet and ZoneZero are:
-
-| Network | Cancun / Prague (UTC) | Breakpoint timestamp |
-|---|---|---|
-| ONE Mainnet | 2026-06-01 03:00:00 | `1780282800` |
-| ZoneZero | 2026-05-15 03:00:00 | `1778814000` |
-
+Network fork configurations are defined in [params/config.go](params/config.go).
 The native coin is **ONE**, and all staking, rewards, and slashing are denominated in the native coin.
 
 ---
@@ -74,7 +57,7 @@ The native coin is **ONE**, and all staking, rewards, and slashing are denominat
 
 ### Build Requirements
 
-- Go **1.25+**
+- Go (see [go.mod](go.mod) for the required version)
 - GCC / make / pkg-config
 - (optional) Docker / docker-compose
 
@@ -92,6 +75,7 @@ make all
 ```
 
 Build artifacts are placed under `./build/bin/`.
+Use `./build/bin/geth version` to check the version and commit of the installed binary.
 
 ### Docker Image
 
@@ -216,13 +200,14 @@ Without positional arguments, the command writes `genesis.json` in the current d
 `--json` writes the generated admin, beneficiary, operator, validator, and BLS keys to standard output, captured here in `keys.json`.
 The key file contains plaintext secrets; keep it private and out of source control, and use a new directory for each generated chain.
 The generated admin account is funded, and `--breakpoint` initializes the system contracts, registers the initial validators, and credits each operator with its initial stake.
+It activates all ONE hard forks from Breakpoint through the latest supported fork at genesis.
 These genesis validators do not need the separate registration workflow described in [Operating a Validator](#operating-a-validator).
 
 | Option | Effect |
 |---|---|
 | `--validators N` | Generate `N` validators; default 3, minimum 1; available only without input files |
 | `--json` | Print generated keys as JSON; available only without input files |
-| `--breakpoint` | Initialize PoSA system contracts at genesis; rewards start at block 1 |
+| `--breakpoint` | Initialize PoSA system contracts and activate the latest hard forks at genesis; rewards start at block 1 |
 | `--bridge` | Add and initialize the bridge proxy and implementation |
 | `--multicall` | Add Multicall3 |
 | `--singleton-factory` / `--sf` | Add deterministic deployment proxies |
@@ -284,7 +269,9 @@ Prepare an uninitialized genesis input with your chosen `config.chainId`, funded
 For `--breakpoint`, the input must have London active at genesis, a nonzero PoSA admin, positive council and validator-epoch periods, and at least one complete validator entry with an ID of 3 to 9 ASCII letters or digits, operator address, validator address, and 48-byte BLS public key.
 This mode uses the configured identities and does not generate private keys; supply matching node and BLS keys when starting the nodes.
 `--validators` and `--json` are not accepted with input files.
-The builder preserves account balances, initializes the selected contract state, and sets the required execution/Breakpoint fork times to zero and `rewardStartBlock` to 1 for PoSA.
+The builder preserves account balances and initializes the selected contract state.
+Missing blob schedule entries are filled from the client's [default blob schedule](params/config.go); explicitly configured entries are preserved.
+With `--breakpoint` or `--all`, it activates the same hard forks from genesis as key-generation mode and sets `rewardStartBlock` to 1 for PoSA.
 Do not feed an already initialized PoSA genesis back into this mode; conflicting contract code or storage is rejected.
 Finalize the genesis before initializing any nodes, and use a fresh data directory when changing it.
 
@@ -384,7 +371,7 @@ Registration makes the validator eligible for the next council selection; select
 
 - Poll `StakeHub.getValidatorInfo(operator)` regularly via `eth_call`.
 - Track cumulative pooled / commission / fee / burned via `RewardHub.getValidatorLog(validatorAddr)`.
-- Watch `ValidatorSlash.getSlashInfo(validatorAddr)` for the contract revision listed under [Contract Versions and Addresses](#contract-versions-and-addresses); newer implementations may index this query by operator address, so use the deployed contract's ABI and semantics.
+- Monitor slashing with `ValidatorSlash.getSlashInfo`, using the address type required by the deployed contract's ABI.
 - Compare `istanbul_nodeAddress` and `istanbul_signerAddress` with the consensus address and BLS public key registered in `StakeHub`.
 - Query `istanbul_isValidator` to check current set membership, and `istanbul_getConfig` for consensus timing and `rewardStartBlock`.
 - Membership alone does not prove that the BLS key is configured or the node is successfully committing; monitor `istanbul_status` and consensus logs.
@@ -398,7 +385,7 @@ Registration makes the validator eligible for the next council selection; select
 | `jail` state | After the jail period expires, call `unjail()` with stake ≥ `minValidatorStake`, then wait for selection |
 | Blacklisted | Keeper removes from the blacklist, then call `unjail()` as above |
 
-Recovery behavior follows the [contract versions](#contract-versions-and-addresses) described below; check the deployed implementation before maintenance.
+Check the [deployed contract implementation](#contract-code-and-addresses) for its recovery behavior before maintenance.
 
 ---
 
@@ -410,8 +397,8 @@ Recovery behavior follows the [contract versions](#contract-versions-and-address
 ┌────────────────────────────────────────────────────────────────────┐
 │                                                                    │
 │  ┌─────────────┐   ┌──────────────────┐   ┌─────────────────────┐  │
-│  │  P2P / eth  │   │ Istanbul Engine  │   │  EVM (Prague-ready) │  │
-│  │  txpool     │◄──┤  + PoSA module   │──►│  Cancun blob, etc.  │  │
+│  │  P2P / eth  │   │ Istanbul Engine  │   │  EVM execution      │  │
+│  │  txpool     │◄──┤  + PoSA module   │──►│  Blob transactions  │  │
 │  └─────────────┘   │  + BLS seal      │   └─────────────────────┘  │
 │         ▲          └────────┬─────────┘             │              │
 │         │                   │ system tx             │ system call  │
@@ -489,15 +476,12 @@ The `signerProof` (Proof of Possession) submitted during validator registration 
 
 ## System Contracts and Staking
 
-### Contract Versions and Addresses
+### Contract Code and Addresses
 
 The following system contracts are predeployed once PoSA is active.
 Source code lives in the [cross-contracts repository](https://github.com/to-nexus/cross-contracts), built and tested with Foundry.
 The client bundles runtime bytecode and selected Go bindings under [contracts/breakpoint](contracts/breakpoint).
-This guide uses initialization defaults from the source revisions recorded in [contracts/upgrade.go](contracts/upgrade.go):
-
-- [StakeHub / ValidatorSet / ValidatorSlash: `5cbc608`](https://github.com/to-nexus/cross-contracts/tree/5cbc608bd77ef186120308ec8219a016197efba2/src)
-- [RewardHub: `373dfdd`](https://github.com/to-nexus/cross-contracts/blob/373dfdd9ec4b53f7f3efc0516a7b7cfaa7cab0f6/src/RewardHub.sol)
+Source revisions and upgrade mappings are recorded in [contracts/upgrade.go](contracts/upgrade.go).
 
 Contract values in this guide are initialization defaults, not a live snapshot of either network.
 Administrators can change staking limits, council size, rewards, commission, and penalty parameters.

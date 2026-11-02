@@ -84,6 +84,64 @@ func TestMakeGenesis(t *testing.T) {
 		roundTrip(t, genesis)
 	})
 
+	t.Run("blob schedule defaults", func(t *testing.T) {
+		custom := &params.BlobConfig{Target: 2, Max: 4, UpdateFraction: 1000000}
+		for _, tc := range []struct {
+			name     string
+			schedule *params.BlobScheduleConfig
+			want     *params.BlobScheduleConfig
+		}{
+			{"missing", nil, params.DefaultBlobSchedule},
+			{"empty", &params.BlobScheduleConfig{}, params.DefaultBlobSchedule},
+			{
+				"partial",
+				&params.BlobScheduleConfig{Cancun: custom, BPO1: custom},
+				&params.BlobScheduleConfig{Cancun: custom, Prague: params.DefaultPragueBlobConfig, Osaka: params.DefaultOsakaBlobConfig, BPO1: custom},
+			},
+			{
+				"custom",
+				&params.BlobScheduleConfig{Cancun: custom, Prague: custom, Osaka: custom},
+				&params.BlobScheduleConfig{Cancun: custom, Prague: custom, Osaka: custom},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, enableBreakpoint := range []bool{false, true} {
+					name := "without breakpoint"
+					if enableBreakpoint {
+						name = "with breakpoint"
+					}
+					t.Run(name, func(t *testing.T) {
+						genesis := posaGenesis()
+						genesis.Config.BlobScheduleConfig = tc.schedule
+						before, err := json.Marshal(genesis.Config)
+						require.NoError(t, err)
+						inputConfig := new(params.ChainConfig)
+						require.NoError(t, json.Unmarshal(before, inputConfig))
+
+						require.NoError(t, core.MakeGenesis(genesis, core.GenesisContracts{Breakpoint: enableBreakpoint}))
+						assert.Equal(t, tc.want, genesis.Config.BlobScheduleConfig)
+						assert.Equal(t, inputConfig.BlobScheduleConfig, tc.schedule, "preserve the input schedule")
+						if !enableBreakpoint {
+							assert.Equal(t, inputConfig.CancunTime, genesis.Config.CancunTime)
+							assert.Equal(t, inputConfig.PragueTime, genesis.Config.PragueTime)
+							assert.Equal(t, inputConfig.OsakaTime, genesis.Config.OsakaTime)
+						}
+						require.NoError(t, genesis.Config.CheckConfigForkOrder())
+						roundTrip(t, genesis)
+					})
+				}
+			})
+		}
+	})
+
+	t.Run("preserves invalid blob settings for validation", func(t *testing.T) {
+		genesis := posaGenesis()
+		genesis.Config.BlobScheduleConfig = &params.BlobScheduleConfig{Cancun: &params.BlobConfig{UpdateFraction: 0}}
+		err := core.MakeGenesis(genesis, core.GenesisContracts{Breakpoint: true})
+		require.ErrorContains(t, err, "update fraction must be defined and non-zero")
+		assert.Zero(t, genesis.Config.BlobScheduleConfig.Cancun.UpdateFraction)
+	})
+
 	t.Run("initializes the Breakpoint contracts", func(t *testing.T) {
 		genesis := posaGenesis()
 		posa := genesis.Config.Istanbul.PoSA
@@ -98,6 +156,8 @@ func TestMakeGenesis(t *testing.T) {
 
 		assert.Equal(t, coinbase, genesis.Coinbase)
 		assert.Zero(t, *genesis.Config.BreakpointTime)
+		assert.Equal(t, new(uint64), genesis.Config.BreakpointBravoTime)
+		assert.Equal(t, new(uint64), genesis.Config.OsakaTime)
 		assert.Equal(t, contracts.DelegationPoolAddr, posa.DelegationPool)
 		assert.Equal(t, big.NewInt(1), posa.RewardStartBlock)
 		assert.Equal(t, reserveBalance, genesis.Alloc[contracts.CrossReserveAddr].Balance)
