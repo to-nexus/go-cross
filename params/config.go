@@ -113,7 +113,8 @@ var (
 		PragueTime:              newUint64(1778814000),
 		BreakpointTime:          newUint64(1778814000), // ##CROSS: fork breakpoint
 		BreakpointAlphaTime:     newUint64(1781240400), // 2026-06-12 05:00:00 UTC // ##CROSS: fork breakpoint
-		OsakaTime:               nil,
+		BreakpointBravoTime:     newUint64(1794286800), // 2026-11-10 05:00:00 UTC // ##CROSS: fork breakpoint
+		OsakaTime:               newUint64(1794286800), // 2026-11-10 05:00:00 UTC
 		VerkleTime:              nil,
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
