@@ -141,7 +141,7 @@ func testMakeDefaultBreakpointGenesis(t *testing.T, validatorCount uint) {
 	expectedConfig.PragueTime = &zero
 	expectedConfig.BreakpointTime = &zero
 	expectedConfig.BreakpointBravoTime = &zero
-	expectedConfig.OsakaTime = nil
+	expectedConfig.OsakaTime = &zero
 	expectedConfig.Istanbul = genesis.Config.Istanbul
 	assert.Equal(t, &expectedConfig, genesis.Config)
 

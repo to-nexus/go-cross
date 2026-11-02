@@ -114,6 +114,11 @@ func prepareBreakpointConfig(genesis *Genesis) error {
 	config.CancunTime = &zero
 	config.PragueTime = &zero
 	config.BreakpointTime = &zero
+	if config.BreakpointAlphaTime != nil {
+		config.BreakpointAlphaTime = &zero
+	}
+	config.BreakpointBravoTime = &zero
+	config.OsakaTime = &zero
 	posa.DelegationPool = contracts.DelegationPoolAddr
 	posa.RewardStartBlock = big.NewInt(1)
 	return config.CheckConfigForkOrder()
@@ -372,6 +377,22 @@ func MakeGenesis(genesis *Genesis, opts GenesisContracts) error {
 	if genesis == nil || genesis.Config == nil {
 		return errors.New("genesis chain config is required")
 	}
+	// Fill missing blob settings without changing a shared input schedule.
+	schedule := params.BlobScheduleConfig{}
+	if genesis.Config.BlobScheduleConfig != nil {
+		schedule = *genesis.Config.BlobScheduleConfig
+	}
+	if schedule.Cancun == nil {
+		schedule.Cancun = params.DefaultBlobSchedule.Cancun
+	}
+	if schedule.Prague == nil {
+		schedule.Prague = params.DefaultBlobSchedule.Prague
+	}
+	if schedule.Osaka == nil {
+		schedule.Osaka = params.DefaultBlobSchedule.Osaka
+	}
+	genesis.Config.BlobScheduleConfig = &schedule
+
 	// Copy the map, so a shared allocation such as a built-in genesis stays unchanged.
 	genesis.Alloc = maps.Clone(genesis.Alloc)
 	if genesis.Alloc == nil {
