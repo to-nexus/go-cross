@@ -49,12 +49,45 @@ func TestMakeGenesisCommand(t *testing.T) {
 		assert.Equal(t, keys.Beneficiary.Address, *genesis.Config.Istanbul.Beneficiary)
 		assert.Zero(t, *genesis.Config.BreakpointTime)
 		assert.Zero(t, *genesis.Config.BreakpointBravoTime)
+		assert.Equal(t, new(uint64), genesis.Config.OsakaTime)
 		for _, addr := range []common.Address{contracts.CrossExAddr, contracts.BridgeAddr, contracts.Multicall3Addr, contracts.SingletonFactoryAddr, contracts.SingletonFactory2Addr} {
 			assert.NotEmpty(t, genesis.Alloc[addr].Code, "code at %s", addr)
 		}
 		// Before initialize, the bridge proxy holds only its implementation slot.
 		assert.Greater(t, len(genesis.Alloc[contracts.BridgeAddr].Storage), 1, "the bridge must be initialized")
 
+		db := rawdb.NewMemoryDatabase()
+		_, err = genesis.Commit(db, triedb.NewDatabase(db, nil))
+		require.NoError(t, err)
+	})
+
+	t.Run("activates forks in input genesis", func(t *testing.T) {
+		dir := t.TempDir()
+		genesis, _, err := makeDefaultGenesis(1, false)
+		require.NoError(t, err)
+		future := genesis.Timestamp + 1
+		genesis.Config.BreakpointTime = &future
+		genesis.Config.BreakpointAlphaTime = &future
+		genesis.Config.BreakpointBravoTime = &future
+		genesis.Config.BlobScheduleConfig = nil
+		data, err := json.Marshal(genesis)
+		require.NoError(t, err)
+		input, output := filepath.Join(dir, "input.json"), filepath.Join(dir, "output.json")
+		require.NoError(t, os.WriteFile(input, data, 0o600))
+
+		geth := runGeth(t, "make-genesis", "--breakpoint", input, output)
+		geth.WaitExit()
+		require.Zero(t, geth.ExitStatus(), geth.StderrText())
+
+		data, err = os.ReadFile(output)
+		require.NoError(t, err)
+		genesis = new(core.Genesis)
+		require.NoError(t, json.Unmarshal(data, genesis))
+		assert.Equal(t, new(uint64), genesis.Config.BreakpointTime)
+		assert.Equal(t, new(uint64), genesis.Config.BreakpointAlphaTime)
+		assert.Equal(t, new(uint64), genesis.Config.BreakpointBravoTime)
+		assert.Equal(t, new(uint64), genesis.Config.OsakaTime)
+		assert.Equal(t, params.DefaultBlobSchedule, genesis.Config.BlobScheduleConfig)
 		db := rawdb.NewMemoryDatabase()
 		_, err = genesis.Commit(db, triedb.NewDatabase(db, nil))
 		require.NoError(t, err)

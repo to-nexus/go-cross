@@ -20,7 +20,7 @@ import (
 var (
 	makeGenesisBreakpointFlag = &cli.BoolFlag{
 		Name:  "breakpoint",
-		Usage: "Add the Breakpoint system contracts, active from genesis",
+		Usage: "Add the system contracts and activate Breakpoint, BreakpointBravo, and Osaka from genesis",
 	}
 	makeGenesisBridgeFlag = &cli.BoolFlag{
 		Name:  "bridge",
@@ -88,7 +88,8 @@ and runs their initializers at genesis. CrossEx is always added.
 Accounts in the input genesis keep their balances. Without arguments, it generates
 the PoSA keys, builds the genesis from the CrossDev3 chain config, writes it to
 genesis.json, and prints all keys. The generated genesis enables Cancun and
-Prague from genesis, and Breakpoint and BreakpointBravo with --breakpoint.`,
+Prague from genesis, and Breakpoint, BreakpointBravo, and Osaka with --breakpoint
+or --all.`,
 	}
 )
 
