@@ -2507,8 +2507,12 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 
 	// forged has the same hash but an invalid fee payer signature, which anyone can make for free.
 	forged := types.NewTx(&types.FeeDelegatedDynamicFeeTx{SenderTx: inner, FeePayer: &payer, FV: big.NewInt(0), FR: big.NewInt(1), FS: big.NewInt(1)})
+	// oversized has the same hash but an inflated fee payer R.
+	const maxTxSize = 128 * 1024 // txMaxSize of the legacy pool
+	oversized := types.NewTx(&types.FeeDelegatedDynamicFeeTx{SenderTx: inner, FeePayer: &payer, FV: big.NewInt(0), FR: new(big.Int).Lsh(common.Big1, 8*maxTxSize), FS: big.NewInt(1)})
 	require.Equal(t, plain.Hash(), wrapped.Hash())
 	require.Equal(t, plain.Hash(), forged.Hash())
+	require.Equal(t, plain.Hash(), oversized.Hash())
 	require.Greater(t, wrapped.Size(), plain.Size()+8)
 
 	sender := crypto.PubkeyToAddress(senderKey.PublicKey)
@@ -2524,6 +2528,7 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 	}
 
 	hash := plain.Hash()
+	var earlyErr error // returned before any signature check
 	notify := func(peer string, kind byte, size uint64) doTxNotify {
 		return doTxNotify{peer: peer, hashes: []common.Hash{hash}, types: []byte{kind}, sizes: []uint32{uint32(size)}}
 	}
@@ -2540,6 +2545,15 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 					func(txs []*types.Transaction) []error {
 						errs := make([]error, len(txs))
 						for i, tx := range txs {
+							// As in the legacy pool, these come before any signature check.
+							if earlyErr != nil {
+								errs[i] = earlyErr
+								continue
+							}
+							if tx.Size() > maxTxSize {
+								errs[i] = txpool.ErrOversizedData
+								continue
+							}
 							errs[i] = txpool.ValidateTransactionWithState(tx, signer, opts)
 						}
 						return errs
@@ -2596,6 +2610,14 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 		)
 		assert.Equal(t, []string{"A"}, dropped)
 	})
+	t.Run("size mismatch beyond the fee payer fields drops", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", plain.Type(), wrapped.Size()+100),
+			notify("B", plain.Type(), 1),
+			doTxEnqueue{peer: "C", txs: []*types.Transaction{wrapped}, direct: false},
+		)
+		assert.ElementsMatch(t, []string{"A", "B"}, dropped)
+	})
 	t.Run("forged fee-delegated tx broadcast keeps honest announcements", func(t *testing.T) {
 		dropped := run(t,
 			notify("A", plain.Type(), plain.Size()),
@@ -2627,7 +2649,58 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 		)
 		assert.Empty(t, dropped)
 	})
+	t.Run("oversized forged fee-delegated tx broadcast keeps honest peers", func(t *testing.T) {
+		dropped := run(t,
+			notify("A", wrapped.Type(), wrapped.Size()),
+			notify("B", plain.Type(), plain.Size()),
+			doTxEnqueue{peer: "X", txs: []*types.Transaction{oversized}, direct: false},
+			isWaiting(map[string][]announce{"A": {ann(wrapped)}, "B": {ann(plain)}}),
+		)
+		assert.Empty(t, dropped)
+	})
+	t.Run("already known", func(t *testing.T) {
+		// The valid tx entered the pool another way, such as RPC.
+		earlyErr = txpool.ErrAlreadyKnown
+		defer func() { earlyErr = nil }()
+
+		t.Run("forged fee-delegated tx broadcast keeps waiting peers", func(t *testing.T) {
+			dropped := run(t,
+				notify("A", wrapped.Type(), wrapped.Size()),
+				notify("B", plain.Type(), plain.Size()),
+				doTxEnqueue{peer: "X", txs: []*types.Transaction{oversized}, direct: false},
+				isWaiting(map[string][]announce{"A": {ann(wrapped)}, "B": {ann(plain)}}),
+			)
+			assert.Empty(t, dropped)
+		})
+		t.Run("forged fee-delegated tx reply keeps scheduled peers", func(t *testing.T) {
+			dropped := run(t,
+				notify("X", oversized.Type(), oversized.Size()),
+				doWait{time: txArriveTimeout, step: true},
+				notify("A", wrapped.Type(), wrapped.Size()),
+				doTxEnqueue{peer: "X", txs: []*types.Transaction{oversized}, direct: true},
+				isScheduled{
+					tracking: map[string][]announce{"A": {ann(wrapped)}},
+					fetching: map[string][]common.Hash{"A": {hash}},
+				},
+			)
+			assert.Empty(t, dropped)
+		})
+	})
+	t.Run("forged fee-delegated tx over the Osaka gas cap keeps honest peers", func(t *testing.T) {
+		// The announcements were made before Osaka.
+		earlyErr = core.ErrGasLimitTooHigh
+		defer func() { earlyErr = nil }()
+
+		dropped := run(t,
+			notify("A", wrapped.Type(), wrapped.Size()),
+			notify("B", plain.Type(), plain.Size()),
+			doTxEnqueue{peer: "X", txs: []*types.Transaction{oversized}, direct: false},
+			isWaiting(map[string][]announce{"A": {ann(wrapped)}, "B": {ann(plain)}}),
+		)
+		assert.Empty(t, dropped)
+	})
 	t.Run("unfunded sender", func(t *testing.T) {
+		// The sender cannot pay for the stripped inner tx.
 		statedb.SetBalance(sender, new(uint256.Int), tracing.BalanceChangeUnspecified)
 		require.ErrorIs(t, txpool.ValidateTransactionWithState(plain, signer, opts), core.ErrInsufficientFunds)
 		require.NoError(t, txpool.ValidateTransactionWithState(wrapped, signer, opts))
@@ -2663,6 +2736,32 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 			)
 			assert.Empty(t, dropped)
 		})
+		t.Run("inner tx announced only as dynamic fee clears announcements", func(t *testing.T) {
+			dropped := run(t,
+				notify("A", plain.Type(), plain.Size()),
+				notify("B", plain.Type(), plain.Size()),
+				doTxEnqueue{peer: "X", txs: []*types.Transaction{plain}, direct: false},
+				isWaiting(nil),
+				doWait{time: txArriveTimeout, step: true},
+				isScheduled{},
+			)
+			assert.Empty(t, dropped)
+		})
+	})
+	t.Run("fee-delegated tx rejected without a fee payer error clears announcements", func(t *testing.T) {
+		// A stale tx, included while peers still announce it.
+		statedb.SetNonce(sender, 1, tracing.NonceChangeUnspecified)
+		require.ErrorIs(t, txpool.ValidateTransactionWithState(wrapped, signer, opts), core.ErrNonceTooLow)
+
+		dropped := run(t,
+			notify("A", wrapped.Type(), wrapped.Size()),
+			notify("B", wrapped.Type(), wrapped.Size()),
+			doTxEnqueue{peer: "X", txs: []*types.Transaction{wrapped}, direct: false},
+			isWaiting(nil),
+			doWait{time: txArriveTimeout, step: true},
+			isScheduled{},
+		)
+		assert.Empty(t, dropped)
 	})
 }
 

@@ -1354,7 +1354,7 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 	// Bound the wall-clock time spent filling transactions.
 	// The signal is polled between transactions, so the build cannot run
 	// far past the round timeout and a proposal is always sealed in time.
-	if w.chainConfig.IsIstanbulConsensus() && w.newpayloadTimeout > 0 {
+	if interrupt != nil && w.chainConfig.IsIstanbulConsensus() && w.newpayloadTimeout > 0 {
 		timer := time.AfterFunc(w.newpayloadTimeout, func() {
 			// The interrupt is shared with newWorkLoop; keep an earlier reason.
 			interrupt.CompareAndSwap(commitInterruptNone, commitInterruptTimeout)

@@ -100,6 +100,18 @@ func TestBeacon_VerifyHeader(t *testing.T) {
 	})
 }
 
+func TestBeacon_Prepare(t *testing.T) {
+	chain, _ := newBeaconTestChain(t)
+	engine := chain.Engine().(*beacon.Beacon)
+	genesis := chain.Genesis()
+	// The test chain is post-merge.
+	require.True(t, chain.Config().IsPostMerge(1, genesis.Time()+1))
+
+	header := makeHeader(genesis, engine.InnerEngine().(*Backend).config, chain.Config())
+	require.NoError(t, engine.Prepare(chain, header))
+	assert.Equal(t, istanbul.DefaultDifficulty, header.Difficulty)
+}
+
 func TestBeacon_VerifyHeaders(t *testing.T) {
 	chain, block := newBeaconTestChain(t)
 	child := postMergeTestHeader(block.Header())

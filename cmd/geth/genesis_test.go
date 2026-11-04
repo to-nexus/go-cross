@@ -85,7 +85,7 @@ var customGenesisTests = []struct {
 
 func TestMakeDefaultGenesis(t *testing.T) {
 	t.Run("reject zero validators", func(t *testing.T) {
-		_, _, err := makeDefaultGenesis(0, true)
+		_, _, err := makeDefaultGenesis(0)
 		require.ErrorContains(t, err, "greater than zero")
 	})
 
@@ -94,7 +94,7 @@ func TestMakeDefaultGenesis(t *testing.T) {
 	})
 
 	t.Run("print keys as JSON", func(t *testing.T) {
-		_, keys, err := makeDefaultGenesis(2, true)
+		_, keys, err := makeDefaultGenesis(2)
 		require.NoError(t, err)
 
 		var output bytes.Buffer
@@ -125,7 +125,7 @@ func TestMakeDefaultGenesis(t *testing.T) {
 
 func testMakeDefaultBreakpointGenesis(t *testing.T, validatorCount uint) {
 	originalAdmin := params.CrossDev3ChainConfig.Istanbul.PoSA.Admin
-	genesis, keys, err := makeDefaultGenesis(validatorCount, true)
+	genesis, keys, err := makeDefaultGenesis(validatorCount)
 	require.NoError(t, err)
 	require.NoError(t, core.MakeGenesis(genesis, core.GenesisContracts{Breakpoint: true}))
 	assert.Len(t, keys.validators, int(validatorCount))

@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -73,6 +74,7 @@ type Engine struct {
 	stakeHub       *breakpoint.StakeHub
 	rewardHub      *breakpoint.RewardHub
 	validatorSlash *breakpoint.ValidatorSlash
+	stakeHubLatest *latest.StakeHub // calls that only the latest StakeHub has
 	// ##
 
 	// permissioning cache. Kept as a pointer to avoid copying the Engine value (copylocks).
@@ -115,6 +117,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		stakeHub:        breakpoint.NewStakeHub(),
 		rewardHub:       breakpoint.NewRewardHub(),
 		validatorSlash:  breakpoint.NewValidatorSlash(),
+		stakeHubLatest:  latest.NewStakeHub(),
 		// ##
 		validatorCache: &validatorCache{eligible: lru.NewCache[common.Address, eligibilityEntry](validatorCacheSize)},
 	}
@@ -653,13 +656,7 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 		// Verify the BLS aggregated signature
 		proposalSeal := prepareCommittedSealHash(header, extra.Round)
 		if err := verifyAggregatedSeal(extra.SignersBitset, committedSeal[0], proposalSeal, validators); err != nil {
-			log.Error("Istanbul: failed to verify aggregated seal",
-				"number", header.Number.Uint64(),
-				"err", err,
-				"proposalSeal", proposalSeal.String(),
-				"validators", validators.List(),
-				"extra", hexutil.Encode(header.Extra),
-			)
+			log.Debug("Istanbul: failed to verify aggregated seal", "number", header.Number.Uint64(), "hash", header.Hash(), "err", err)
 			return err
 		}
 		// ##
@@ -739,11 +736,12 @@ func verifyAggregatedSeal(signersBitset []uint64, seal []byte, hash common.Hash,
 // ##CROSS: parent commit
 // ParentCommitRequired reports whether the header must carry the commit certificate of its parent.
 func ParentCommitRequired(config *params.ChainConfig, header, parent *types.Header) bool {
-	return config.IsBreakpointBravo(header.Number, header.Time) && parent.Number.Sign() > 0 && config.IsIstanbulPoSA(parent.Number, parent.Time)
+	return config.IsBreakpointBravo(header.Number, header.Time) && config.IsIstanbulPoSA(parent.Number, parent.Time)
 }
 
 // VerifyParentCommit checks the parent commit certificate in the header.
 // The validators must be the set that sealed the parent, which is the grandparent's snapshot: they are only read when required.
+// The parent must have passed header verification, as its own seal is trusted.
 func (e *Engine) VerifyParentCommit(chain consensus.ChainHeaderReader, header, parent *types.Header, validators istanbul.ValidatorSet) error {
 	extra, err := types.ExtractIstanbulExtra(header)
 	if err != nil {
@@ -758,6 +756,11 @@ func (e *Engine) VerifyParentCommit(chain consensus.ChainHeaderReader, header, p
 	}
 	if pc == nil {
 		return fmt.Errorf("%w: missing at block %d", istanbul.ErrInvalidParentCommit, header.Number)
+	}
+	// The parent's own seal is already verified.
+	if own, err := extractParentCommit(parent); err == nil && own.Round == pc.Round &&
+		slices.Equal(own.SignersBitset, pc.SignersBitset) && bytes.Equal(own.CommittedSeal, pc.CommittedSeal) {
+		return nil
 	}
 	// Commit seals sign the parent hash with the round, so only the round they were made in verifies.
 	if err := verifyAggregatedSeal(pc.SignersBitset, pc.CommittedSeal, prepareCommittedSealHash(parent, pc.Round), validators); err != nil {
