@@ -496,7 +496,7 @@ func (l *list) subTotalCost(txs []*types.Transaction) {
 // fee-payer index. It is a no-op unless this list is wired to the shared map and
 // the transaction is sponsored by another account.
 func (l *list) addFeePayerCost(tx *types.Transaction) {
-	if l.feePayerCost == nil || !sponsored(tx) {
+	if l.feePayerCost == nil || !tx.Sponsored() {
 		return
 	}
 	cost, overflow := uint256.FromBig(tx.FeePayerCost())
@@ -512,19 +512,10 @@ func (l *list) addFeePayerCost(tx *types.Transaction) {
 	sum.Add(sum, cost)
 }
 
-// sponsored reports whether tx is fee-delegated to a fee payer other than its sender.
-func sponsored(tx *types.Transaction) bool {
-	if tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
-		return false
-	}
-	from, _ := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
-	return *tx.FeePayer() != from
-}
-
 // subFeePayerCost removes the transaction's fee-payer cost from the shared
 // pool-level fee-payer index, mirroring addFeePayerCost.
 func (l *list) subFeePayerCost(tx *types.Transaction) {
-	if l.feePayerCost == nil || !sponsored(tx) {
+	if l.feePayerCost == nil || !tx.Sponsored() {
 		return
 	}
 	payer := *tx.FeePayer()

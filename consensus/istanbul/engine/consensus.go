@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
@@ -18,7 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul/validator"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
-	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -324,19 +324,22 @@ func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) (bool, 
 }
 
 // queryEligibleValidator performs the actual StakeHub lookups. It first calls isEligibleValidator, and falls back to
-// the separate lookups below if the call fails (the StakeHub at this block does not have it yet).
+// the separate lookups below if the call reverts (the StakeHub at this block does not have it yet).
 // Per-address eligibility is not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
 func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) (bool, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
 
 	// 0) isEligibleValidator does steps 1-5 in a single call.
-	stakeHubLatest := latest.NewStakeHub()
-	eligible, err := bind.Call(stakeHubInstance, callopts, stakeHubLatest.PackIsEligibleValidator(addr), stakeHubLatest.UnpackIsEligibleValidator)
+	eligible, err := bind.Call(stakeHubInstance, callopts, e.stakeHubLatest.PackIsEligibleValidator(addr), e.stakeHubLatest.UnpackIsEligibleValidator)
 	if err == nil {
 		return eligible, nil
 	}
-	log.Debug("Failed to call isEligibleValidator, falling back", "addr", addr, "number", number, "err", err)
+	if !strings.Contains(err.Error(), vm.ErrExecutionReverted.Error()) {
+		log.Warn("Failed to call isEligibleValidator", "addr", addr, "number", number, "err", err)
+		return false, err
+	}
+	log.Debug("isEligibleValidator is not available, falling back", "addr", addr, "number", number, "err", err)
 
 	// 1) validator (nodekey) address → operator address. 0 means not registered.
 	operator, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackValidatorToOperator(addr), e.stakeHub.UnpackValidatorToOperator)
@@ -548,7 +551,7 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 	// ##CROSS: parent commit
 	// Skip proposers that signed a recent commit.
 	if chain.Config().IsBreakpointBravo(header.Number, header.Time) {
-		return e.filterRecentlyActive(chain, header, proposers, 2*len(validators))
+		return e.filterRecentlyActive(chain, header, proposers, validators)
 	}
 	// ##
 
@@ -567,6 +570,10 @@ func parentRound(config *params.ChainConfig, header, parent *types.Header) (uint
 		}
 		return extra.Round, nil
 	}
+	// eth_simulateV1 builds headers without Istanbul extra.
+	if len(header.Extra) == 0 {
+		return 0, nil
+	}
 	extra, err := types.ExtractIstanbulExtra(header)
 	if err != nil {
 		return 0, err
@@ -579,7 +586,7 @@ func parentRound(config *params.ChainConfig, header, parent *types.Header) (uint
 
 // filterRecentlyActive drops the proposers that signed any parent commit in the window of headers ending at header.
 // The commits are part of the block hashes, so every node gets the same result.
-func (e *Engine) filterRecentlyActive(chain consensus.ChainHeaderReader, header *types.Header, proposers []common.Address, window int) ([]common.Address, error) {
+func (e *Engine) filterRecentlyActive(chain consensus.ChainHeaderReader, header *types.Header, proposers, validators []common.Address) ([]common.Address, error) {
 	ie := consensus.ToIstanbulEngine(e.consensus)
 	if ie == nil {
 		return proposers, nil
@@ -589,8 +596,12 @@ func (e *Engine) filterRecentlyActive(chain consensus.ChainHeaderReader, header 
 	if parent == nil {
 		return nil, consensus.ErrUnknownAncestor
 	}
-	active := make(map[common.Address]bool)
-	for range window {
+	pending := make(map[common.Address]bool, len(proposers))
+	for _, proposer := range proposers {
+		pending[proposer] = true
+	}
+	window := 2 * len(validators)
+	for i := 0; i < window && len(pending) > 0; i++ {
 		extra, err := types.ExtractIstanbulExtra(header)
 		if err != nil {
 			return nil, err
@@ -603,20 +614,22 @@ func (e *Engine) filterRecentlyActive(chain consensus.ChainHeaderReader, header 
 			return nil, consensus.ErrUnknownAncestor
 		}
 
-		validators := ie.ValidatorsAt(chain, grandparent)
-		if len(validators) == 0 {
-			return nil, fmt.Errorf("no validators at block %d", grandparent.Number.Uint64())
+		if i > 0 {
+			validators = ie.ValidatorsAt(chain, grandparent)
+			if len(validators) == 0 {
+				return nil, fmt.Errorf("no validators at block %d", grandparent.Number.Uint64())
+			}
 		}
 		signers := bitset.From(extra.ParentCommit.SignersBitset)
 		for index, validator := range validators {
 			if signers.Test(uint(index)) {
-				active[validator] = true
+				delete(pending, validator)
 			}
 		}
 
 		header, parent = parent, grandparent
 	}
-	return slices.DeleteFunc(proposers, func(proposer common.Address) bool { return active[proposer] }), nil
+	return slices.DeleteFunc(proposers, func(proposer common.Address) bool { return !pending[proposer] }), nil
 }
 
 // ##

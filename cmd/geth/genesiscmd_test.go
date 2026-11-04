@@ -63,7 +63,7 @@ func TestMakeGenesisCommand(t *testing.T) {
 
 	t.Run("activates forks in input genesis", func(t *testing.T) {
 		dir := t.TempDir()
-		genesis, _, err := makeDefaultGenesis(1, false)
+		genesis, _, err := makeDefaultGenesis(1)
 		require.NoError(t, err)
 		future := genesis.Timestamp + 1
 		genesis.Config.BreakpointTime = &future

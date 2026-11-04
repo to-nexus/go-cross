@@ -1945,17 +1945,6 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 		return 0, nil
 	}
 
-	// ##CROSS: istanbul
-	// Istanbul PoSA chain never transitions to PoS.
-	if bc.chainConfig.IsIstanbulConsensus() {
-		for i, block := range chain {
-			if block.Difficulty().Sign() == 0 {
-				return i, fmt.Errorf("rejecting post-merge (difficulty 0) block #%d [%x..] on istanbul chain", block.NumberU64(), block.Hash().Bytes()[:4])
-			}
-		}
-	}
-	// ##
-
 	// Do a sanity check that the provided chain is actually ordered and linked.
 	for i := 1; i < len(chain); i++ {
 		block, prev := chain[i], chain[i-1]
@@ -2017,6 +2006,17 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: lastCanon.Header()})
 		}
 	}()
+
+	// ##CROSS: istanbul
+	// Istanbul PoSA chain never transitions to PoS.
+	if bc.chainConfig.IsIstanbulConsensus() {
+		for i, block := range chain {
+			if block.Difficulty().Sign() == 0 {
+				return nil, i, fmt.Errorf("rejecting post-merge (difficulty 0) block #%d [%x..] on istanbul chain", block.NumberU64(), block.Hash().Bytes()[:4])
+			}
+		}
+	}
+	// ##
 
 	// ##CROSS: blob sidecars
 	// Check block data available first

@@ -330,6 +330,24 @@ func TestEngineVerifyParentCommit(t *testing.T) {
 			}
 		})
 	}
+	t.Run("parent's own seal skips the BLS verification", func(t *testing.T) {
+		pc := commit(0, 0, 1, 3)
+		sealed := types.CopyHeader(parent)
+		require.NoError(t, ApplyHeaderIstanbulExtra(sealed, func(extra *types.IstanbulExtra) error {
+			extra.Round, extra.SignersBitset, extra.CommittedSeal = pc.Round, pc.SignersBitset, [][]byte{pc.CommittedSeal}
+			return nil
+		}))
+		header := &types.Header{Number: big.NewInt(3), Time: 3, ParentHash: parent.Hash(), MixDigest: types.IstanbulDigestV2}
+		require.NoError(t, ApplyHeaderIstanbulExtra(header, func(extra *types.IstanbulExtra) error {
+			extra.ParentCommit = pc
+			return nil
+		}))
+		// No validator can verify the seal, so only the skip passes.
+		empty := validator.NewSet(nil, nil, istanbul.NewRoundRobinProposerPolicy())
+		chain := &chainMock{config: bravo}
+		assert.NoError(t, engine.VerifyParentCommit(chain, header, sealed, empty))
+		assert.ErrorIs(t, engine.VerifyParentCommit(chain, header, parent, empty), istanbul.ErrInvalidParentCommit)
+	})
 }
 
 // ##

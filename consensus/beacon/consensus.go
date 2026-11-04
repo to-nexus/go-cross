@@ -332,7 +332,7 @@ func (beacon *Beacon) verifyHeaders(chain consensus.ChainHeaderReader, headers [
 // Prepare implements consensus.Engine, initializing the difficulty field of a
 // header to conform to the beacon protocol. The changes are done inline.
 func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	if !chain.Config().IsPostMerge(header.Number.Uint64(), header.Time) {
+	if chain.Config().IsIstanbulConsensus() || !chain.Config().IsPostMerge(header.Number.Uint64(), header.Time) { // ##CROSS: istanbul
 		return beacon.ethone.Prepare(chain, header)
 	}
 	header.Difficulty = beaconDifficulty
@@ -432,7 +432,7 @@ func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 // Note, the method returns immediately and will send the result async. More
 // than one result may also be returned depending on the consensus algorithm.
 func (beacon *Beacon) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	if !beacon.IsPoSHeader(block.Header()) {
+	if chain.Config().IsIstanbulConsensus() || !beacon.IsPoSHeader(block.Header()) { // ##CROSS: istanbul
 		return beacon.ethone.Seal(chain, block, results, stop)
 	}
 	// The seal verification is done by the external consensus engine,
@@ -451,7 +451,7 @@ func (beacon *Beacon) SealHash(header *types.Header) common.Hash {
 // the difficulty that a new block should have when created at time
 // given the parent block's time and difficulty.
 func (beacon *Beacon) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	if !chain.Config().IsPostMerge(parent.Number.Uint64()+1, time) {
+	if chain.Config().IsIstanbulConsensus() || !chain.Config().IsPostMerge(parent.Number.Uint64()+1, time) { // ##CROSS: istanbul
 		return beacon.ethone.CalcDifficulty(chain, time, parent)
 	}
 	return beaconDifficulty

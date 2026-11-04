@@ -130,7 +130,7 @@ func makeGenesis(ctx *cli.Context) error {
 	switch ctx.Args().Len() {
 	case 0:
 		var err error
-		if genesis, keys, err = makeDefaultGenesis(ctx.Uint("validators"), opts.Breakpoint); err != nil {
+		if genesis, keys, err = makeDefaultGenesis(ctx.Uint("validators")); err != nil {
 			return err
 		}
 		outputPath = "genesis.json"

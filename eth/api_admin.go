@@ -245,8 +245,12 @@ func (api *AdminAPI) waitSuspendTx(ctx context.Context, tx *types.Transaction, f
 			return false, err
 		}
 		if lookup, _ := bc.GetCanonicalTransaction(tx.Hash()); lookup != nil {
+			receipts := bc.GetReceiptsByHash(lookup.BlockHash)
+			if uint64(len(receipts)) <= lookup.Index {
+				return true, fmt.Errorf("receipts for suspend tx %s not found", tx.Hash().Hex())
+			}
 			// The state can change after the gas estimation, so the included tx may still revert.
-			if bc.GetReceiptsByHash(lookup.BlockHash)[lookup.Index].Status == types.ReceiptStatusFailed {
+			if receipts[lookup.Index].Status == types.ReceiptStatusFailed {
 				return true, fmt.Errorf("suspend tx %s failed: %w", tx.Hash().Hex(), api.suspendTxFailure(ctx, tx, lookup))
 			}
 			return true, nil

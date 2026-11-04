@@ -51,6 +51,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // So we can deterministically seed different blockchains
@@ -4648,6 +4649,28 @@ func TestStatePrefetcher_Prefetch(t *testing.T) {
 		execIndex.Store(-1)
 		assert.NotZero(t, reads(t, &execIndex))
 		assert.NotZero(t, reads(t, nil))
+	})
+}
+
+// ##
+
+// ##CROSS: istanbul
+func TestBlockChain_InsertChain(t *testing.T) {
+	config := *params.TestChainConfig
+	config.Istanbul = &params.IstanbulConfig{}
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), &Genesis{Config: &config, BaseFee: big.NewInt(params.InitialBaseFee)}, ethash.NewFaker(), nil)
+	require.NoError(t, err)
+	defer chain.Stop()
+
+	// The check runs first, so an empty block is enough.
+	block := types.NewBlockWithHeader(&types.Header{Number: big.NewInt(1), Difficulty: common.Big0})
+	t.Run("rejects zero difficulty on Istanbul from InsertChain", func(t *testing.T) {
+		_, err := chain.InsertChain(types.Blocks{block})
+		assert.ErrorContains(t, err, "difficulty 0")
+	})
+	t.Run("rejects zero difficulty on Istanbul from InsertBlockWithoutSetHead", func(t *testing.T) {
+		_, err := chain.InsertBlockWithoutSetHead(block, false)
+		assert.ErrorContains(t, err, "difficulty 0")
 	})
 }
 
