@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/istanbul"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -49,6 +50,7 @@ type mockContractBackend struct {
 	codeAtBytes   []byte
 	codeAtErr     error
 	callResponses map[string][][]byte // method selector => responses
+	callErrs      map[string]error    // method selector => error once no response is left
 	callErr       error
 	callCnt       int
 }
@@ -67,6 +69,11 @@ func (m *mockContractBackend) callContract(call ethereum.CallMsg) ([]byte, error
 			m.callResponses[methodSelector] = responses[1:]
 			m.callCnt++
 			return response, m.callErr
+		}
+	}
+	if len(call.Data) >= 4 {
+		if err := m.callErrs[string(call.Data[:4])]; err != nil {
+			return nil, err
 		}
 	}
 	return nil, m.callErr
@@ -613,30 +620,165 @@ func TestSlashValidators(t *testing.T) {
 	}
 }
 
-func TestOfflineProposers(t *testing.T) {
-	validators := []common.Address{addr1, addr2, addr3}
-	headers := make(map[common.Hash]*types.Header)
-	h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
-	h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[1], validators, 3)
-	headers[h0.Hash()] = h0
-	headers[h1.Hash()] = h1
+func TestEngine_OfflineProposers(t *testing.T) {
+	t.Run("proposers of the missed rounds", func(t *testing.T) {
+		validators := []common.Address{addr1, addr2, addr3}
+		headers := make(map[common.Hash]*types.Header)
+		h0 := createHeaderWithIstanbulExtra(t, 98, common.Hash{}, validators[0], validators, 0)
+		h1 := createHeaderWithIstanbulExtra(t, 99, h0.Hash(), validators[1], validators, 3)
+		h2 := createHeaderWithIstanbulExtra(t, 100, h1.Hash(), validators[2], validators, 0)
+		headers[h0.Hash()] = h0
+		headers[h1.Hash()] = h1
+		headers[h2.Hash()] = h2
 
-	mockChain := &mockChainHeaderReader{
-		headers: headers,
-		config:  params.TestChainConfig,
-	}
-	engine := &Engine{
-		cfg: &istanbul.Config{
-			ProposerPolicy: istanbul.NewRoundRobinProposerPolicy(),
-		},
-		consensus: &mockIstanbulEngine{validators: validators},
-	}
+		mockChain := &mockChainHeaderReader{
+			headers: headers,
+			config:  params.TestChainConfig,
+		}
+		engine := &Engine{
+			cfg: &istanbul.Config{
+				ProposerPolicy: istanbul.NewRoundRobinProposerPolicy(),
+			},
+			consensus: &mockIstanbulEngine{validators: validators},
+		}
 
-	proposers, err := engine.offlineProposers(mockChain, h1)
+		proposers, err := engine.offlineProposers(mockChain, h2)
 
-	require.NoError(t, err)
-	assert.Equal(t, []common.Address{validators[1], validators[2], validators[0]}, proposers)
+		require.NoError(t, err)
+		assert.Equal(t, []common.Address{validators[1], validators[2], validators[0]}, proposers)
+	})
+
+	// ##CROSS: parent commit
+	t.Run("parent commit", func(t *testing.T) {
+		validators := []common.Address{addr1, addr2, addr3}
+		const (
+			withoutMissed = uint64(0b101) // addr1 and addr3 signed
+			withMissed    = uint64(0b111) // addr2 signed as well
+		)
+
+		bravo := *params.CrossTestChainConfig
+		bravo.BreakpointBravoTime = newUint64(0)
+		noBravo := *params.CrossTestChainConfig
+		noBravo.BreakpointBravoTime = nil
+
+		// newChain builds a genesis, block 1, and one more block per commit.
+		// Block i carries the commit of block i-1 signed by commits[i-2], or none if it is zero.
+		// Every block is proposed by addr1, so addr2 is the round 0 proposer that missed each parent.
+		// The local rounds are 3 while the commits say 1, so the result shows which one was read.
+		newChain := func(t *testing.T, config *params.ChainConfig, commits ...uint64) (*mockChainHeaderReader, *types.Header) {
+			chain := &mockChainHeaderReader{headers: map[common.Hash]*types.Header{}, config: config}
+			var header *types.Header
+			for i := 0; i <= len(commits)+1; i++ {
+				var parentHash common.Hash
+				if header != nil {
+					parentHash = header.Hash()
+				}
+				header = createHeaderWithIstanbulExtra(t, uint64(i), parentHash, addr1, validators, 3)
+				header.Time = uint64(i + 1)
+				if i > 1 && commits[i-2] != 0 {
+					setParentCommit(t, header, &types.ParentCommit{Round: 1, SignersBitset: []uint64{commits[i-2]}})
+				}
+				chain.headers[header.Hash()] = header
+			}
+			return chain, header
+		}
+		engine := &Engine{
+			cfg:       &istanbul.Config{ProposerPolicy: istanbul.NewRoundRobinProposerPolicy()},
+			consensus: &mockIstanbulEngine{validators: validators},
+		}
+
+		for _, tt := range []struct {
+			name    string
+			config  *params.ChainConfig
+			commits []uint64
+			want    []common.Address
+		}{
+			{
+				name:    "round is read from the parent commit",
+				config:  &bravo,
+				commits: []uint64{withoutMissed, withoutMissed, withoutMissed},
+				want:    []common.Address{addr2},
+			},
+			{
+				name:    "a header without parent commit slashes nobody",
+				config:  &bravo,
+				commits: []uint64{withoutMissed, withoutMissed, 0},
+			},
+			{
+				name:    "a proposer that signed the parent is not slashed",
+				config:  &bravo,
+				commits: []uint64{withoutMissed, withoutMissed, withMissed},
+			},
+			{
+				name:    "a proposer that signed within the window is not slashed",
+				config:  &bravo,
+				commits: []uint64{withoutMissed, withMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed},
+			},
+			{
+				name:    "a signature before the window does not count",
+				config:  &bravo,
+				commits: []uint64{withMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed, withoutMissed},
+				want:    []common.Address{addr2},
+			},
+			{
+				name:    "the window stops at a header without parent commit",
+				config:  &bravo,
+				commits: []uint64{withMissed, 0, withoutMissed, withoutMissed},
+				want:    []common.Address{addr2},
+			},
+			{
+				name:    "before BreakpointBravo the local round is used without filter",
+				config:  &noBravo,
+				commits: []uint64{withMissed, withMissed, withMissed},
+				want:    []common.Address{addr2, addr3, addr1},
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				chain, header := newChain(t, tt.config, tt.commits...)
+				got, err := engine.offlineProposers(chain, header)
+				require.NoError(t, err)
+				if tt.want == nil {
+					assert.Empty(t, got)
+				} else {
+					assert.Equal(t, tt.want, got)
+				}
+			})
+		}
+
+		t.Run("a header without extra slashes nobody", func(t *testing.T) {
+			chain, parent := newChain(t, &bravo, withoutMissed, withoutMissed, withoutMissed)
+			header := &types.Header{ParentHash: parent.Hash(), Number: new(big.Int).Add(parent.Number, common.Big1), Time: parent.Time + 1}
+			got, err := engine.offlineProposers(chain, header)
+			require.NoError(t, err)
+			assert.Empty(t, got)
+		})
+
+		t.Run("the window stops once every proposer signed", func(t *testing.T) {
+			chain, header := newChain(t, &bravo, withoutMissed, withoutMissed, withMissed)
+			// Walking further would fail at the removed genesis.
+			for hash, h := range chain.headers {
+				if h.Number.Sign() == 0 {
+					delete(chain.headers, hash)
+				}
+			}
+			got, err := engine.offlineProposers(chain, header)
+			require.NoError(t, err)
+			assert.Empty(t, got)
+		})
+	})
+	// ##
 }
+
+// ##CROSS: parent commit
+func setParentCommit(t *testing.T, header *types.Header, parentCommit *types.ParentCommit) {
+	t.Helper()
+	require.NoError(t, ApplyHeaderIstanbulExtra(header, func(extra *types.IstanbulExtra) error {
+		extra.ParentCommit = parentCommit
+		return nil
+	}))
+}
+
+// ##
 
 // mockChainHeaderReader implements consensus.ChainHeaderReader for testing
 type mockChainHeaderReader struct {
@@ -815,6 +957,12 @@ func newSlashTestEngine(t *testing.T, bravoTime *uint64) (*Engine, *mockChainHea
 		}
 		header = createHeaderWithIstanbulExtra(t, uint64(98+i), parentHash, h.coinbase, validators, h.round)
 		header.Time = uint64(i + 1) // PoSA starts after the Breakpoint time
+		chain.headers[header.Hash()] = header
+	}
+	if bravoTime != nil {
+		// From BreakpointBravo the round of block 99 comes from block 100. addr2 missed round 0 and did not sign.
+		delete(chain.headers, header.Hash())
+		setParentCommit(t, header, &types.ParentCommit{Round: 1, SignersBitset: []uint64{0b101}})
 		chain.headers[header.Hash()] = header
 	}
 
@@ -1663,6 +1811,7 @@ func TestEngine_QueryEligibleValidator(t *testing.T) {
 		word     = func(b []byte) []byte { return common.LeftPadBytes(b, 32) }
 		selector = func(data []byte) string { return string(data[:4]) }
 	)
+	stakeHubLatest := latest.NewStakeHub()
 	newEngine := func(current []byte) *Engine {
 		responses := map[string][][]byte{
 			selector(stakeHub.PackValidatorToOperator(addr)): {word(operator.Bytes())},
@@ -1673,9 +1822,12 @@ func TestEngine_QueryEligibleValidator(t *testing.T) {
 		if current != nil {
 			responses[selector(stakeHub.PackGetValidatorAddress(addr))] = [][]byte{word(current)}
 		}
+		// An old StakeHub reverts. The error loses its type through RPC.
+		errs := map[string]error{selector(stakeHubLatest.PackIsEligibleValidator(addr)): errors.New(vm.ErrExecutionReverted.Error())}
 		return &Engine{
-			contractBackend: &mockContractBackend{callResponses: responses},
+			contractBackend: &mockContractBackend{callResponses: responses, callErrs: errs},
 			stakeHub:        stakeHub,
+			stakeHubLatest:  stakeHubLatest,
 			validatorCache:  &validatorCache{eligible: lru.NewCache[common.Address, eligibilityEntry](validatorCacheSize)},
 		}
 	}
@@ -1695,6 +1847,35 @@ func TestEngine_QueryEligibleValidator(t *testing.T) {
 	t.Run("returns an error when the current address cannot be read", func(t *testing.T) {
 		_, err := newEngine(nil).queryEligibleValidator(addr, 1)
 		require.Error(t, err)
+	})
+
+	// The cases above revert isEligibleValidator, so they cover the fallback path.
+	t.Run("returns an error other than a revert without the fallback", func(t *testing.T) {
+		e := newEngine(addr.Bytes()) // the fallback would return true
+		missing := errors.New("missing trie node")
+		e.contractBackend.(*mockContractBackend).callErrs[selector(stakeHubLatest.PackIsEligibleValidator(addr))] = missing
+		_, err := e.queryEligibleValidator(addr, 1)
+		assert.ErrorIs(t, err, missing)
+	})
+
+	t.Run("uses isEligibleValidator when available", func(t *testing.T) {
+		for _, tc := range []struct {
+			current  []byte
+			eligible bool
+		}{
+			{current: nil, eligible: true},           // the fallback would fail
+			{current: addr.Bytes(), eligible: false}, // the fallback would return true
+		} {
+			e := newEngine(tc.current)
+			var result byte
+			if tc.eligible {
+				result = 1
+			}
+			e.contractBackend.(*mockContractBackend).callResponses[selector(stakeHubLatest.PackIsEligibleValidator(addr))] = [][]byte{word([]byte{result})}
+			ok, err := e.queryEligibleValidator(addr, 1)
+			require.NoError(t, err)
+			assert.Equal(t, tc.eligible, ok)
+		}
 	})
 }
 

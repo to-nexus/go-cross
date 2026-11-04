@@ -270,11 +270,12 @@ type ValidationOptionsWithState struct {
 
 	// ##CROSS: fee delegation
 	// ExistingFeePayerExpenditure is an optional callback to retrieve the cumulative
-	// fee-payer cost of all already pooled fee-delegated transactions that share the
-	// same fee payer, excluding the transaction currently occupying the (addr, nonce)
-	// slot that the incoming transaction would replace. It is used to prevent a fee
-	// payer from being committed to more than its balance across multiple pooled
-	// transactions (a single tx alone may be payable while the sum is not).
+	// fee-payer cost of all already pooled fee-delegated transactions that the fee
+	// payer sponsors for other senders, excluding the transaction currently
+	// occupying the (addr, nonce) slot that the incoming transaction would replace.
+	// It is used to prevent a fee payer from being committed to more than its
+	// balance across multiple pooled transactions (a single tx alone may be payable
+	// while the sum is not).
 	ExistingFeePayerExpenditure func(feePayer common.Address, addr common.Address, nonce uint64) *big.Int
 }
 
@@ -333,7 +334,10 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		// payer itself has pending as a regular sender (tx.Cost() each): both the
 		// sponsored gas costs and its own outgoing costs come out of the same
 		// account, so both must be counted here.
-		if opts.ExistingFeePayerExpenditure != nil {
+		//
+		// A self-sponsored tx is the sender's own cost, so the sender check below
+		// covers it, including the cost of the tx it replaces.
+		if opts.ExistingFeePayerExpenditure != nil && feePayer != from {
 			feePayerSponsored := opts.ExistingFeePayerExpenditure(feePayer, from, tx.Nonce())
 			feePayerOwn := opts.ExistingExpenditure(*tx.FeePayer())
 			feePayerPooled := new(big.Int).Add(feePayerSponsored, feePayerOwn)
@@ -352,6 +356,12 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 	// Ensure the transactor has enough funds to cover for replacements or nonce
 	// expansions without overdrafts
 	spent := opts.ExistingExpenditure(from)
+	// ##CROSS: fee delegation
+	// from's balance also pays for the pending txs it sponsors for other senders.
+	if opts.ExistingFeePayerExpenditure != nil {
+		spent = new(big.Int).Add(spent, opts.ExistingFeePayerExpenditure(from, from, tx.Nonce()))
+	}
+	// ##
 	if prev := opts.ExistingCost(from, tx.Nonce()); prev != nil {
 		bump := new(big.Int).Sub(cost, prev)
 		need := new(big.Int).Add(spent, bump)

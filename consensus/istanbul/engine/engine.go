@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/contracts/breakpoint"
+	"github.com/ethereum/go-ethereum/contracts/latest"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -73,6 +74,7 @@ type Engine struct {
 	stakeHub       *breakpoint.StakeHub
 	rewardHub      *breakpoint.RewardHub
 	validatorSlash *breakpoint.ValidatorSlash
+	stakeHubLatest *latest.StakeHub // calls that only the latest StakeHub has
 	// ##
 
 	// permissioning cache. Kept as a pointer to avoid copying the Engine value (copylocks).
@@ -115,6 +117,7 @@ func NewEngine(cfg *istanbul.Config, signer common.Address, sign SignerFn, signT
 		stakeHub:        breakpoint.NewStakeHub(),
 		rewardHub:       breakpoint.NewRewardHub(),
 		validatorSlash:  breakpoint.NewValidatorSlash(),
+		stakeHubLatest:  latest.NewStakeHub(),
 		// ##
 		validatorCache: &validatorCache{eligible: lru.NewCache[common.Address, eligibilityEntry](validatorCacheSize)},
 	}
@@ -156,7 +159,7 @@ func (e *Engine) IsSystemContract(to *common.Address) bool {
 
 const (
 	systemTxsGasBreakpoint = 3_000_000
-	systemTxsGasNewPeriod  = 1_000_000
+	systemTxsGasNewPeriod  = 2_000_000
 	systemTxsGasUsual      = 900_000
 )
 
@@ -170,10 +173,10 @@ func (e *Engine) EstimateGasForSystemTxs(chain consensus.ChainHeaderReader, head
 	if parent != nil {
 		// Possible system transactions and approx. gas costs:
 		//   Initialize system contracts (on hardfork): 2,200,000 on Breakpoint
-		//   Slash and jail a validator: 300,000
-		//   Distribute rewards: 200,000
-		//   Reduce slash counters (on new day block): 30,000
-		//   Update validator set (on new day block): 70,000
+		//   Slash and jail a validator: 326,000
+		//   Distribute rewards: 384,000
+		//   Mitigate slash counters (on new day block): 82,000
+		//   Update validator set (on new day block): 786,000
 		if chain.Config().IsOnBreakpoint(header.Number, parent.Time, header.Time) {
 			return systemTxsGasBreakpoint
 		}
@@ -651,43 +654,10 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 		}
 
 		// Verify the BLS aggregated signature
-		_, pubs, err := e.BLSSigners(header, validators)
-		if err != nil {
-			return err
-		}
-		pubkeys := make([]bls.PublicKey, 0, len(pubs))
-		for _, pub := range pubs {
-			pubkey, err := bls.PublicKeyFromBytes(pub.Bytes())
-			if err != nil {
-				return err
-			}
-			pubkeys = append(pubkeys, pubkey)
-		}
-
-		if len(pubkeys) < validators.QuorumSize() {
-			return istanbul.ErrInvalidCommittedSeals
-		}
-
 		proposalSeal := prepareCommittedSealHash(header, extra.Round)
-		sig, err := bls.SignatureFromBytes(committedSeal[0])
-		if err != nil {
+		if err := verifyAggregatedSeal(extra.SignersBitset, committedSeal[0], proposalSeal, validators); err != nil {
+			log.Debug("Istanbul: failed to verify aggregated seal", "number", header.Number.Uint64(), "hash", header.Hash(), "err", err)
 			return err
-		}
-
-		if !sig.FastAggregateVerify(pubkeys, proposalSeal) {
-			pubkeystr := make([]string, 0, len(pubkeys))
-			for _, pubkey := range pubkeys {
-				pubkeystr = append(pubkeystr, hexutil.Encode(pubkey.Marshal()))
-			}
-			log.Error("Istanbul: failed to verify aggregated seal",
-				"number", header.Number.Uint64(),
-				"sig", hexutil.Encode(sig.Marshal()),
-				"proposalSeal", proposalSeal.String(),
-				"pubkeys", pubkeystr,
-				"validators", validators.List(),
-				"extra", hexutil.Encode(header.Extra),
-			)
-			return istanbul.ErrInvalidCommittedSeals
 		}
 		// ##
 	} else {
@@ -730,6 +700,88 @@ func (e *Engine) verifyCommittedSeals(chain consensus.ChainHeaderReader, header 
 
 	return nil
 }
+
+// ##CROSS: bls seal
+// verifyAggregatedSeal checks that the signers in the bitset reach the quorum of the validators and that seal is their aggregated signature of hash.
+func verifyAggregatedSeal(signersBitset []uint64, seal []byte, hash common.Hash, validators istanbul.ValidatorSet) error {
+	_, pubs, err := blsSigners(signersBitset, validators)
+	if err != nil {
+		return err
+	}
+	pubkeys := make([]bls.PublicKey, 0, len(pubs))
+	for _, pub := range pubs {
+		pubkey, err := bls.PublicKeyFromBytes(pub.Bytes())
+		if err != nil {
+			return err
+		}
+		pubkeys = append(pubkeys, pubkey)
+	}
+
+	if len(pubkeys) < validators.QuorumSize() {
+		return istanbul.ErrInvalidCommittedSeals
+	}
+
+	sig, err := bls.SignatureFromBytes(seal)
+	if err != nil {
+		return err
+	}
+	if !sig.FastAggregateVerify(pubkeys, hash) {
+		return istanbul.ErrInvalidCommittedSeals
+	}
+	return nil
+}
+
+// ##
+
+// ##CROSS: parent commit
+// ParentCommitRequired reports whether the header must carry the commit certificate of its parent.
+func ParentCommitRequired(config *params.ChainConfig, header, parent *types.Header) bool {
+	return config.IsBreakpointBravo(header.Number, header.Time) && config.IsIstanbulPoSA(parent.Number, parent.Time)
+}
+
+// VerifyParentCommit checks the parent commit certificate in the header.
+// The validators must be the set that sealed the parent, which is the grandparent's snapshot: they are only read when required.
+// The parent must have passed header verification, as its own seal is trusted.
+func (e *Engine) VerifyParentCommit(chain consensus.ChainHeaderReader, header, parent *types.Header, validators istanbul.ValidatorSet) error {
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
+		return istanbul.ErrInvalidExtraDataFormat
+	}
+	pc := extra.ParentCommit
+	if !ParentCommitRequired(chain.Config(), header, parent) {
+		if pc != nil {
+			return fmt.Errorf("%w: not allowed at block %d", istanbul.ErrInvalidParentCommit, header.Number)
+		}
+		return nil
+	}
+	if pc == nil {
+		return fmt.Errorf("%w: missing at block %d", istanbul.ErrInvalidParentCommit, header.Number)
+	}
+	// The parent's own seal is already verified.
+	if own, err := extractParentCommit(parent); err == nil && own.Round == pc.Round &&
+		slices.Equal(own.SignersBitset, pc.SignersBitset) && bytes.Equal(own.CommittedSeal, pc.CommittedSeal) {
+		return nil
+	}
+	// Commit seals sign the parent hash with the round, so only the round they were made in verifies.
+	if err := verifyAggregatedSeal(pc.SignersBitset, pc.CommittedSeal, prepareCommittedSealHash(parent, pc.Round), validators); err != nil {
+		return fmt.Errorf("%w: %w", istanbul.ErrInvalidParentCommit, err)
+	}
+	return nil
+}
+
+// extractParentCommit copies the commit certificate from the local copy of the parent.
+func extractParentCommit(parent *types.Header) (*types.ParentCommit, error) {
+	extra, err := types.ExtractIstanbulExtra(parent)
+	if err != nil {
+		return nil, err
+	}
+	if len(extra.CommittedSeal) != 1 {
+		return nil, istanbul.ErrInvalidCommittedSeals
+	}
+	return &types.ParentCommit{Round: extra.Round, SignersBitset: extra.SignersBitset, CommittedSeal: extra.CommittedSeal[0]}, nil
+}
+
+// ##
 
 // VerifyUncles verifies that the given block's uncles conform to the consensus
 // rules of a given engine.
@@ -833,6 +885,19 @@ func (e *Engine) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	applies := []ApplyExtra{
 		WriteRandomReveal(chain, header, randomReveal),
 	}
+
+	// ##CROSS: parent commit
+	var parentCommit *types.ParentCommit
+	if ParentCommitRequired(chain.Config(), header, parent) {
+		if parentCommit, err = extractParentCommit(parent); err != nil {
+			return err
+		}
+	}
+	applies = append(applies, func(extra *types.IstanbulExtra) error {
+		extra.ParentCommit = parentCommit
+		return nil
+	})
+	// ##
 
 	applyValidators, err := e.prepareValidators(chain, header, validators)
 	if err != nil {
@@ -1170,8 +1235,12 @@ func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSe
 	if err != nil {
 		return nil, nil, err
 	}
+	return blsSigners(extra.SignersBitset, validators)
+}
 
-	bs := bitset.From(extra.SignersBitset)
+// blsSigners resolves a signers bitset against the byte-sorted validators.
+func blsSigners(signersBitset []uint64, validators istanbul.ValidatorSet) ([]common.Address, []types.BLSPublicKey, error) {
+	bs := bitset.From(signersBitset)
 	signerCount := bs.Count()
 	if signerCount == 0 {
 		return nil, nil, istanbul.ErrEmptySigners
@@ -1190,7 +1259,7 @@ func (e Engine) BLSSigners(header *types.Header, validators istanbul.ValidatorSe
 		pubkeys = append(pubkeys, val.SignerAddress())
 	}
 	// compare expected signers bitset with actual signers bitset
-	if !slices.Equal(extra.SignersBitset, expected.Words()) {
+	if !slices.Equal(signersBitset, expected.Words()) {
 		return nil, nil, istanbul.ErrInvalidSignersBitset
 	}
 	if len(pubkeys) == 0 {

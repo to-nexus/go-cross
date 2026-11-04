@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -119,6 +120,9 @@ type txDelivery struct {
 	metas     []txMetadata  // Batch of metadata associated with the delivered hashes
 	direct    bool          // Whether this is a direct reply or a broadcast
 	violation error         // Whether we encountered a protocol violation
+	// ##CROSS: fee delegation
+	inner map[common.Hash]bool // Rejected dynamic fee txs
+	// ##
 }
 
 // txDrop is the notification that a peer has disconnected.
@@ -302,6 +306,7 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 	var (
 		added = make([]common.Hash, 0, len(txs))
 		metas = make([]txMetadata, 0, len(txs))
+		inner = make(map[common.Hash]bool) // ##CROSS: fee delegation
 	)
 	// proceed in batches
 	for i := 0; i < len(txs); i += addTxsBatchSize {
@@ -341,7 +346,22 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 
 			default:
 				otherreject++
+
+				// ##CROSS: fee delegation
+				// A dynamic fee tx may be stripped from a fee-delegated tx. The loop decides by the announcements.
+				if batch[j].Type() == types.DynamicFeeTxType {
+					inner[batch[j].Hash()] = true
+				}
+				// ##
 			}
+			// ##CROSS: fee delegation
+			// The hash does not cover the fee payer fields, so these errors may come from a forged copy.
+			// Keep tracking the hash, without comparing the forged size.
+			if batch[j].Type() == types.FeeDelegatedDynamicFeeTxType && (errors.Is(err, txpool.ErrAlreadyKnown) || errors.Is(err, txpool.ErrOversizedData) ||
+				errors.Is(err, core.ErrGasLimitTooHigh) || errors.Is(err, core.ErrInvalidFeePayer) || errors.Is(err, core.ErrFeePayerInsufficientFunds)) {
+				continue
+			}
+			// ##
 			added = append(added, batch[j].Hash())
 			metas = append(metas, txMetadata{
 				kind: batch[j].Type(),
@@ -368,7 +388,7 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		}
 	}
 	select {
-	case f.cleanup <- &txDelivery{origin: peer, hashes: added, metas: metas, direct: direct, violation: violation}:
+	case f.cleanup <- &txDelivery{origin: peer, hashes: added, metas: metas, direct: direct, violation: violation, inner: inner}: // ##CROSS: fee delegation
 		return nil
 	case <-f.quit:
 		return errTerminated
@@ -633,6 +653,8 @@ func (f *TxFetcher) loop() {
 			f.rescheduleTimeout(timeoutTimer, timeoutTrigger)
 
 		case delivery := <-f.cleanup:
+			f.keepStrippedHashes(delivery) // ##CROSS: fee delegation
+
 			// Independent if the delivery was direct or broadcast, remove all
 			// traces of the hash from internal trackers. That said, compare any
 			// advertised metadata with the real ones and drop bad peers.
@@ -640,11 +662,11 @@ func (f *TxFetcher) loop() {
 				if _, ok := f.waitlist[hash]; ok {
 					for peer, txset := range f.waitslots {
 						if meta := txset[hash]; meta != nil {
-							if delivery.metas[i].kind != meta.kind {
+							if delivery.metas[i].kind != meta.kind && !isFeeDelegationPair(delivery.metas[i].kind, meta.kind) { // ##CROSS: fee delegation
 								log.Warn("Announced transaction type mismatch", "peer", peer, "tx", hash, "type", delivery.metas[i].kind, "ann", meta.kind)
 								f.dropPeer(peer)
 							} else if delivery.metas[i].size != meta.size {
-								if math.Abs(float64(delivery.metas[i].size)-float64(meta.size)) > 8 {
+								if math.Abs(float64(delivery.metas[i].size)-float64(meta.size)) > sizeSlack(delivery.metas[i].kind, meta.kind) { // ##CROSS: fee delegation
 									log.Warn("Announced transaction size mismatch", "peer", peer, "tx", hash, "size", delivery.metas[i].size, "ann", meta.size)
 
 									// Normally we should drop a peer considering this is a protocol violation.
@@ -666,11 +688,11 @@ func (f *TxFetcher) loop() {
 				} else {
 					for peer, txset := range f.announces {
 						if meta := txset[hash]; meta != nil {
-							if delivery.metas[i].kind != meta.kind {
+							if delivery.metas[i].kind != meta.kind && !isFeeDelegationPair(delivery.metas[i].kind, meta.kind) { // ##CROSS: fee delegation
 								log.Warn("Announced transaction type mismatch", "peer", peer, "tx", hash, "type", delivery.metas[i].kind, "ann", meta.kind)
 								f.dropPeer(peer)
 							} else if delivery.metas[i].size != meta.size {
-								if math.Abs(float64(delivery.metas[i].size)-float64(meta.size)) > 8 {
+								if math.Abs(float64(delivery.metas[i].size)-float64(meta.size)) > sizeSlack(delivery.metas[i].kind, meta.kind) { // ##CROSS: fee delegation
 									log.Warn("Announced transaction size mismatch", "peer", peer, "tx", hash, "size", delivery.metas[i].size, "ann", meta.size)
 
 									// Normally we should drop a peer considering this is a protocol violation.
@@ -936,7 +958,7 @@ func (f *TxFetcher) scheduleFetches(timer *mclock.Timer, timeout chan struct{}, 
 			return // continue in the for-each
 		}
 		var (
-			hashes = make([]common.Hash, 0, maxTxRetrievals)
+			hashes []common.Hash
 			bytes  uint64
 		)
 		f.forEachAnnounce(f.announces[peer], func(hash common.Hash, meta txMetadata) bool {
@@ -953,6 +975,9 @@ func (f *TxFetcher) scheduleFetches(timer *mclock.Timer, timeout chan struct{}, 
 			f.alternates[hash] = f.announced[hash]
 			delete(f.announced, hash)
 
+			if hashes == nil {
+				hashes = make([]common.Hash, 0, maxTxRetrievals)
+			}
 			// Accumulate the hash and stop if the limit was reached
 			hashes = append(hashes, hash)
 			if len(hashes) >= maxTxRetrievals {
@@ -1039,3 +1064,44 @@ func rotateStrings(slice []string, n int) {
 		slice[i] = orig[(i+n)%len(orig)]
 	}
 }
+
+// ##CROSS: fee delegation
+// isFeeDelegationPair reports whether one type is a dynamic fee tx and the other is a fee-delegated tx.
+func isFeeDelegationPair(a, b byte) bool {
+	return (a == types.DynamicFeeTxType && b == types.FeeDelegatedDynamicFeeTxType) ||
+		(a == types.FeeDelegatedDynamicFeeTxType && b == types.DynamicFeeTxType)
+}
+
+// sizeSlack returns how many bytes a delivered tx may differ in size from its announcement.
+func sizeSlack(a, b byte) float64 {
+	if isFeeDelegationPair(a, b) {
+		return 4 + 21 + 1 + 33 + 33 // list header, fee payer, V, R, S
+	}
+	return 8
+}
+
+// keepStrippedHashes keeps tracking the rejected dynamic fee txs that another peer announced as fee-delegated.
+func (f *TxFetcher) keepStrippedHashes(delivery *txDelivery) {
+	hashes, metas := delivery.hashes[:0], delivery.metas[:0]
+	for i, hash := range delivery.hashes {
+		if delivery.metas[i].kind == types.DynamicFeeTxType && delivery.inner[hash] && f.announcedAsFeeDelegated(hash, delivery.origin) {
+			continue
+		}
+		hashes, metas = append(hashes, hash), append(metas, delivery.metas[i])
+	}
+	delivery.hashes, delivery.metas = hashes, metas
+}
+
+// announcedAsFeeDelegated reports whether a peer other than origin announced the hash as a fee-delegated tx.
+func (f *TxFetcher) announcedAsFeeDelegated(hash common.Hash, origin string) bool {
+	for _, slots := range []map[string]map[common.Hash]*txMetadataWithSeq{f.waitslots, f.announces} {
+		for peer, txset := range slots {
+			if meta := txset[hash]; meta != nil && peer != origin && meta.kind == types.FeeDelegatedDynamicFeeTxType {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ##

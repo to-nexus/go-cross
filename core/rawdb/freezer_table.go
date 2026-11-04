@@ -1198,8 +1198,7 @@ func (t *freezerTable) sizeNolock() (uint64, error) {
 }
 
 // advanceHead should be called when the current head file would outgrow the file limits,
-// and a new file must be opened. The caller of this method must hold the write-lock
-// before calling this method.
+// and a new file must be opened. This method acquires the write-lock internally.
 func (t *freezerTable) advanceHead() error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -1207,20 +1206,30 @@ func (t *freezerTable) advanceHead() error {
 	if err := t.doSync(); err != nil {
 		return err
 	}
+	// ##CROSS: fix upstream 7368b34a
+	// Open the read-only handle of the current head first, so that a failure
+	// leaves the table unchanged and the completed file stays readable.
+	readonly, err := openFreezerFileForReadOnly(t.head.Name())
+	if err != nil {
+		return err
+	}
+	// ##
 	// We open the next file in truncated mode -- if this file already
 	// exists, we need to start over from scratch on it.
 	nextID := t.headId + 1
 	newHead, err := t.openFile(nextID, openFreezerFileTruncated)
 	if err != nil {
+		readonly.Close() // ##CROSS: fix upstream 7368b34a
 		return err
 	}
 	// Commit the contents of the old file to stable storage and
-	// tear it down. It will be re-opened in read-only mode.
+	// replace the writable handle with the read-only one.
 	if err := t.head.Sync(); err != nil {
+		readonly.Close() // ##CROSS: fix upstream 7368b34a
 		return err
 	}
 	t.releaseFile(t.headId)
-	t.openFile(t.headId, openFreezerFileForReadOnly)
+	t.files[t.headId] = readonly // ##CROSS: fix upstream 7368b34a
 
 	// Swap out the current head.
 	t.head = newHead

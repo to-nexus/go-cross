@@ -285,6 +285,13 @@ func (sb *Backend) Verify(proposal istanbul.Proposal) (time.Duration, error) {
 		return 0, err
 	}
 
+	// ##CROSS: parent commit
+	// Check it before voting, since the commit seals sign it.
+	if err := sb.verifyParentCommit(sb.chain, header, nil); err != nil {
+		return 0, err
+	}
+	// ##
+
 	return sb.Engine().VerifyBlockProposal(sb.chain, block, snap.ValSet)
 }
 

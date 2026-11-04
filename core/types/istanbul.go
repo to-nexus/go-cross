@@ -167,7 +167,20 @@ type IstanbulExtra struct {
 	SignersBitset []uint64
 	Signers       []BLSPublicKey
 	// ##
+	ParentCommit *ParentCommit // ##CROSS: parent commit
 }
+
+// ##CROSS: parent commit
+// ParentCommit is the commit certificate of the parent block, set by the proposer from BreakpointBravo.
+// The parent's own seal fields are left out of its hash and can differ between nodes.
+// This copy is part of the child's hash, so every node reads the same signers and round.
+type ParentCommit struct {
+	Round         uint32
+	SignersBitset []uint64 // signers among the byte-sorted validators that sealed the parent
+	CommittedSeal []byte   // aggregated BLS signature
+}
+
+// ##
 
 // EncodeRLP serializes qist into the Ethereum RLP format.
 func (qst *IstanbulExtra) EncodeRLP(w io.Writer) error {
@@ -180,8 +193,13 @@ func (qst *IstanbulExtra) EncodeRLP(w io.Writer) error {
 		qst.RandomReveal,
 	}
 	// ##CROSS: bls seal
-	if qst.SignersBitset != nil || qst.Signers != nil {
+	if qst.SignersBitset != nil || qst.Signers != nil || qst.ParentCommit != nil {
 		val = append(val, qst.SignersBitset, qst.Signers)
+	}
+	// ##
+	// ##CROSS: parent commit
+	if qst.ParentCommit != nil {
+		val = append(val, qst.ParentCommit)
 	}
 	// ##
 	return rlp.Encode(w, val)
@@ -200,6 +218,7 @@ func (qst *IstanbulExtra) DecodeRLP(s *rlp.Stream) error {
 		SignersBitset []uint64       `rlp:"optional"`
 		Signers       []BLSPublicKey `rlp:"optional"`
 		// ##
+		ParentCommit *ParentCommit `rlp:"optional"` // ##CROSS: parent commit
 	}
 	if err := s.Decode(&extra); err != nil {
 		return err
@@ -218,6 +237,7 @@ func (qst *IstanbulExtra) DecodeRLP(s *rlp.Stream) error {
 		qst.Signers = extra.Signers
 	}
 	// ##
+	qst.ParentCommit = extra.ParentCommit // ##CROSS: parent commit
 	return nil
 }
 

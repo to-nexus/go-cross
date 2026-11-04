@@ -269,8 +269,8 @@ type (
 
 // makeDefaultGenesis generates the PoSA admin, beneficiary, and validator keys, and a genesis that uses them
 // with the CrossDev3 chain config.
-// It sets its own fork times, and enables Breakpoint and BreakpointBravo from genesis if breakpoint is true.
-func makeDefaultGenesis(validatorCount uint, breakpoint bool) (*core.Genesis, *breakpointGenesisKeys, error) {
+// It leaves the Breakpoint fork times unset, as core.MakeGenesis sets them for a Breakpoint genesis.
+func makeDefaultGenesis(validatorCount uint) (*core.Genesis, *breakpointGenesisKeys, error) {
 	if validatorCount == 0 {
 		return nil, nil, errors.New("validator count must be greater than zero")
 	}
@@ -324,9 +324,6 @@ func makeDefaultGenesis(validatorCount uint, breakpoint bool) (*core.Genesis, *b
 	config.ShanghaiTime, config.AdventureTime = &zero, &zero
 	config.CancunTime, config.PragueTime = &zero, &zero
 	config.BreakpointTime, config.BreakpointBravoTime, config.OsakaTime = nil, nil, nil
-	if breakpoint {
-		config.BreakpointTime, config.BreakpointBravoTime = &zero, &zero
-	}
 
 	adminBalance := new(big.Int).Mul(big.NewInt(100_000_000_000), big.NewInt(params.Ether))
 	genesis := &core.Genesis{
