@@ -106,4 +106,7 @@ var (
 
 	// ErrUnavailableBlobData is returned if a block proposal lacks valid sidecars for its blob transactions.
 	ErrUnavailableBlobData = errors.New("unavailable blob data") // ##CROSS: blob sidecars
+
+	// ErrInvalidParentCommit is returned if the parent commit certificate is missing, unexpected, or invalid.
+	ErrInvalidParentCommit = errors.New("invalid parent commit") // ##CROSS: parent commit
 )

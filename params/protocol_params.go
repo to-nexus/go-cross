@@ -183,6 +183,9 @@ const (
 	// ##CROSS: bls seal
 	BlsSignatureVerifyBaseGas   uint64 = 1000 // base price for a BLS signature verification operation
 	BlsSignatureVerifyPerKeyGas uint64 = 3500 // Per-key price for a BLS signature verification operation
+	// two-pairing check (bls12381Pairing = 37700 + 2*32600 = 102900)
+	// hash-to-curve of the message to G2 (~2 * bls12381MapG2 = 2 * 23800 = 47600)
+	BlsSignatureVerifyBaseGasOsaka uint64 = 150500 // 102900 + 47600
 	// ##
 
 	HistoryServeWindow = 8191 // Number of blocks to serve historical block hashes for, EIP-2935.

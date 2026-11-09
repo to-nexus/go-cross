@@ -17,6 +17,7 @@
 package rlp
 
 import (
+	"io"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -55,5 +56,40 @@ func TestIterator(t *testing.T) {
 	}
 	if exp := 2; i != exp {
 		t.Errorf("count wrong, expected %d got %d", i, exp)
+	}
+}
+
+// TestIteratorErrors checks that a parse error ends the iteration, so a loop that
+// checks Err only after the loop does not spin on the same bytes.
+func TestIteratorErrors(t *testing.T) {
+	tests := []struct {
+		input   []byte
+		wantN   int // valid items before the error
+		wantErr error
+	}{
+		// The only item claims 1 byte of content, but none remains.
+		{unhex("C1 81"), 0, ErrValueTooLarge},
+		// Second item string header claims 3 bytes content, but only 2 remain.
+		{unhex("C4 01 83AABB"), 1, ErrValueTooLarge},
+		// Second item truncated: B9 requires 2 size bytes, none available.
+		{unhex("C2 01 B9"), 1, io.ErrUnexpectedEOF},
+	}
+	for _, tt := range tests {
+		it, err := NewListIterator(tt.input)
+		if err != nil {
+			t.Fatal("NewListIterator error:", err)
+		}
+		steps := 0
+		for it.Next() {
+			if steps++; steps > len(tt.input) {
+				t.Fatalf("%x: iteration does not end after a parse error", tt.input)
+			}
+		}
+		if want := tt.wantN + 1; steps != want {
+			t.Fatalf("%x: got %d steps, want %d", tt.input, steps, want)
+		}
+		if it.Err() != tt.wantErr {
+			t.Fatalf("%x: got error %v, want %v", tt.input, it.Err(), tt.wantErr)
+		}
 	}
 }

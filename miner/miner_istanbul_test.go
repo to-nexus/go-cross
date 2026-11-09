@@ -31,7 +31,7 @@ func TestMiner_Update(t *testing.T) {
 			miner, mux := newIstanbulMiner(t)
 			startMiner(t, miner)
 			chain := miner.worker.chain
-			dl := downloader.New(chain.TrieDB().Disk(), mux, chain, nil, nil)
+			dl := downloader.New(chain.TrieDB().Disk(), mux, chain, nil, nil, nil)
 			t.Cleanup(dl.Terminate)
 
 			for i := 0; i < 3; i++ {

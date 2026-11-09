@@ -78,7 +78,7 @@ func newTesterWithNotification(t *testing.T, success func()) *downloadTester {
 		chain: chain,
 		peers: make(map[string]*downloadTesterPeer),
 	}
-	tester.downloader = New(db, new(event.TypeMux), tester.chain, tester.dropPeer, success)
+	tester.downloader = New(db, new(event.TypeMux), tester.chain, tester.dropPeer, success, nil)
 	return tester
 }
 
@@ -1353,6 +1353,33 @@ func TestDownloader_InvalidResponse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ##
+
+// ##CROSS: legacy sync
+func TestDownloader_CommitPivotBlock(t *testing.T) {
+	t.Run("disables snap sync when the pivot is committed", func(t *testing.T) {
+		tester := newTester(t)
+		defer tester.terminate()
+
+		chain := testChainBase.shorten(blockCacheMaxItems - 15)
+		tester.newPeer("peer", eth.ETH68, chain.blocks[1:])
+
+		// Record the chain head at each call: it must be the pivot, not the chain tip,
+		// so a cycle failing after the commit still leaves snap sync off.
+		var heads []uint64
+		tester.downloader.disableSnap = func() {
+			heads = append(heads, tester.chain.CurrentBlock().Number.Uint64())
+		}
+		require.NoError(t, tester.sync("peer", nil, SnapSync))
+		assertOwnChain(t, tester, len(chain.blocks))
+
+		pivot := rawdb.ReadLastPivotNumber(tester.downloader.stateDB)
+		require.NotNil(t, pivot)
+		require.Equal(t, []uint64{*pivot}, heads)
+		require.Less(t, *pivot, uint64(len(chain.blocks)-1))
+	})
 }
 
 // ##

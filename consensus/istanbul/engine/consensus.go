@@ -8,8 +8,10 @@ import (
 	"math/big"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -22,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -320,11 +323,23 @@ func (e *Engine) IsEligibleValidator(addr common.Address, number uint64) (bool, 
 	return result, nil
 }
 
-// queryEligibleValidator performs the actual StakeHub lookups. Per-address eligibility is
-// not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
+// queryEligibleValidator performs the actual StakeHub lookups. It first calls isEligibleValidator, and falls back to
+// the separate lookups below if the call reverts (the StakeHub at this block does not have it yet).
+// Per-address eligibility is not cached here (the caller does); minValidatorStake is cached via minValidatorStakeCached.
 func (e *Engine) queryEligibleValidator(addr common.Address, number uint64) (bool, error) {
 	stakeHubInstance := e.stakeHub.Instance(e.contractBackend, contracts.StakeHubAddr)
 	callopts := &bind.CallOpts{BlockNumber: new(big.Int).SetUint64(number)}
+
+	// 0) isEligibleValidator does steps 1-5 in a single call.
+	eligible, err := bind.Call(stakeHubInstance, callopts, e.stakeHubLatest.PackIsEligibleValidator(addr), e.stakeHubLatest.UnpackIsEligibleValidator)
+	if err == nil {
+		return eligible, nil
+	}
+	if !strings.Contains(err.Error(), vm.ErrExecutionReverted.Error()) {
+		log.Warn("Failed to call isEligibleValidator", "addr", addr, "number", number, "err", err)
+		return false, err
+	}
+	log.Debug("isEligibleValidator is not available, falling back", "addr", addr, "number", number, "err", err)
 
 	// 1) validator (nodekey) address → operator address. 0 means not registered.
 	operator, err := bind.Call(stakeHubInstance, callopts, e.stakeHub.PackValidatorToOperator(addr), e.stakeHub.UnpackValidatorToOperator)
@@ -433,7 +448,7 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 		return nil
 	}
 
-	slashed, err := e.offlineProposers(cx.Chain, parent)
+	slashed, err := e.offlineProposers(cx.Chain, header)
 	if err != nil {
 		return err
 	}
@@ -481,18 +496,22 @@ func (e *Engine) slashValidators(header *types.Header, state vm.StateDB, cx *cha
 	return err
 }
 
-// offlineProposers collects the offline proposers of the given header.
+// offlineProposers collects the proposers that missed their rounds at the parent of the given header.
 func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
-	if header == nil || header.Number.Uint64() == 0 {
+	if header == nil || header.Number.Uint64() < 2 {
 		return nil, nil
 	}
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-	if parent == nil || parent.Number.Uint64() == 0 {
+	if parent == nil {
+		return nil, nil
+	}
+	grandparent := chain.GetHeader(parent.ParentHash, parent.Number.Uint64()-1)
+	if grandparent == nil || grandparent.Number.Uint64() == 0 {
 		return nil, nil
 	}
 
 	// Only round robin policy is supported
-	policy := e.cfg.GetConfig(header.Number).ProposerPolicy
+	policy := e.cfg.GetConfig(parent.Number).ProposerPolicy
 	if policy == nil || policy.Id != istanbul.RoundRobin {
 		return nil, nil
 	}
@@ -501,36 +520,119 @@ func (e *Engine) offlineProposers(chain consensus.ChainHeaderReader, header *typ
 	policy = istanbul.NewProposerPolicyByIdAndSortFunc(policy.Id, istanbul.ValidatorSortByByte())
 	// ##
 
-	extra, err := types.ExtractIstanbulExtra(header)
+	round, err := parentRound(chain.Config(), header, parent)
 	if err != nil {
 		return nil, err
 	}
-	if extra.Round == 0 {
+	if round == 0 {
 		// No extra round, so no proposers to slash
 		return nil, nil
 	}
 
-	// If extra.Round > 0, collect proposers of previous rounds; select proposers from the parent snapshot validator set
+	// If round > 0, collect proposers of previous rounds; select proposers from the validator set that sealed the parent
 	var validators []common.Address
 	if ie := consensus.ToIstanbulEngine(e.consensus); ie != nil {
-		validators = ie.ValidatorsAt(chain, parent)
+		validators = ie.ValidatorsAt(chain, grandparent)
 	}
 	if len(validators) == 0 {
-		log.Warn("No validators at block", "number", header.Number.Uint64())
+		log.Warn("No validators at block", "number", parent.Number.Uint64())
 		return nil, nil
 	}
 
 	valSet := validator.NewSet(validators, nil, policy)
-	lastProposer, _ := e.Author(parent)
-	proposers := make([]common.Address, 0, extra.Round)
-	for round := uint32(0); round < extra.Round; round++ {
-		valSet.CalcProposer(lastProposer, uint64(round))
+	lastProposer, _ := e.Author(grandparent)
+	proposers := make([]common.Address, 0, round)
+	for r := range uint64(round) {
+		valSet.CalcProposer(lastProposer, r)
 		proposer := valSet.GetProposer()
 		proposers = append(proposers, proposer.Address())
 	}
 
+	// ##CROSS: parent commit
+	// Skip proposers that signed a recent commit.
+	if chain.Config().IsBreakpointBravo(header.Number, header.Time) {
+		return e.filterRecentlyActive(chain, header, proposers, validators)
+	}
+	// ##
+
 	return proposers, nil
 }
+
+// ##CROSS: parent commit
+// parentRound returns the round the parent was committed in.
+// The parent's own round is not part of its hash and can differ between nodes that committed it in different rounds.
+// From BreakpointBravo it is read from the parent commit in the header, and a header without one slashes nobody.
+func parentRound(config *params.ChainConfig, header, parent *types.Header) (uint32, error) {
+	if !config.IsBreakpointBravo(header.Number, header.Time) {
+		extra, err := types.ExtractIstanbulExtra(parent)
+		if err != nil {
+			return 0, err
+		}
+		return extra.Round, nil
+	}
+	// eth_simulateV1 builds headers without Istanbul extra.
+	if len(header.Extra) == 0 {
+		return 0, nil
+	}
+	extra, err := types.ExtractIstanbulExtra(header)
+	if err != nil {
+		return 0, err
+	}
+	if extra.ParentCommit == nil {
+		return 0, nil
+	}
+	return extra.ParentCommit.Round, nil
+}
+
+// filterRecentlyActive drops the proposers that signed any parent commit in the window of headers ending at header.
+// The commits are part of the block hashes, so every node gets the same result.
+func (e *Engine) filterRecentlyActive(chain consensus.ChainHeaderReader, header *types.Header, proposers, validators []common.Address) ([]common.Address, error) {
+	ie := consensus.ToIstanbulEngine(e.consensus)
+	if ie == nil {
+		return proposers, nil
+	}
+
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent == nil {
+		return nil, consensus.ErrUnknownAncestor
+	}
+	pending := make(map[common.Address]bool, len(proposers))
+	for _, proposer := range proposers {
+		pending[proposer] = true
+	}
+	window := 2 * len(validators)
+	for i := 0; i < window && len(pending) > 0; i++ {
+		extra, err := types.ExtractIstanbulExtra(header)
+		if err != nil {
+			return nil, err
+		}
+		if extra.ParentCommit == nil {
+			break // reached the blocks before BreakpointBravo
+		}
+		grandparent := chain.GetHeader(parent.ParentHash, parent.Number.Uint64()-1)
+		if grandparent == nil {
+			return nil, consensus.ErrUnknownAncestor
+		}
+
+		if i > 0 {
+			validators = ie.ValidatorsAt(chain, grandparent)
+			if len(validators) == 0 {
+				return nil, fmt.Errorf("no validators at block %d", grandparent.Number.Uint64())
+			}
+		}
+		signers := bitset.From(extra.ParentCommit.SignersBitset)
+		for index, validator := range validators {
+			if signers.Test(uint(index)) {
+				delete(pending, validator)
+			}
+		}
+
+		header, parent = parent, grandparent
+	}
+	return slices.DeleteFunc(proposers, func(proposer common.Address) bool { return !pending[proposer] }), nil
+}
+
+// ##
 
 // mitigateSlashedValidators mitigates the slashed validators by configured rate
 func (e *Engine) mitigateSlashedValidators(header *types.Header, state vm.StateDB, cx *chainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {

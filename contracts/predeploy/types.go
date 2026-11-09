@@ -33,4 +33,14 @@ var (
 	ERC1967ProxyCode string
 	//go:embed singleton_factory
 	SingletonFactoryCode string
+
+	// ##CROSS: fork breakpoint
+	// PoSA delegation pool and reserve implementations, used only by a custom Breakpoint genesis.
+	//go:embed delegation_pool_impl
+	DelegationPoolImplCode string
+	//go:embed cross_reserve_impl
+	CrossReserveImplCode string
+	//go:embed protocol_reserve_impl
+	ProtocolReserveImplCode string
+	// ##
 )

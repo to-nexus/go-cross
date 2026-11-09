@@ -19,6 +19,7 @@ package eth
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -154,5 +155,42 @@ func TestReceiptList68(t *testing.T) {
 		if responseHash != test.root {
 			t.Fatalf("test[%d]: wrong root hash from ReceiptList68\nhave: %v\nwant: %v", i, responseHash, test.root)
 		}
+	}
+}
+
+// TestReceiptList68_MalformedTopics checks that an eth/68 receipt whose log holds a
+// truncated topic list still decodes but cannot hang the receipt root calculation.
+func TestReceiptList68_MalformedTopics(t *testing.T) {
+	// A legacy receipt [status, gasUsed, bloom, logs]. Its only log has the topic
+	// list c1 81, a one-byte string header with no content.
+	var buf bytes.Buffer
+	w := rlp.NewEncoderBuffer(&buf)
+	l := w.List()
+	w.WriteBytes([]byte{1})
+	w.WriteUint64(21000)
+	w.WriteBytes(make([]byte, 256))
+	w.Write([]byte{0xc5, 0xc4, 0x80, 0xc1, 0x81, 0x80})
+	w.ListEnd(l)
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	packet, err := rlp.EncodeToBytes([]rlp.RawValue{buf.Bytes()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rl ReceiptList68
+	if err := rlp.DecodeBytes(packet, &rl); err != nil {
+		t.Fatalf("can't decode receipts: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		types.DeriveSha(&rl, trie.NewStackTrie(nil))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("DeriveSha did not return for a malformed topic list")
 	}
 }

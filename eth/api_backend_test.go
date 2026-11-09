@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -205,6 +206,45 @@ func TestEthAPIBackend_SendTxJournal(t *testing.T) {
 	var restored types.Transaction
 	require.NoError(t, rlp.DecodeBytes(data, &restored))
 	require.Equal(t, tx.Hash(), restored.Hash())
+}
+
+// ##
+
+// ##CROSS: fix upstream 76e3dc6b
+func TestEthAPIBackend_SetHead(t *testing.T) {
+	// newBackend returns a path mode backend whose states below the head are not present and not recoverable,
+	// because the memory database has no state freezer. The handler is left nil, so a rejected call must return
+	// before it cancels the downloader.
+	newBackend := func(t *testing.T) *EthAPIBackend {
+		db := rawdb.NewMemoryDatabase()
+		engine := beacon.New(ethash.NewFaker())
+		chain, err := core.NewBlockChain(db, gspec, engine, core.DefaultConfig().WithStateScheme(rawdb.PathScheme))
+		require.NoError(t, err)
+		t.Cleanup(chain.Stop)
+
+		_, blocks, _ := core.GenerateChainWithGenesis(gspec, engine, 10, func(i int, b *core.BlockGen) {
+			b.AddTx(makeTx(uint64(i), nil, nil, key)) // change the state root in each block
+		})
+		_, err = chain.InsertChain(blocks)
+		require.NoError(t, err)
+		require.NoError(t, chain.TrieDB().Commit(blocks[len(blocks)-1].Root(), false))
+		return &EthAPIBackend{eth: &Ethereum{blockchain: chain, chainDb: db}}
+	}
+
+	t.Run("rejects a target before the snap sync pivot", func(t *testing.T) {
+		b := newBackend(t)
+		rawdb.WriteLastPivotNumber(b.eth.chainDb, 8)
+
+		require.ErrorContains(t, b.SetHead(7), "before the snap-sync pivot")
+		assert.Equal(t, uint64(10), b.CurrentBlock().Number.Uint64())
+	})
+	t.Run("rejects a target whose state can't be recovered", func(t *testing.T) {
+		b := newBackend(t)
+		require.False(t, b.eth.blockchain.HasState(b.eth.blockchain.GetHeaderByNumber(5).Root))
+
+		require.ErrorContains(t, b.SetHead(5), "not recoverable")
+		assert.Equal(t, uint64(10), b.CurrentBlock().Number.Uint64())
+	})
 }
 
 // ##

@@ -280,10 +280,12 @@ type list struct {
 	// ##CROSS: fee delegation
 	// feePayerCost, when non-nil, is a shared pool-level index mapping each fee
 	// payer to the cumulative FeePayerCost of all fee-delegated transactions it
-	// sponsors across the whole pool. Only pending lists are wired to this shared
-	// map (queue lists leave it nil), so the pool can look up a fee payer's total
-	// obligation in O(1) instead of scanning every pooled transaction. It is kept
-	// up to date through the same Add/subTotalCost chokepoints as totalcost.
+	// sponsors for other senders across the whole pool. A self-sponsored tx is not
+	// indexed, because totalcost already counts it in full. Only pending lists are
+	// wired to this shared map (queue lists leave it nil), so the pool can look up
+	// a fee payer's total obligation in O(1) instead of scanning every pooled
+	// transaction. It is kept up to date through the same Add/subTotalCost
+	// chokepoints as totalcost.
 	feePayerCost map[common.Address]*uint256.Int
 }
 
@@ -492,9 +494,9 @@ func (l *list) subTotalCost(txs []*types.Transaction) {
 // ##CROSS: fee delegation
 // addFeePayerCost adds the transaction's fee-payer cost to the shared pool-level
 // fee-payer index. It is a no-op unless this list is wired to the shared map and
-// the transaction is fee-delegated with a fee payer set.
+// the transaction is sponsored by another account.
 func (l *list) addFeePayerCost(tx *types.Transaction) {
-	if l.feePayerCost == nil || tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
+	if l.feePayerCost == nil || !tx.Sponsored() {
 		return
 	}
 	cost, overflow := uint256.FromBig(tx.FeePayerCost())
@@ -513,7 +515,7 @@ func (l *list) addFeePayerCost(tx *types.Transaction) {
 // subFeePayerCost removes the transaction's fee-payer cost from the shared
 // pool-level fee-payer index, mirroring addFeePayerCost.
 func (l *list) subFeePayerCost(tx *types.Transaction) {
-	if l.feePayerCost == nil || tx.Type() != types.FeeDelegatedDynamicFeeTxType || tx.FeePayer() == nil {
+	if l.feePayerCost == nil || !tx.Sponsored() {
 		return
 	}
 	payer := *tx.FeePayer()
