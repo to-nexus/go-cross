@@ -122,6 +122,7 @@ type txDelivery struct {
 	violation error         // Whether we encountered a protocol violation
 	// ##CROSS: fee delegation
 	inner map[common.Hash]bool // Rejected dynamic fee txs
+	known map[common.Hash]bool // Fee-delegated txs whose hash the pool already holds
 	// ##
 }
 
@@ -306,7 +307,10 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 	var (
 		added = make([]common.Hash, 0, len(txs))
 		metas = make([]txMetadata, 0, len(txs))
-		inner = make(map[common.Hash]bool) // ##CROSS: fee delegation
+		// ##CROSS: fee delegation
+		inner = make(map[common.Hash]bool)
+		known = make(map[common.Hash]bool)
+		// ##
 	)
 	// proceed in batches
 	for i := 0; i < len(txs); i += addTxsBatchSize {
@@ -335,6 +339,12 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 			case errors.Is(err, txpool.ErrAlreadyKnown):
 				duplicate++
 
+				// ##CROSS: fee delegation
+				if batch[j].Type() == types.FeeDelegatedDynamicFeeTxType {
+					known[batch[j].Hash()] = true
+				}
+				// ##
+
 			case errors.Is(err, txpool.ErrUnderpriced) || errors.Is(err, txpool.ErrReplaceUnderpriced) || errors.Is(err, txpool.ErrTxGasPriceTooLow):
 				underpriced++
 
@@ -357,7 +367,7 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 			// ##CROSS: fee delegation
 			// The hash does not cover the fee payer fields, so these errors may come from a forged copy.
 			// Keep tracking the hash, without comparing the forged size.
-			if batch[j].Type() == types.FeeDelegatedDynamicFeeTxType && (errors.Is(err, txpool.ErrAlreadyKnown) || errors.Is(err, txpool.ErrOversizedData) ||
+			if batch[j].Type() == types.FeeDelegatedDynamicFeeTxType && (errors.Is(err, txpool.ErrOversizedData) ||
 				errors.Is(err, core.ErrGasLimitTooHigh) || errors.Is(err, core.ErrInvalidFeePayer) || errors.Is(err, core.ErrFeePayerInsufficientFunds)) {
 				continue
 			}
@@ -388,7 +398,7 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		}
 	}
 	select {
-	case f.cleanup <- &txDelivery{origin: peer, hashes: added, metas: metas, direct: direct, violation: violation, inner: inner}: // ##CROSS: fee delegation
+	case f.cleanup <- &txDelivery{origin: peer, hashes: added, metas: metas, direct: direct, violation: violation, inner: inner, known: known}: // ##CROSS: fee delegation
 		return nil
 	case <-f.quit:
 		return errTerminated
@@ -661,7 +671,7 @@ func (f *TxFetcher) loop() {
 			for i, hash := range delivery.hashes {
 				if _, ok := f.waitlist[hash]; ok {
 					for peer, txset := range f.waitslots {
-						if meta := txset[hash]; meta != nil {
+						if meta := txset[hash]; meta != nil && !delivery.known[hash] { // ##CROSS: fee delegation
 							if delivery.metas[i].kind != meta.kind && !isFeeDelegationPair(delivery.metas[i].kind, meta.kind) { // ##CROSS: fee delegation
 								log.Warn("Announced transaction type mismatch", "peer", peer, "tx", hash, "type", delivery.metas[i].kind, "ann", meta.kind)
 								f.dropPeer(peer)
@@ -687,7 +697,7 @@ func (f *TxFetcher) loop() {
 					delete(f.waittime, hash)
 				} else {
 					for peer, txset := range f.announces {
-						if meta := txset[hash]; meta != nil {
+						if meta := txset[hash]; meta != nil && !delivery.known[hash] { // ##CROSS: fee delegation
 							if delivery.metas[i].kind != meta.kind && !isFeeDelegationPair(delivery.metas[i].kind, meta.kind) { // ##CROSS: fee delegation
 								log.Warn("Announced transaction type mismatch", "peer", peer, "tx", hash, "type", delivery.metas[i].kind, "ann", meta.kind)
 								f.dropPeer(peer)

@@ -361,11 +361,8 @@ func (tx *Transaction) To() *common.Address {
 
 // Cost returns (gas * gasPrice) + (blobGas * blobGasPrice) + value.
 func (tx *Transaction) Cost() *big.Int {
-	if tx.Type() == FeeDelegatedDynamicFeeTxType && tx.FeePayer() != nil { // ##CROSS: fee delegation
-		from, _ := Sender(LatestSignerForChainID(tx.ChainId()), tx)
-		if *tx.FeePayer() != from {
-			return tx.Value()
-		}
+	if tx.Sponsored() { // ##CROSS: fee delegation
+		return tx.Value()
 	}
 	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
 	if tx.Type() == BlobTxType {
@@ -382,15 +379,24 @@ func (tx *Transaction) Cost() *big.Int {
 // they cover the full cost (gas cost plus value), while a separate fee payer only pays for gas.
 func (tx *Transaction) FeePayerCost() *big.Int {
 	total := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
-	if tx.FeePayer() == nil {
-		return total
-	}
-	from, _ := Sender(LatestSignerForChainID(tx.ChainId()), tx)
-	if *tx.FeePayer() == from {
+	if tx.FeePayer() != nil && !tx.Sponsored() {
 		total.Add(total, tx.Value())
 	}
 	return total
 }
+
+// ##CROSS: fee delegation
+// Sponsored reports whether tx is fee-delegated to a fee payer other than its sender.
+func (tx *Transaction) Sponsored() bool {
+	feePayer := tx.FeePayer()
+	if feePayer == nil {
+		return false
+	}
+	from, _ := Sender(LatestSignerForChainID(tx.ChainId()), tx)
+	return *feePayer != from
+}
+
+// ##
 
 // RawSignatureValues returns the V, R, S signature values of the transaction.
 // The return values should not be modified by the caller.

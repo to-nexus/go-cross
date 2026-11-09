@@ -587,6 +587,7 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction) error {
 			}
 			return nil
 		},
+		// ##CROSS: fee delegation
 		// Return the cumulative fee-payer cost already committed by feePayer across
 		// every pending tx it sponsors, via the O(1) pool-level index, excluding
 		// the tx currently occupying the (addr, nonce) slot the incoming tx would
@@ -597,12 +598,13 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction) error {
 				total = sum.ToBig()
 			}
 			if list := pool.pending[addr]; list != nil {
-				if old := list.txs.Get(nonce); old != nil && sponsored(old) && *old.FeePayer() == feePayer {
+				if old := list.txs.Get(nonce); old != nil && old.Sponsored() && *old.FeePayer() == feePayer {
 					total.Sub(total, old.FeePayerCost())
 				}
 			}
 			return total
 		},
+		// ##
 	}
 	if err := txpool.ValidateTransactionWithState(tx, pool.signer, opts); err != nil {
 		return err
@@ -1689,7 +1691,7 @@ func (pool *LegacyPool) demoteUnexecutables() {
 		var demoted types.Transactions
 		for i := len(txs) - 1; i >= 0; i-- {
 			tx := txs[i]
-			if !sponsored(tx) {
+			if !tx.Sponsored() {
 				continue
 			}
 			payer := *tx.FeePayer()
@@ -1738,7 +1740,7 @@ func (pool *LegacyPool) overCommits(from common.Address, tx *types.Transaction) 
 		need := new(big.Int).Add(pool.payerSpent(addr), cost)
 		return pool.currentState.GetBalance(addr).ToBig().Cmp(need) < 0
 	}
-	if sponsored(tx) && exceeds(*tx.FeePayer(), tx.FeePayerCost()) {
+	if tx.Sponsored() && exceeds(*tx.FeePayer(), tx.FeePayerCost()) {
 		return *tx.FeePayer(), true
 	}
 	if pool.feePayerCost[from] != nil && exceeds(from, tx.Cost()) {

@@ -2663,27 +2663,34 @@ func TestTxFetcher_FeeDelegationPair(t *testing.T) {
 		earlyErr = txpool.ErrAlreadyKnown
 		defer func() { earlyErr = nil }()
 
-		t.Run("forged fee-delegated tx broadcast keeps waiting peers", func(t *testing.T) {
+		// The pool takes no other copy, so the hash is untracked, but the forged size is not compared.
+		t.Run("forged fee-delegated tx broadcast untracks without drop", func(t *testing.T) {
 			dropped := run(t,
 				notify("A", wrapped.Type(), wrapped.Size()),
 				notify("B", plain.Type(), plain.Size()),
 				doTxEnqueue{peer: "X", txs: []*types.Transaction{oversized}, direct: false},
-				isWaiting(map[string][]announce{"A": {ann(wrapped)}, "B": {ann(plain)}}),
+				isWaiting(nil),
+				isScheduled{},
 			)
 			assert.Empty(t, dropped)
 		})
-		t.Run("forged fee-delegated tx reply keeps scheduled peers", func(t *testing.T) {
+		t.Run("forged fee-delegated tx reply untracks without drop", func(t *testing.T) {
 			dropped := run(t,
 				notify("X", oversized.Type(), oversized.Size()),
 				doWait{time: txArriveTimeout, step: true},
 				notify("A", wrapped.Type(), wrapped.Size()),
 				doTxEnqueue{peer: "X", txs: []*types.Transaction{oversized}, direct: true},
-				isScheduled{
-					tracking: map[string][]announce{"A": {ann(wrapped)}},
-					fetching: map[string][]common.Hash{"A": {hash}},
-				},
+				isWaiting(nil),
+				isScheduled{},
 			)
 			assert.Empty(t, dropped)
+		})
+		t.Run("dynamic fee tx size is still compared", func(t *testing.T) {
+			dropped := run(t,
+				notify("A", plain.Type(), plain.Size()+100),
+				doTxEnqueue{peer: "X", txs: []*types.Transaction{plain}, direct: false},
+			)
+			assert.Equal(t, []string{"A"}, dropped)
 		})
 	})
 	t.Run("forged fee-delegated tx over the Osaka gas cap keeps honest peers", func(t *testing.T) {
