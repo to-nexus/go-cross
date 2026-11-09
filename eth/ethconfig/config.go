@@ -77,7 +77,7 @@ var Defaults = Config{
 
 	// ##CROSS: basefee
 	RPCTxFeeCap: 0,
-	RPCGasCap:   0,
+	RPCGasCap:   105000000,
 
 	// ##CROSS: blob sidecars
 	BlobExtraReserve: params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800

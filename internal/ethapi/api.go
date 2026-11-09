@@ -1436,6 +1436,16 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	if args.AccessList != nil {
 		prevTracer = logger.NewAccessListTracer(*args.AccessList, addressesToExclude)
 	}
+	// ##CROSS: fix upstream
+	timeout := b.RPCEVMTimeout()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	defer cancel()
+	// ##
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, 0, nil, err
@@ -1463,9 +1473,9 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
 			evm.Context.BlobBaseFee = new(big.Int)
 		}
-		res, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
+		res, err := applyMessageWithEVM(ctx, evm, msg, timeout, new(core.GasPool).AddGas(msg.GasLimit)) // ##CROSS: fix upstream
 		if err != nil {
-			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.ToTransaction(types.LegacyTxType).Hash(), err)
+			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v %v", args.ToTransaction(types.LegacyTxType).Hash(), err)
 		}
 		if tracer.Equal(prevTracer) {
 			return accessList, res.UsedGas, res.Err, nil

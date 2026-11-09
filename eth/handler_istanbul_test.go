@@ -9,9 +9,14 @@
 package eth
 
 import (
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,3 +80,45 @@ func TestConsensusLimiter(t *testing.T) {
 		require.Zero(t, secondDelay)
 	})
 }
+
+// ##CROSS: fix upstream
+// TestConsensusProtocolNoPeerLeak checks that an istanbul session does not start eth peer goroutines.
+func TestConsensusProtocolNoPeerLeak(t *testing.T) {
+	h := newTestHandler()
+	defer h.close()
+
+	p := p2p.NewPeer(enode.ID{1}, "", nil)
+	ethApp, ethNet := p2p.MsgPipe()
+	defer ethApp.Close()
+	defer ethNet.Close()
+	ethPeer := eth.NewPeer(eth.ETH68, p, ethApp, h.txpool)
+	defer ethPeer.Close()
+	require.NoError(t, h.handler.peers.registerPeer(ethPeer, nil))
+	p.EthPeerRegistered <- struct{}{}
+
+	proto := (*istanbulHandler)(h.handler).makeIstanbulConsensusProtocol(istanbulProtocolName, IstanbulProtocolVersion, istanbulProtocolLengths, (*ethHandler)(h.handler), 1)
+	app, net := p2p.MsgPipe()
+	defer app.Close()
+
+	// Count one of the loops eth.NewPeer starts; the whole goroutine count is noisy.
+	// Only ethPeer's own loop should be running, so wait until exactly one is left.
+	peerLoops := func() (n int) {
+		for range 100 {
+			buf := make([]byte, 1<<20)
+			if n = strings.Count(string(buf[:runtime.Stack(buf, true)]), "(*Peer).broadcastTransactions("); n == 1 {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return n
+	}
+	require.Equal(t, 1, peerLoops())
+	errc := make(chan error, 1)
+	go func() { errc <- proto.Run(p, app) }()
+	time.Sleep(50 * time.Millisecond) // let Run reach the read loop
+	net.Close()
+	require.ErrorIs(t, <-errc, p2p.ErrPipeClosed)
+	require.Equal(t, 1, peerLoops(), "istanbul session left eth peer goroutines running")
+}
+
+// ##

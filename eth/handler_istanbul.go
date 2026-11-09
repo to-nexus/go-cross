@@ -135,8 +135,9 @@ func (h *istanbulHandler) makeIstanbulConsensusProtocol(protoName string, versio
 					p.Log().Debug("consensus subprotocol retrieved eth peer from peerset", "ethPeer.id", p2pPeerId, "ProtoName", protoName)
 					// add the rw protocol for the quorum subprotocol to the eth peer.
 					ethPeer.AddConsensusProtoRW(rw)
-					peer := eth.NewPeer(version, p, rw, h.txpool)
-					return h.handleConsensusLoop(peer, rw)
+					// ##CROSS: fix upstream
+					return h.handleConsensusLoop(ethPeer.Peer, rw) // Reuse the eth peer.
+					// ##
 				}
 				p.Log().Error("consensus subprotocol retrieved nil eth peer from peerset", "ethPeer.id", p2pPeerId)
 				return errEthPeerNil
