@@ -162,8 +162,8 @@ var DefaultConfig = Config{
 	// ##CROSS: performance
 	AccountSlots: 200,
 	GlobalSlots:  8000,
-	AccountQueue: 200,
-	GlobalQueue:  4000,
+	AccountQueue: 64,
+	GlobalQueue:  1024,
 	Lifetime:     30 * time.Second,
 	// ##
 }
