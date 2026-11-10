@@ -14,7 +14,12 @@ var (
 	transferLogSig common.Hash = common.HexToHash("0x1b49dfd76419ac50d37de77c8afd5e57b6472c9ddd8399f88dc61343356a462b")
 )
 
-// AddTransferLog adds transfer log into state
+// AddTransferLog adds a log from the CrossEx address for a native value transfer.
+// Its topics are (transferLogSig, sender, recipient) and its data is amount, senderBalance and recipientBalance,
+// each a 32-byte big-endian word.
+// The balances are a snapshot right after this transfer. They leave out later transfers in the same transaction
+// and the refund of unused gas at its end, so the sender's balance is lower than its final balance by that refund,
+// unless a fee payer bought the gas. Read final balances from the state.
 func AddTransferLog(
 	state vm.StateDB,
 	sender, recipient common.Address,
