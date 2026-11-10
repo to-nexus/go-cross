@@ -367,3 +367,30 @@ func TestTxTracker_JournalErrors(t *testing.T) {
 }
 
 // ##
+
+// ##CROSS: txtracker limit
+func TestTxTracker_SizeLimit(t *testing.T) {
+	env := newTestEnv(t, 10, 0, "")
+	defer env.close()
+
+	txs := env.makeTxs(3)
+	limit := maxTrackedSize
+	maxTrackedSize = 2 * max(txs[0].Size(), txs[1].Size(), txs[2].Size())
+	t.Cleanup(func() { maxTrackedSize = limit })
+
+	require.NoError(t, env.tracker.Track(txs[0]))
+	require.NoError(t, env.tracker.Track(txs[1]))
+	require.ErrorIs(t, env.tracker.Track(txs[2]), ErrTrackerFull)
+
+	// The mined nonce makes the first tx stale, and dropping it frees room for the third.
+	env.commit()
+	env.tracker.recheck(false)
+	require.NoError(t, env.tracker.Track(txs[2]))
+
+	env.tracker.mu.Lock()
+	defer env.tracker.mu.Unlock()
+	require.Len(t, env.tracker.all, 2)
+	require.Equal(t, txs[1].Size()+txs[2].Size(), env.tracker.size)
+}
+
+// ##

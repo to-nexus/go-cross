@@ -35,6 +35,7 @@ import (
 var (
 	recheckInterval = time.Minute
 	localGauge      = metrics.GetOrRegisterGauge("txpool/local", nil)
+	maxTrackedSize  = uint64(64 * 1024 * 1024) // ##CROSS: txtracker limit
 )
 
 // TxTracker is a struct used to track priority transactions; it will check from
@@ -56,6 +57,7 @@ type TxTracker struct {
 	mu         sync.Mutex
 	wg         sync.WaitGroup
 	ready      atomic.Bool // ##CROSS: journal readiness
+	size       uint64      // ##CROSS: txtracker limit
 }
 
 // New creates a new TxTracker
@@ -99,12 +101,17 @@ func (tracker *TxTracker) TrackAll(txs []*types.Transaction) error {
 		return ErrNotReady
 	}
 	// ##
-	tracker.trackAll(txs, true)
+	// ##CROSS: txtracker limit
+	if tracker.trackAll(txs, true) > 0 {
+		return ErrTrackerFull
+	}
+	// ##
 	return nil
 }
 
 // trackAll updates the tracked set while mu is held. Journal replay skips persistence.
-func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) {
+// It returns the number of transactions dropped over the size limit.
+func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) (dropped int) { // ##CROSS: txtracker limit
 	for _, tx := range txs {
 		if tx.Type() == types.BlobTxType {
 			continue
@@ -113,6 +120,12 @@ func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) {
 		if _, ok := tracker.all[tx.Hash()]; ok {
 			continue
 		}
+		// ##CROSS: txtracker limit
+		if tracker.size+tx.Size() > maxTrackedSize {
+			dropped++
+			continue
+		}
+		// ##
 		// Theoretically, checking the error here is unnecessary since sender recovery
 		// is already part of basic validation. However, retrieving the sender address
 		// from the transaction cache is effectively a no-op if it was previously verified.
@@ -122,6 +135,7 @@ func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) {
 			continue
 		}
 		tracker.all[tx.Hash()] = tx
+		tracker.size += tx.Size() // ##CROSS: txtracker limit
 		if tracker.byAddr[addr] == nil {
 			tracker.byAddr[addr] = legacypool.NewSortedMap()
 		}
@@ -136,6 +150,7 @@ func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) {
 		// ##
 	}
 	localGauge.Update(int64(len(tracker.all)))
+	return dropped // ##CROSS: txtracker limit
 }
 
 // recheck checks and returns any transactions that needs to be resubmitted.
@@ -153,6 +168,7 @@ func (tracker *TxTracker) recheck(journalCheck bool) []*types.Transaction {
 		stales := txs.Forward(tracker.pool.Nonce(sender))
 		for _, tx := range stales {
 			delete(tracker.all, tx.Hash())
+			tracker.size -= tx.Size() // ##CROSS: txtracker limit
 		}
 		numStales += len(stales)
 
@@ -202,7 +218,11 @@ func (tracker *TxTracker) Start() error {
 	defer tracker.mu.Unlock()
 	if tracker.journal != nil {
 		if err := tracker.journal.load(func(transactions []*types.Transaction) []error {
-			tracker.trackAll(transactions, false)
+			// ##CROSS: txtracker limit
+			if dropped := tracker.trackAll(transactions, false); dropped > 0 {
+				log.Warn("Dropped journaled local transactions over the tracker limit", "count", dropped, "limit", maxTrackedSize)
+			}
+			// ##
 			return nil
 		}); err != nil {
 			log.Warn("Failed to load local transaction journal", "err", err)

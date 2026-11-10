@@ -620,9 +620,12 @@ func (pool *LegacyPool) checkDelegationLimit(tx *types.Transaction) error {
 	from, _ := types.Sender(pool.signer, tx) // validated
 
 	// Short circuit if the sender has neither delegation nor pending delegation.
-	if pool.currentState.GetCodeHash(from) == types.EmptyCodeHash && !pool.all.hasAuth(from) {
+	// ##CROSS: fee delegation
+	// A sponsored sender may have no account, whose code hash is zero.
+	if codeHash := pool.currentState.GetCodeHash(from); (codeHash == types.EmptyCodeHash || codeHash == common.Hash{}) && !pool.all.hasAuth(from) {
 		return nil
 	}
+	// ##
 	pending := pool.pending[from]
 	if pending == nil {
 		// Transaction with gapped nonce is not supported for delegated accounts
