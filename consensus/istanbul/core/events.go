@@ -26,4 +26,6 @@ type backlogEvent struct {
 	msg protocols.Message
 }
 
-type timeoutEvent struct{}
+type timeoutEvent struct {
+	view *istanbul.View // ##CROSS: fix roundchange
+}

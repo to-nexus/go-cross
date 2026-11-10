@@ -145,12 +145,12 @@ func (c *Core) handleEvents() {
 				// if successfully processed, we gossip message to other validators
 				c.backend.Gossip(c.valSet, ev.msg.Code(), data)
 			}
-		case _, ok := <-c.timeoutSub.Chan():
+		case event, ok := <-c.timeoutSub.Chan():
 			// we received a round change timeout
 			if !ok {
 				return
 			}
-			c.handleTimeoutMsg()
+			c.handleTimeoutMsg(event.Data.(timeoutEvent)) // ##CROSS: fix roundchange
 		case event, ok := <-c.finalCommittedSub.Chan():
 			// our block proposal got committed
 			if !ok {
@@ -266,8 +266,15 @@ func (c *Core) deliverMessage(m protocols.Message) error {
 	return err
 }
 
-func (c *Core) handleTimeoutMsg() {
+func (c *Core) handleTimeoutMsg(ev timeoutEvent) { // ##CROSS: fix roundchange
 	logger := c.currentLogger(true, nil)
+	// ##CROSS: fix roundchange
+	// Stopping a timer cannot recall an event it already posted, so drop timeouts of a past view.
+	if ev.view.Cmp(c.currentView()) != 0 {
+		logger.Debug("Istanbul: ignore stale ROUND-CHANGE timeout", "timer.view", ev.view)
+		return
+	}
+	// ##
 	// Start the new round
 	round := c.current.Round()
 	nextRound := new(big.Int).Add(round, common.Big1)
