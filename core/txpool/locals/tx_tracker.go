@@ -120,12 +120,6 @@ func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) (drop
 		if _, ok := tracker.all[tx.Hash()]; ok {
 			continue
 		}
-		// ##CROSS: txtracker limit
-		if tracker.size+tx.Size() > maxTrackedSize {
-			dropped++
-			continue
-		}
-		// ##
 		// Theoretically, checking the error here is unnecessary since sender recovery
 		// is already part of basic validation. However, retrieving the sender address
 		// from the transaction cache is effectively a no-op if it was previously verified.
@@ -134,8 +128,30 @@ func (tracker *TxTracker) trackAll(txs []*types.Transaction, persist bool) (drop
 		if err != nil {
 			continue
 		}
+		// ##CROSS: txtracker limit
+		// Journal replay skips transactions that recheck would drop as stale.
+		if !persist && tx.Nonce() < tracker.pool.Nonce(addr) {
+			continue
+		}
+		// A transaction with the same nonce replaces the tracked one and frees its size.
+		var replaced *types.Transaction
+		if list := tracker.byAddr[addr]; list != nil {
+			replaced = list.Get(tx.Nonce())
+		}
+		size := tracker.size + tx.Size()
+		if replaced != nil {
+			size -= replaced.Size()
+		}
+		if size > maxTrackedSize {
+			dropped++
+			continue
+		}
+		if replaced != nil {
+			delete(tracker.all, replaced.Hash())
+		}
+		tracker.size = size
+		// ##
 		tracker.all[tx.Hash()] = tx
-		tracker.size += tx.Size() // ##CROSS: txtracker limit
 		if tracker.byAddr[addr] == nil {
 			tracker.byAddr[addr] = legacypool.NewSortedMap()
 		}

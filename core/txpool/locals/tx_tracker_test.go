@@ -320,7 +320,10 @@ func TestTxTracker_Start(t *testing.T) {
 		before, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		tracker := New(path, time.Hour, gspec.Config, nil)
+		env := newTestEnv(t, 0, 0, "")
+		defer env.close()
+		defer env.pool.Close()
+		tracker := New(path, time.Hour, gspec.Config, env.pool)
 		require.NoError(t, tracker.Start())
 		defer tracker.Stop()
 
@@ -348,49 +351,101 @@ func (w *failingJournalWriter) Close() error {
 	return w.err
 }
 
-func TestTxTracker_JournalErrors(t *testing.T) {
-	tracker := New(filepath.Join(t.TempDir(), "transactions.rlp"), time.Hour, gspec.Config, nil)
-	require.NoError(t, tracker.Start())
-
-	failure := errors.New("journal I/O failure")
-	tracker.mu.Lock()
-	tracker.journal.writer = &failingJournalWriter{tracker.journal.writer, failure}
-	tracker.mu.Unlock()
-
-	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{GasPrice: big.NewInt(params.GWei)})
-	require.NoError(t, tracker.Track(tx))
-	require.ErrorIs(t, tracker.Stop(), failure)
-
-	assert.Contains(t, tracker.all, tx.Hash())
-	assert.False(t, tracker.Ready())
-	assert.Nil(t, tracker.journal.writer)
-}
-
 // ##
 
-// ##CROSS: txtracker limit
-func TestTxTracker_SizeLimit(t *testing.T) {
-	env := newTestEnv(t, 10, 0, "")
-	defer env.close()
+func TestTxTracker_Errors(t *testing.T) {
+	// ##CROSS: journal readiness
+	t.Run("journal errors", func(t *testing.T) {
+		tracker := New(filepath.Join(t.TempDir(), "transactions.rlp"), time.Hour, gspec.Config, nil)
+		require.NoError(t, tracker.Start())
 
-	txs := env.makeTxs(3)
-	limit := maxTrackedSize
-	maxTrackedSize = 2 * max(txs[0].Size(), txs[1].Size(), txs[2].Size())
-	t.Cleanup(func() { maxTrackedSize = limit })
+		failure := errors.New("journal I/O failure")
+		tracker.mu.Lock()
+		tracker.journal.writer = &failingJournalWriter{tracker.journal.writer, failure}
+		tracker.mu.Unlock()
 
-	require.NoError(t, env.tracker.Track(txs[0]))
-	require.NoError(t, env.tracker.Track(txs[1]))
-	require.ErrorIs(t, env.tracker.Track(txs[2]), ErrTrackerFull)
+		tx := types.MustSignNewTx(key, signer, &types.LegacyTx{GasPrice: big.NewInt(params.GWei)})
+		require.NoError(t, tracker.Track(tx))
+		require.ErrorIs(t, tracker.Stop(), failure)
 
-	// The mined nonce makes the first tx stale, and dropping it frees room for the third.
-	env.commit()
-	env.tracker.recheck(false)
-	require.NoError(t, env.tracker.Track(txs[2]))
+		assert.Contains(t, tracker.all, tx.Hash())
+		assert.False(t, tracker.Ready())
+		assert.Nil(t, tracker.journal.writer)
+	})
+	// ##
+	// ##CROSS: txtracker limit
+	t.Run("size limit", func(t *testing.T) {
+		env := newTestEnv(t, 10, 0, "")
+		defer env.close()
 
-	env.tracker.mu.Lock()
-	defer env.tracker.mu.Unlock()
-	require.Len(t, env.tracker.all, 2)
-	require.Equal(t, txs[1].Size()+txs[2].Size(), env.tracker.size)
+		txs := env.makeTxs(3)
+		limit := maxTrackedSize
+		maxTrackedSize = 2 * max(txs[0].Size(), txs[1].Size(), txs[2].Size())
+		t.Cleanup(func() { maxTrackedSize = limit })
+
+		require.NoError(t, env.tracker.Track(txs[0]))
+		require.NoError(t, env.tracker.Track(txs[1]))
+		require.ErrorIs(t, env.tracker.Track(txs[2]), ErrTrackerFull)
+
+		// The mined nonce makes the first tx stale, and dropping it frees room for the third.
+		env.commit()
+		env.tracker.recheck(false)
+		require.NoError(t, env.tracker.Track(txs[2]))
+
+		env.tracker.mu.Lock()
+		defer env.tracker.mu.Unlock()
+		require.Len(t, env.tracker.all, 2)
+		require.Equal(t, txs[1].Size()+txs[2].Size(), env.tracker.size)
+	})
+	t.Run("size limit replacement", func(t *testing.T) {
+		env := newTestEnv(t, 1, 0, "")
+		defer env.close()
+
+		a := env.makeTx(0, big.NewInt(params.GWei))
+		b := env.makeTx(0, big.NewInt(2*params.GWei))
+		limit := maxTrackedSize
+		maxTrackedSize = max(a.Size(), b.Size())
+		t.Cleanup(func() { maxTrackedSize = limit })
+
+		// The replacement takes the room of the transaction it replaces.
+		require.NoError(t, env.tracker.Track(a))
+		require.NoError(t, env.tracker.Track(b))
+
+		env.commit()
+		env.tracker.recheck(false)
+
+		env.tracker.mu.Lock()
+		defer env.tracker.mu.Unlock()
+		require.Empty(t, env.tracker.all)
+		require.Zero(t, env.tracker.size)
+	})
+	t.Run("size limit replay skips stale", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "transactions.rlp")
+		env := newTestEnv(t, 1, 0, "")
+		defer env.close()
+
+		txs := env.makeTxs(2)
+		limit := maxTrackedSize
+		maxTrackedSize = max(txs[0].Size(), txs[1].Size())
+		t.Cleanup(func() { maxTrackedSize = limit })
+
+		seed := newTxJournal(path)
+		require.NoError(t, seed.setupWriter())
+		require.NoError(t, seed.insert(txs[0]))
+		require.NoError(t, seed.insert(txs[1]))
+		require.NoError(t, seed.close())
+
+		// The journal still holds the mined first tx, which must not take the room of the second.
+		env.commit()
+		tracker := New(path, time.Hour, gspec.Config, env.pool)
+		require.NoError(t, tracker.Start())
+		defer tracker.Stop()
+
+		tracker.mu.Lock()
+		defer tracker.mu.Unlock()
+		require.Len(t, tracker.all, 1)
+		require.Contains(t, tracker.all, txs[1].Hash())
+		require.Equal(t, txs[1].Size(), tracker.size)
+	})
+	// ##
 }
-
-// ##
