@@ -29,6 +29,12 @@ var ErrNotReady = errors.New("local transaction journal is not ready; retry late
 
 // ##
 
+// ##CROSS: txtracker limit
+// ErrTrackerFull indicates that the local transaction tracker holds its maximum size of transactions.
+var ErrTrackerFull = errors.New("local transaction tracker is full")
+
+// ##
+
 // IsTemporaryReject determines whether the given error indicates a temporary
 // reason to reject a transaction from being included in the txpool. The result
 // may change if the txpool's state changes later.

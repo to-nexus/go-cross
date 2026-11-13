@@ -353,3 +353,79 @@ func createSignedRoundChangeMessage(t *testing.T, key *ecdsa.PrivateKey, from co
 	signProtocolMessage(t, msg, key)
 	return msg
 }
+
+// ##CROSS: fix roundchange
+
+func TestHandleTimeoutMsg_IgnoresPastView(t *testing.T) {
+	valSet, keys := generateValidatorSetAndKeys(t, 4)
+
+	t.Run("ignores past view", func(t *testing.T) {
+		addr := valSet.GetByIndex(3).Address()
+		c, backend := newRoundChangeTestCore(t, addr, keys[addr], valSet, makeBlockWithTime(1, 1), 1, 1)
+		defer c.stopTimer()
+
+		// A round-0 timeout that fired before the F+1 catch-up to round 1 must not skip round 1.
+		c.handleTimeoutMsg(timeoutEvent{view: &istanbul.View{Sequence: big.NewInt(1), Round: big.NewInt(0)}})
+		require.Equal(t, int64(1), c.current.Round().Int64())
+		require.Empty(t, backend.broadcasts)
+
+		c.handleTimeoutMsg(timeoutEvent{view: c.currentView()})
+		require.Equal(t, int64(2), c.current.Round().Int64())
+		require.Len(t, backend.broadcasts, 1)
+		require.Equal(t, uint64(protocols.RoundChangeCode), backend.broadcasts[0].code)
+	})
+}
+
+func TestHandleRequest(t *testing.T) {
+	valSet, keys := generateValidatorSetAndKeys(t, 4)
+
+	t.Run("starts timer once per view", func(t *testing.T) {
+		addr := valSet.GetByIndex(1).Address()
+		c, _ := newRoundChangeTestCore(t, addr, keys[addr], valSet, makeBlockWithTime(1, 1), 1, 0)
+		defer c.stopTimer()
+
+		require.NoError(t, c.handleRequest(&Request{Proposal: makeBlockWithTime(1, 2)}))
+		timer := c.roundChangeTimer
+		require.NotNil(t, timer)
+
+		// Miner recommits must not push the timeout back.
+		require.NoError(t, c.handleRequest(&Request{Proposal: makeBlockWithTime(1, 3)}))
+		require.Same(t, timer, c.roundChangeTimer)
+
+		// A stopped timer, as after Stop, is armed again by the next request.
+		c.stopTimer()
+		require.NoError(t, c.handleRequest(&Request{Proposal: makeBlockWithTime(1, 4)}))
+		require.NotSame(t, timer, c.roundChangeTimer)
+	})
+
+	t.Run("no unjustified preprepare above round 0", func(t *testing.T) {
+		const sequence, round = 1, 2
+		proposer := valSet.GetByIndex(0).Address()
+		c, backend := newRoundChangeTestCore(t, proposer, keys[proposer], valSet, makeBlockWithTime(sequence, 1), sequence, round)
+		defer c.stopTimer()
+		require.True(t, c.IsProposer())
+
+		require.NoError(t, c.handleRequest(&Request{Proposal: makeBlockWithTime(sequence, 2)}))
+		assert.Empty(t, backend.broadcasts)
+		assert.Zero(t, c.current.preprepareSent.Sign())
+
+		// The quorum of ROUND-CHANGE still yields the justified PRE-PREPARE of this round.
+		for i := 0; i < valSet.QuorumSize(); i++ {
+			addr := valSet.GetByIndex(uint64(i)).Address()
+			payload, err := rlp.EncodeToBytes(createSignedRoundChangeMessage(t, keys[addr], addr, round, 0, nil))
+			require.NoError(t, err)
+			require.NoError(t, c.handleEncodedMsg(protocols.RoundChangeCode, payload))
+		}
+		require.Len(t, backend.broadcasts, 1)
+		assert.Equal(t, uint64(protocols.PreprepareCode), backend.broadcasts[0].code)
+
+		msg, err := protocols.Decode(backend.broadcasts[0].code, backend.broadcasts[0].payload)
+		require.NoError(t, err)
+
+		preprepare := msg.(*protocols.Preprepare)
+		assert.Equal(t, int64(round), preprepare.Round.Int64())
+		assert.Len(t, preprepare.JustificationRoundChanges, valSet.QuorumSize())
+	})
+}
+
+// ##

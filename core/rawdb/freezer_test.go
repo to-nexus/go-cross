@@ -576,3 +576,35 @@ func TestFreezer_ModifyAncients(t *testing.T) {
 }
 
 // ##
+
+// ##CROSS: fix upstream 12241bde
+func TestFreezerSyncAncient(t *testing.T) {
+	f, _ := newFreezerForTesting(t, freezerTestTableDef)
+	defer f.Close()
+
+	t.Run("sync ancient during reset table", func(t *testing.T) {
+		done := make(chan struct{})
+		errc := make(chan error, 1)
+		go func() {
+			defer close(errc)
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				if err := f.SyncAncient(); err != nil {
+					errc <- err
+					return
+				}
+			}
+		}()
+		for range 100 {
+			require.NoError(t, f.ResetTable("test", 0, false))
+		}
+		close(done)
+		require.NoError(t, <-errc)
+	})
+}
+
+// ##
