@@ -4428,4 +4428,38 @@ func TestBlockChainAPI_EstimateGas(t *testing.T) {
 	})
 }
 
+type uncappedBackend struct{ *testBackend }
+
+func (b uncappedBackend) RPCGasCap() uint64 { return 0 }
+
+func TestCreateAccessListTimeout(t *testing.T) {
+	t.Parallel()
+	var (
+		genesis = &core.Genesis{Config: params.TestChainConfig, Alloc: types.GenesisAlloc{}}
+		api     = NewBlockChainAPI(uncappedBackend{newTestBackend(t, 1, genesis, ethash.NewFaker(), nil)})
+		from    = common.HexToAddress("0xaa")
+		to      = common.HexToAddress("0xbb")
+		code    = hexutil.Bytes(common.FromHex("5b600056")) // JUMPDEST PUSH1 0 JUMP
+		balance = (*hexutil.Big)(new(big.Int).Lsh(big.NewInt(1), 255))
+		latest  = rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	)
+	overrides := &override.StateOverride{
+		to:   override.OverrideAccount{Code: &code},
+		from: override.OverrideAccount{Balance: balance},
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := api.CreateAccessList(context.Background(), TransactionArgs{From: &from, To: &to}, &latest, overrides)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "execution aborted") {
+			t.Fatalf("want timeout error, got %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("access list creation ignored the 1s RPCEVMTimeout")
+	}
+}
+
 // ##

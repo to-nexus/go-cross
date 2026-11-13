@@ -387,8 +387,19 @@ func (f *Freezer) TruncateTail(tail uint64) (uint64, error) {
 	return old, nil
 }
 
+// ##CROSS: fix upstream 12241bde
 // SyncAncient flushes all data tables to disk.
 func (f *Freezer) SyncAncient() error {
+	f.writeLock.RLock()
+	defer f.writeLock.RUnlock()
+
+	return f.syncAncient()
+}
+
+// ##
+
+// syncAncient flushes all data tables to disk while the caller holds writeLock.
+func (f *Freezer) syncAncient() error { // ##CROSS: fix upstream 12241bde
 	var errs []error
 	for _, table := range f.tables {
 		if err := table.Sync(); err != nil {
@@ -583,7 +594,7 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 		return nil
 	}
 
-	if err := f.SyncAncient(); err != nil {
+	if err := f.syncAncient(); err != nil { // ##CROSS: fix upstream 12241bde
 		return err
 	}
 	nt, err := t.resetItems(startAt)

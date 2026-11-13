@@ -90,6 +90,7 @@ type Core struct {
 
 	roundChangeSet   *roundChangeSet
 	roundChangeTimer *time.Timer
+	roundChangeView  *istanbul.View // ##CROSS: fix roundchange
 
 	PreparedPrepares []*protocols.Prepare
 
@@ -292,6 +293,7 @@ func (c *Core) stopTimer() {
 	if c.roundChangeTimer != nil {
 		c.roundChangeTimer.Stop()
 	}
+	c.roundChangeView = nil // ##CROSS: fix roundchange
 }
 
 func (c *Core) newRoundChangeTimer() {
@@ -333,10 +335,27 @@ func (c *Core) newRoundChangeTimer() {
 	}
 
 	c.currentLogger(true, nil).Trace("Istanbul: start new ROUND-CHANGE timer", "timeout", timeout.Seconds())
+
+	// ##CROSS: fix roundchange
+	view := c.currentView()
+	c.roundChangeView = view
 	c.roundChangeTimer = time.AfterFunc(timeout, func() {
-		c.sendEvent(timeoutEvent{})
+		c.sendEvent(timeoutEvent{view: view})
 	})
+	// ##
 }
+
+// ##CROSS: fix roundchange
+// checkAndStartRoundChangeTimer starts the ROUND-CHANGE timer unless one already runs for the current view,
+// so the sealing requests that the miner repeats cannot push the timeout of a round back.
+func (c *Core) checkAndStartRoundChangeTimer() {
+	if view := c.roundChangeView; c.current != nil && view != nil && view.Cmp(c.currentView()) == 0 {
+		return
+	}
+	c.newRoundChangeTimer()
+}
+
+// ##
 
 func (c *Core) checkValidatorSignature(data []byte, sig []byte) (common.Address, error) {
 	return istanbul.CheckValidatorSignature(c.valSet, data, sig)
