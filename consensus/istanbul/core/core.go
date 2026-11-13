@@ -349,7 +349,7 @@ func (c *Core) newRoundChangeTimer() {
 // checkAndStartRoundChangeTimer starts the ROUND-CHANGE timer unless one already runs for the current view,
 // so the sealing requests that the miner repeats cannot push the timeout of a round back.
 func (c *Core) checkAndStartRoundChangeTimer() {
-	if c.current != nil && c.roundChangeView != nil && c.roundChangeView.Cmp(c.currentView()) == 0 {
+	if view := c.roundChangeView; c.current != nil && view != nil && view.Cmp(c.currentView()) == 0 {
 		return
 	}
 	c.newRoundChangeTimer()

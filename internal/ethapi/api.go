@@ -1483,7 +1483,12 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
 			evm.Context.BlobBaseFee = new(big.Int)
 		}
-		res, err := applyMessageWithEVM(ctx, evm, msg, timeout, new(core.GasPool).AddGas(msg.GasLimit)) // ##CROSS: fix upstream
+		// ##CROSS: fix upstream
+		// Each pass gets its own context, so the goroutine in applyMessageWithEVM frees the EVM when the pass ends.
+		passCtx, passCancel := context.WithCancel(ctx)
+		res, err := applyMessageWithEVM(passCtx, evm, msg, timeout, new(core.GasPool).AddGas(msg.GasLimit))
+		passCancel()
+		// ##
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v %v", args.ToTransaction(types.LegacyTxType).Hash(), err)
 		}
