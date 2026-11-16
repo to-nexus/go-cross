@@ -2,10 +2,13 @@ package ethapi
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/xsleonard/go-merkle"
 	"golang.org/x/crypto/sha3"
@@ -36,7 +39,7 @@ func (api *CrossAPI) GetCheckpointProof(ctx context.Context, blockNr, startNr, e
 		return nil, errors.New("range too large")
 	}
 
-	// Collect block hashes.
+	// Collect leaves of block numbers and hashes.
 	hashes := make([][]byte, 0, endNr-startNr+1)
 	for i := range endNr - startNr + 1 {
 		if err := ctx.Err(); err != nil {
@@ -49,7 +52,7 @@ func (api *CrossAPI) GetCheckpointProof(ctx context.Context, blockNr, startNr, e
 		if h == nil {
 			return nil, fmt.Errorf("header %d not found", startNr+i)
 		}
-		hashes = append(hashes, h.Hash().Bytes())
+		hashes = append(hashes, checkpointLeaf(uint64(startNr+i), h.Hash()))
 	}
 
 	// generate merkle proof
@@ -58,6 +61,14 @@ func (api *CrossAPI) GetCheckpointProof(ctx context.Context, blockNr, startNr, e
 		return nil, err
 	}
 	return generateMerkleProof(tree, uint64(blockNr-startNr))
+}
+
+// checkpointLeaf returns keccak256(keccak256(abi.encode(uint256 number, bytes32 hash))).
+// The number binds the hash to its block, and the double hash keeps a leaf from being taken for an inner node.
+func checkpointLeaf(number uint64, hash common.Hash) []byte {
+	var num [32]byte // uint256, big endian
+	binary.BigEndian.PutUint64(num[24:], number)
+	return crypto.Keccak256(crypto.Keccak256(num[:], hash.Bytes()))
 }
 
 func generateMerkleTree(hashes [][]byte) (*merkle.Tree, error) {
@@ -102,7 +113,8 @@ func generateMerkleProof(tree *merkle.Tree, index uint64) ([]hexutil.Bytes, erro
 			sibling-- // sibling is the left child
 		}
 
-		if sibling < uint64(len(nodes)) {
+		// A padding leaf has no hash, and the node above copies its sibling without hashing, so it is not a proof step.
+		if sibling < uint64(len(nodes)) && nodes[sibling].Hash != nil {
 			proof = append(proof, nodes[sibling].Hash)
 		}
 
