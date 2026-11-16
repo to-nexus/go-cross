@@ -1,18 +1,22 @@
 package ethapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math"
 	"reflect"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCrossAPI_GetCheckpointProof(t *testing.T) {
@@ -42,13 +46,13 @@ func TestCrossAPI_GetCheckpointProof(t *testing.T) {
 			endNumber:   rpc.BlockNumber(genBlocks - 1),
 			expectErr:   "",
 			want: []hexutil.Bytes{
-				hexutil.MustDecode("0x23b77de72d3b74b419b297b97447149eb2686fa78e9d2422e0d6413221ab8e62"),
-				hexutil.MustDecode("0x59636c033d8bcdfc74002797ce17bca6f15ea598fe376ce33db07b5a54b68679"),
-				hexutil.MustDecode("0xecbd8162c0309bed4ca4acf70faf2311f77451f8da2a889f48c871bb9c7c6dc1"),
-				hexutil.MustDecode("0xebc2c9d482409851b56360a2fa323a11a48972a0dabdf26483b682f2f9495790"),
-				hexutil.MustDecode("0xacd5e8d210f20f60de45ec0911cbe8cc18774e671db64986291540fb2cdb1281"),
-				hexutil.MustDecode("0x1bf83590e26f20453618409f24445cea1cc327335bf368752436efe60ca81437"),
-				hexutil.MustDecode("0x8c0d0ddf20af5c3476155157ad7b286654dd12434a62f22545efe6425b1be350"),
+				hexutil.MustDecode("0xb00f2343bc11fc5af8797215d15bccd5ba8a7f9b481a4b8ebdee8ba040806052"),
+				hexutil.MustDecode("0xf046032fa0163ee498bc37dc6fab720f9194d3f7b166129938e0fd24e892c956"),
+				hexutil.MustDecode("0x0a101fbdb6781f2c65fafded8de7f07f92b1d36dff828cd2246b406e870ef413"),
+				hexutil.MustDecode("0xa6c19ea6be764111e82440c85f70e819e8e171079eef88230205834f66237883"),
+				hexutil.MustDecode("0x80e6b653aea327e0978adad5df333572c9c5c1b2907ab3342c2a03c319e45746"),
+				hexutil.MustDecode("0x71eb085c7899c18f0514977e5cd6fa314f573c916c841dee35594371c74967ac"),
+				hexutil.MustDecode("0x48141c3f48a5891a961c551be88b6f6db131058c46e4899ef3ef666bc9459512"),
 			},
 		},
 		{
@@ -119,6 +123,35 @@ func TestCrossAPI_GetCheckpointProof(t *testing.T) {
 			}
 		}
 	}
+
+	t.Run("leaf and proof match the CrossCheck contract", func(t *testing.T) {
+		leaf := checkpointLeaf(1000000, common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"))
+		require.Equal(t, "0xaa040d2e337b40490365f32debbf80fd48474d6750fc750de6e0e5cd01357723", hexutil.Encode(leaf))
+
+		// Blocks 100..104.
+		leaves := make([][]byte, 0, 5)
+		for i := range 5 {
+			leaves = append(leaves, checkpointLeaf(uint64(100+i), common.BytesToHash(bytes.Repeat([]byte{byte(i + 1)}, 32))))
+		}
+		tree, err := generateMerkleTree(leaves)
+		require.NoError(t, err)
+		assert.Equal(t, "0x2840dff574efea4e4fd15d64a1954654b4a2afede395bbfbc40a9c5a083d24ed", hexutil.Encode(tree.Root().Hash))
+
+		proof, err := generateMerkleProof(tree, 2) // block 102
+		require.NoError(t, err)
+		assert.Equal(t, []hexutil.Bytes{
+			hexutil.MustDecode("0x3f17efbd3067581b2213b27d5f8def82471e2741e531136bf91f7af939f21f83"),
+			hexutil.MustDecode("0x586c4ebfc18d6ff34a06f7461e78a69ea31f2b28fcd970c4ffa59aa54c9005cd"),
+			hexutil.MustDecode("0x232e601b094e77857dd0ed5d4e4a491fd1679cc786724f7676cb872bd4e482f9"),
+		}, proof)
+
+		proof, err = generateMerkleProof(tree, 4) // block 104
+		require.NoError(t, err)
+		assert.Equal(t, []hexutil.Bytes{
+			hexutil.MustDecode("0x0000000000000000000000000000000000000000000000000000000000000000"),
+			hexutil.MustDecode("0x098345d67c99d856cac50938e331f76af6626e26e5cbbe14ec5c75137d70d633"),
+		}, proof)
+	})
 
 	t.Run("range ending at MaxInt64 stops at the end", func(t *testing.T) {
 		// The backend returns a header for every number, so only the loop bound can stop it.
