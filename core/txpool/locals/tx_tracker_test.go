@@ -272,7 +272,7 @@ func TestTxTracker_Start(t *testing.T) {
 		startErr := <-started
 		wg.Wait()
 		require.NoError(t, startErr)
-		require.True(t, tracker.Ready())
+		assert.True(t, tracker.Ready())
 		for i, err := range errs {
 			if errors.Is(err, ErrNotReady) {
 				err = tracker.Track(live[i])
@@ -280,8 +280,8 @@ func TestTxTracker_Start(t *testing.T) {
 			require.NoError(t, err)
 		}
 		require.NoError(t, tracker.Stop())
-		require.False(t, tracker.Ready())
-		require.ErrorIs(t, tracker.Track(txs[0]), ErrNotReady)
+		assert.False(t, tracker.Ready())
+		assert.ErrorIs(t, tracker.Track(txs[0]), ErrNotReady)
 
 		// Restart before any rotation. Both replayed and live transactions must survive.
 		restored := New(path, time.Hour, &config, env.pool)
@@ -303,8 +303,8 @@ func TestTxTracker_Start(t *testing.T) {
 	t.Run("writer setup error", func(t *testing.T) {
 		tracker := New(filepath.Join(t.TempDir(), "missing", "transactions.rlp"), time.Hour, gspec.Config, nil)
 		require.ErrorIs(t, tracker.Start(), os.ErrNotExist)
-		require.False(t, tracker.Ready())
-		require.Nil(t, tracker.journal.writer)
+		assert.False(t, tracker.Ready())
+		assert.Nil(t, tracker.journal.writer)
 	})
 	t.Run("replay error", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "transactions.rlp")
@@ -395,7 +395,7 @@ func TestTxTracker_Errors(t *testing.T) {
 		env.tracker.mu.Lock()
 		defer env.tracker.mu.Unlock()
 		require.Len(t, env.tracker.all, 2)
-		require.Equal(t, txs[1].Size()+txs[2].Size(), env.tracker.size)
+		assert.Equal(t, txs[1].Size()+txs[2].Size(), env.tracker.size)
 	})
 	t.Run("size limit replacement", func(t *testing.T) {
 		env := newTestEnv(t, 1, 0, "")
@@ -416,8 +416,8 @@ func TestTxTracker_Errors(t *testing.T) {
 
 		env.tracker.mu.Lock()
 		defer env.tracker.mu.Unlock()
-		require.Empty(t, env.tracker.all)
-		require.Zero(t, env.tracker.size)
+		assert.Empty(t, env.tracker.all)
+		assert.Zero(t, env.tracker.size)
 	})
 	t.Run("size limit replay skips stale", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "transactions.rlp")
@@ -443,9 +443,29 @@ func TestTxTracker_Errors(t *testing.T) {
 
 		tracker.mu.Lock()
 		defer tracker.mu.Unlock()
-		require.Len(t, tracker.all, 1)
-		require.Contains(t, tracker.all, txs[1].Hash())
-		require.Equal(t, txs[1].Size(), tracker.size)
+		assert.Len(t, tracker.all, 1)
+		assert.Contains(t, tracker.all, txs[1].Hash())
+		assert.Equal(t, txs[1].Size(), tracker.size)
+	})
+	t.Run("nonce gap", func(t *testing.T) {
+		env := newTestEnv(t, 10, 0, "")
+		defer env.close()
+
+		// txs[1] is missing, so txs[2] and txs[3] are behind a nonce gap. Only txs[3] is in the pool.
+		txs := env.makeTxs(4)
+		require.NoError(t, env.tracker.TrackAll([]*types.Transaction{txs[0], txs[2], txs[3]}))
+		require.NoError(t, env.pool.Add(txs[3:], true)[0])
+
+		resubmits := env.tracker.recheck(false)
+		assert.Equal(t, []*types.Transaction{txs[0]}, resubmits)
+
+		env.tracker.mu.Lock()
+		defer env.tracker.mu.Unlock()
+		assert.Len(t, env.tracker.all, 2)
+		assert.Contains(t, env.tracker.all, txs[0].Hash())
+		assert.Contains(t, env.tracker.all, txs[3].Hash())
+		assert.Nil(t, env.tracker.byAddr[address].Get(txs[2].Nonce()))
+		assert.Equal(t, txs[0].Size()+txs[3].Size(), env.tracker.size)
 	})
 	// ##
 }
