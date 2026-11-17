@@ -176,17 +176,37 @@ func (tracker *TxTracker) recheck(journalCheck bool) []*types.Transaction {
 
 	var (
 		numStales = 0
+		numGapped = 0 // ##CROSS: txtracker limit
 		numOk     = 0
 		resubmits []*types.Transaction
 	)
 	for sender, txs := range tracker.byAddr {
 		// Wipe the stales
-		stales := txs.Forward(tracker.pool.Nonce(sender))
+		next := tracker.pool.Nonce(sender) // ##CROSS: txtracker limit
+		stales := txs.Forward(next)
 		for _, tx := range stales {
 			delete(tracker.all, tx.Hash())
 			tracker.size -= tx.Size() // ##CROSS: txtracker limit
 		}
 		numStales += len(stales)
+
+		// ##CROSS: txtracker limit
+		// Only the sender can fill a nonce gap, so drop a tx behind one once the pool has dropped it too.
+		for _, tx := range txs.Flatten() {
+			if tx.Nonce() != next {
+				break
+			}
+			next++
+		}
+		gapped := txs.Filter(func(tx *types.Transaction) bool {
+			return tx.Nonce() > next && !tracker.pool.Has(tx.Hash())
+		})
+		for _, tx := range gapped {
+			delete(tracker.all, tx.Hash())
+			tracker.size -= tx.Size()
+		}
+		numGapped += len(gapped)
+		// ##
 
 		// Check the non-stale
 		for _, tx := range txs.Flatten() {
@@ -221,7 +241,7 @@ func (tracker *TxTracker) recheck(journalCheck bool) []*types.Transaction {
 		}
 	}
 	localGauge.Update(int64(len(tracker.all)))
-	log.Debug("Tx tracker status", "need-resubmit", len(resubmits), "stale", numStales, "ok", numOk)
+	log.Debug("Tx tracker status", "needResubmit", len(resubmits), "stale", numStales, "gapped", numGapped, "ok", numOk) // ##CROSS: txtracker limit
 	return resubmits
 }
 
