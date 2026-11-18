@@ -162,10 +162,11 @@ var DefaultConfig = Config{
 	// ##CROSS: performance
 	AccountSlots: 200,
 	GlobalSlots:  8000,
+	// ##
 	AccountQueue: 64,
 	GlobalQueue:  1024,
-	Lifetime:     30 * time.Second,
-	// ##
+
+	Lifetime: 3 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's

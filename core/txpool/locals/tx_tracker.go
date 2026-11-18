@@ -241,7 +241,7 @@ func (tracker *TxTracker) recheck(journalCheck bool) []*types.Transaction {
 		}
 	}
 	localGauge.Update(int64(len(tracker.all)))
-	log.Debug("Tx tracker status", "needResubmit", len(resubmits), "stale", numStales, "gapped", numGapped, "ok", numOk) // ##CROSS: txtracker limit
+	log.Debug("Tx tracker status", "need-resubmit", len(resubmits), "stale", numStales, "gapped", numGapped, "ok", numOk) // ##CROSS: txtracker limit
 	return resubmits
 }
 
