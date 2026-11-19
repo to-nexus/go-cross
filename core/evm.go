@@ -169,11 +169,11 @@ func Transfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.I
 // ##CROSS: transfer log
 
 // CrossTransfer subtracts amount from sender and adds amount to recipient using the given Db.
-// It also adds a transfer log to the Db.
+// It also adds a transfer log to the Db with the balances right after this transfer (see AddTransferLog).
 func CrossTransfer(db vm.StateDB, sender, recipient common.Address, amount *uint256.Int) {
 	Transfer(db, sender, recipient, amount)
 
-	// get balances after
+	// Snapshot before the gas refund and any later transfer in the transaction.
 	senderBalance := db.GetBalance(sender)
 	recipientBalance := db.GetBalance(recipient)
 

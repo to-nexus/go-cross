@@ -272,7 +272,7 @@ func TestTxTracker_Start(t *testing.T) {
 		startErr := <-started
 		wg.Wait()
 		require.NoError(t, startErr)
-		require.True(t, tracker.Ready())
+		assert.True(t, tracker.Ready())
 		for i, err := range errs {
 			if errors.Is(err, ErrNotReady) {
 				err = tracker.Track(live[i])
@@ -280,8 +280,8 @@ func TestTxTracker_Start(t *testing.T) {
 			require.NoError(t, err)
 		}
 		require.NoError(t, tracker.Stop())
-		require.False(t, tracker.Ready())
-		require.ErrorIs(t, tracker.Track(txs[0]), ErrNotReady)
+		assert.False(t, tracker.Ready())
+		assert.ErrorIs(t, tracker.Track(txs[0]), ErrNotReady)
 
 		// Restart before any rotation. Both replayed and live transactions must survive.
 		restored := New(path, time.Hour, &config, env.pool)
@@ -303,8 +303,8 @@ func TestTxTracker_Start(t *testing.T) {
 	t.Run("writer setup error", func(t *testing.T) {
 		tracker := New(filepath.Join(t.TempDir(), "missing", "transactions.rlp"), time.Hour, gspec.Config, nil)
 		require.ErrorIs(t, tracker.Start(), os.ErrNotExist)
-		require.False(t, tracker.Ready())
-		require.Nil(t, tracker.journal.writer)
+		assert.False(t, tracker.Ready())
+		assert.Nil(t, tracker.journal.writer)
 	})
 	t.Run("replay error", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "transactions.rlp")
@@ -320,7 +320,10 @@ func TestTxTracker_Start(t *testing.T) {
 		before, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		tracker := New(path, time.Hour, gspec.Config, nil)
+		env := newTestEnv(t, 0, 0, "")
+		defer env.close()
+		defer env.pool.Close()
+		tracker := New(path, time.Hour, gspec.Config, env.pool)
 		require.NoError(t, tracker.Start())
 		defer tracker.Stop()
 
@@ -348,22 +351,121 @@ func (w *failingJournalWriter) Close() error {
 	return w.err
 }
 
-func TestTxTracker_JournalErrors(t *testing.T) {
-	tracker := New(filepath.Join(t.TempDir(), "transactions.rlp"), time.Hour, gspec.Config, nil)
-	require.NoError(t, tracker.Start())
-
-	failure := errors.New("journal I/O failure")
-	tracker.mu.Lock()
-	tracker.journal.writer = &failingJournalWriter{tracker.journal.writer, failure}
-	tracker.mu.Unlock()
-
-	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{GasPrice: big.NewInt(params.GWei)})
-	require.NoError(t, tracker.Track(tx))
-	require.ErrorIs(t, tracker.Stop(), failure)
-
-	assert.Contains(t, tracker.all, tx.Hash())
-	assert.False(t, tracker.Ready())
-	assert.Nil(t, tracker.journal.writer)
-}
-
 // ##
+
+func TestTxTracker_Errors(t *testing.T) {
+	// ##CROSS: journal readiness
+	t.Run("journal errors", func(t *testing.T) {
+		tracker := New(filepath.Join(t.TempDir(), "transactions.rlp"), time.Hour, gspec.Config, nil)
+		require.NoError(t, tracker.Start())
+
+		failure := errors.New("journal I/O failure")
+		tracker.mu.Lock()
+		tracker.journal.writer = &failingJournalWriter{tracker.journal.writer, failure}
+		tracker.mu.Unlock()
+
+		tx := types.MustSignNewTx(key, signer, &types.LegacyTx{GasPrice: big.NewInt(params.GWei)})
+		require.NoError(t, tracker.Track(tx))
+		require.ErrorIs(t, tracker.Stop(), failure)
+
+		assert.Contains(t, tracker.all, tx.Hash())
+		assert.False(t, tracker.Ready())
+		assert.Nil(t, tracker.journal.writer)
+	})
+	// ##
+	// ##CROSS: txtracker limit
+	t.Run("size limit", func(t *testing.T) {
+		env := newTestEnv(t, 10, 0, "")
+		defer env.close()
+
+		txs := env.makeTxs(3)
+		limit := maxTrackedSize
+		maxTrackedSize = 2 * max(txs[0].Size(), txs[1].Size(), txs[2].Size())
+		t.Cleanup(func() { maxTrackedSize = limit })
+
+		require.NoError(t, env.tracker.Track(txs[0]))
+		require.NoError(t, env.tracker.Track(txs[1]))
+		require.ErrorIs(t, env.tracker.Track(txs[2]), ErrTrackerFull)
+
+		// The mined nonce makes the first tx stale, and dropping it frees room for the third.
+		env.commit()
+		env.tracker.recheck(false)
+		require.NoError(t, env.tracker.Track(txs[2]))
+
+		env.tracker.mu.Lock()
+		defer env.tracker.mu.Unlock()
+		require.Len(t, env.tracker.all, 2)
+		assert.Equal(t, txs[1].Size()+txs[2].Size(), env.tracker.size)
+	})
+	t.Run("size limit replacement", func(t *testing.T) {
+		env := newTestEnv(t, 1, 0, "")
+		defer env.close()
+
+		a := env.makeTx(0, big.NewInt(params.GWei))
+		b := env.makeTx(0, big.NewInt(2*params.GWei))
+		limit := maxTrackedSize
+		maxTrackedSize = max(a.Size(), b.Size())
+		t.Cleanup(func() { maxTrackedSize = limit })
+
+		// The replacement takes the room of the transaction it replaces.
+		require.NoError(t, env.tracker.Track(a))
+		require.NoError(t, env.tracker.Track(b))
+
+		env.commit()
+		env.tracker.recheck(false)
+
+		env.tracker.mu.Lock()
+		defer env.tracker.mu.Unlock()
+		assert.Empty(t, env.tracker.all)
+		assert.Zero(t, env.tracker.size)
+	})
+	t.Run("size limit replay skips stale", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "transactions.rlp")
+		env := newTestEnv(t, 1, 0, "")
+		defer env.close()
+
+		txs := env.makeTxs(2)
+		limit := maxTrackedSize
+		maxTrackedSize = max(txs[0].Size(), txs[1].Size())
+		t.Cleanup(func() { maxTrackedSize = limit })
+
+		seed := newTxJournal(path)
+		require.NoError(t, seed.setupWriter())
+		require.NoError(t, seed.insert(txs[0]))
+		require.NoError(t, seed.insert(txs[1]))
+		require.NoError(t, seed.close())
+
+		// The journal still holds the mined first tx, which must not take the room of the second.
+		env.commit()
+		tracker := New(path, time.Hour, gspec.Config, env.pool)
+		require.NoError(t, tracker.Start())
+		defer tracker.Stop()
+
+		tracker.mu.Lock()
+		defer tracker.mu.Unlock()
+		assert.Len(t, tracker.all, 1)
+		assert.Contains(t, tracker.all, txs[1].Hash())
+		assert.Equal(t, txs[1].Size(), tracker.size)
+	})
+	t.Run("nonce gap", func(t *testing.T) {
+		env := newTestEnv(t, 10, 0, "")
+		defer env.close()
+
+		// txs[1] is missing, so txs[2] and txs[3] are behind a nonce gap. Only txs[3] is in the pool.
+		txs := env.makeTxs(4)
+		require.NoError(t, env.tracker.TrackAll([]*types.Transaction{txs[0], txs[2], txs[3]}))
+		require.NoError(t, env.pool.Add(txs[3:], true)[0])
+
+		resubmits := env.tracker.recheck(false)
+		assert.Equal(t, []*types.Transaction{txs[0]}, resubmits)
+
+		env.tracker.mu.Lock()
+		defer env.tracker.mu.Unlock()
+		assert.Len(t, env.tracker.all, 2)
+		assert.Contains(t, env.tracker.all, txs[0].Hash())
+		assert.Contains(t, env.tracker.all, txs[3].Hash())
+		assert.Nil(t, env.tracker.byAddr[address].Get(txs[2].Nonce()))
+		assert.Equal(t, txs[0].Size()+txs[3].Size(), env.tracker.size)
+	})
+	// ##
+}

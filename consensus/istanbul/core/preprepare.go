@@ -49,6 +49,14 @@ func (c *Core) sendPreprepareMsg(request *Request) {
 			return
 		}
 		// ##
+		// ##CROSS: fix roundchange
+		// Above round 0 only the quorum of ROUND-CHANGE justifies a PRE-PREPARE. A sealing request has none,
+		// and sending its proposal anyway would set preprepareSent and block the justified one of this round.
+		if c.current.Round().Sign() > 0 && request.RCMessages == nil {
+			logger.Debug("Istanbul: skip unjustified PRE-PREPARE above round 0", "proposal.number", request.Proposal.Number(), "proposal.hash", request.Proposal.Hash())
+			return
+		}
+		// ##
 		// Creates PRE-PREPARE message
 		curView := c.currentView()
 		preprepare := protocols.NewPreprepare(curView.Sequence, curView.Round, request.Proposal)

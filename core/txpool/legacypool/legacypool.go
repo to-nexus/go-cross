@@ -162,10 +162,11 @@ var DefaultConfig = Config{
 	// ##CROSS: performance
 	AccountSlots: 200,
 	GlobalSlots:  8000,
-	AccountQueue: 200,
-	GlobalQueue:  4000,
-	Lifetime:     30 * time.Second,
 	// ##
+	AccountQueue: 64,
+	GlobalQueue:  1024,
+
+	Lifetime: 3 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -620,9 +621,12 @@ func (pool *LegacyPool) checkDelegationLimit(tx *types.Transaction) error {
 	from, _ := types.Sender(pool.signer, tx) // validated
 
 	// Short circuit if the sender has neither delegation nor pending delegation.
-	if pool.currentState.GetCodeHash(from) == types.EmptyCodeHash && !pool.all.hasAuth(from) {
+	// ##CROSS: fee delegation
+	// A sponsored sender may have no account, whose code hash is zero.
+	if codeHash := pool.currentState.GetCodeHash(from); (codeHash == types.EmptyCodeHash || codeHash == common.Hash{}) && !pool.all.hasAuth(from) {
 		return nil
 	}
+	// ##
 	pending := pool.pending[from]
 	if pending == nil {
 		// Transaction with gapped nonce is not supported for delegated accounts

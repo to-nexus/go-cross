@@ -56,7 +56,7 @@ func (c *Core) handleRequest(request *Request) error {
 		config := c.config.GetConfig(c.current.Sequence())
 		if config.EmptyBlockPeriod == 0 { // emptyBlockPeriod is not set
 			// Start ROUND-CHANGE timer
-			c.newRoundChangeTimer()
+			c.checkAndStartRoundChangeTimer() // ##CROSS: fix roundchange
 
 			// Send PRE-PREPARE message to other validators
 			c.sendPreprepareMsg(request)
@@ -89,14 +89,14 @@ func (c *Core) handleRequest(request *Request) error {
 				c.newRoundTimer = time.AfterFunc(delay, func() {
 					c.newRoundTimer = nil
 					// Start ROUND-CHANGE timer
-					c.newRoundChangeTimer()
+					c.checkAndStartRoundChangeTimer() // ##CROSS: fix roundchange
 
 					// Send PRE-PREPARE message to other validators
 					c.sendPreprepareMsg(request)
 				})
 			} else {
 				// Start ROUND-CHANGE timer
-				c.newRoundChangeTimer()
+				c.checkAndStartRoundChangeTimer() // ##CROSS: fix roundchange
 
 				// Send PRE-PREPARE message to other validators
 				c.sendPreprepareMsg(request)

@@ -382,7 +382,7 @@ func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 		if err != nil {
 			return trackErr
 		}
-		log.Warn("Failed to track local transaction", "hash", signedTx.Hash(), "err", trackErr)
+		log.Debug("Failed to track local transaction", "hash", signedTx.Hash(), "err", trackErr)
 	}
 	// ##
 	return nil

@@ -1006,4 +1006,31 @@ func TestLegacyPool_ValidateTx(t *testing.T) {
 	})
 }
 
+func TestLegacyPool_checkDelegationLimit(t *testing.T) {
+	t.Parallel()
+
+	pool, _ := setupAdventurePool()
+	defer pool.Close()
+
+	payerKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	testAddBalance(pool, crypto.PubkeyToAddress(payerKey.PublicKey), new(big.Int).SetUint64(params.Ether))
+
+	// Consecutive nonces are both pending.
+	key, err := crypto.GenerateKey() // Sender with no account
+	require.NoError(t, err)
+	require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), common.Big0, key, payerKey)))
+	require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(1), common.Big0, key, payerKey)))
+
+	// A gapped nonce is queued.
+	gappedKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	require.NoError(t, pool.addRemoteSync(feeDelegatedDynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(1), common.Big0, gappedKey, payerKey)))
+
+	pending, queued := pool.Stats()
+	assert.Equal(t, 2, pending)
+	assert.Equal(t, 1, queued)
+	require.NoError(t, validatePoolInternals(pool))
+}
+
 // ##
