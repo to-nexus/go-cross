@@ -156,7 +156,7 @@ var DefaultConfig = Config{
 	Journal:   "transactions.rlp",
 	Rejournal: time.Hour,
 
-	PriceLimit: 1,
+	PriceLimit: params.GWei, // ##CROSS: min tip
 	PriceBump:  10,
 
 	// ##CROSS: performance
@@ -1444,7 +1444,7 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) ([]*types.
 	promoted := make([]*types.Transaction, 0, len(promotable))
 	held := make(map[common.Address]struct{}) // Senders held by a fee payer budget // ##CROSS: fee delegation
 	for _, tx := range promotable {
-		from, _ := pool.signer.Sender(tx)
+		from, _ := types.Sender(pool.signer, tx) // ##CROSS: fix upstream d1369b69f5
 		// ##CROSS: fee delegation
 		// Gate promotion on cumulative budgets (see overCommits). payerSpent only counts
 		// pending transactions, which promoteTx updates as we go, so it already
