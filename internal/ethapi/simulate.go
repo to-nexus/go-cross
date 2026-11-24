@@ -29,7 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
-	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -164,6 +163,13 @@ func (m *simChainHeadReader) GetHeaderByHash(hash common.Hash) *types.Header {
 	return header
 }
 
+// ##CROSS: consensus system contract
+// SystemCallGasCap bounds the gas of each Istanbul finalization system call during eth_simulateV1.
+// The RPC gas cap is reused; 0 (gas cap disabled) keeps the unbounded behaviour.
+func (m *simChainHeadReader) SystemCallGasCap() uint64 {
+	return m.Backend.RPCGasCap()
+}
+
 // simulator is a stateful object that simulates a series of blocks.
 // it is not safe for concurrent use.
 type simulator struct {
@@ -223,22 +229,6 @@ func (sim *simulator) execute(ctx context.Context, blocks []simBlock) ([]*simBlo
 	return results, nil
 }
 
-// ##CROSS: consensus system contract
-// checkSystemContractCodeOverride blocks a caller from replacing a system contract's code in a simulated block.
-func checkSystemContractCodeOverride(config *params.ChainConfig, overrides *override.StateOverride) error {
-	if overrides == nil || !config.IsIstanbulConsensus() {
-		return nil
-	}
-	for addr, account := range *overrides {
-		if account.Code != nil && contracts.IsSystemContract(addr) {
-			return &invalidParamsError{message: fmt.Sprintf("cannot override code of system contract %s", addr.Hex())}
-		}
-	}
-	return nil
-}
-
-// ##
-
 func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header, parent *types.Header, headers []*types.Header, timeout time.Duration) (*types.Block, []simCallResult, map[common.Hash]common.Address, error) {
 	// Set header fields that depend only on parent block.
 	// Parent hash is needed for evm.GetHashFn to work.
@@ -267,11 +257,6 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		blockContext.BlobBaseFee = block.BlockOverrides.BlobBaseFee.ToInt()
 	}
 	precompiles := sim.activePrecompiles(sim.base)
-	// ##CROSS: consensus system contract
-	if err := checkSystemContractCodeOverride(sim.chainConfig, block.StateOverrides); err != nil {
-		return nil, nil, nil, err
-	}
-	// ##
 	// State overrides are applied prior to execution of a block
 	if err := block.StateOverrides.Apply(sim.state, precompiles); err != nil {
 		return nil, nil, nil, err

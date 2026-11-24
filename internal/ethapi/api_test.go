@@ -44,7 +44,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/contracts"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/filtermaps"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -2670,46 +2669,6 @@ func TestSimulateV1TxSender(t *testing.T) {
 	require.Len(t, summary[1].Transactions, 1, "expected 1 transaction in simulated block")
 	require.Equal(t, sender2, summary[1].Transactions[0].From, "sender address mismatch")
 }
-
-// ##CROSS: consensus system contract
-func TestSimulateV1_RejectSystemContractCodeOverride(t *testing.T) {
-	t.Parallel()
-
-	code := hexutil.Bytes(common.FromHex("0x6000"))
-	balance := (*hexutil.Big)(big.NewInt(1))
-	userAddr := common.HexToAddress("0x1234")
-
-	withCode := func(addr common.Address) *override.StateOverride {
-		return &override.StateOverride{addr: override.OverrideAccount{Code: &code}}
-	}
-
-	for _, tc := range []struct {
-		name     string
-		config   *params.ChainConfig
-		override *override.StateOverride
-		rejected bool
-	}{
-		{"istanbul system contract code", params.CrossTestChainConfig, withCode(contracts.RewardHubAddr), true},
-		{"istanbul system contract code (slash)", params.CrossTestChainConfig, withCode(contracts.ValidatorSlashAddr), true},
-		{"istanbul non-system code", params.CrossTestChainConfig, withCode(userAddr), false},
-		{"istanbul system contract non-code", params.CrossTestChainConfig, &override.StateOverride{contracts.RewardHubAddr: override.OverrideAccount{Balance: balance}}, false},
-		{"non-istanbul system contract code", params.TestChainConfig, withCode(contracts.RewardHubAddr), false},
-		{"nil overrides", params.CrossTestChainConfig, nil, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := checkSystemContractCodeOverride(tc.config, tc.override)
-			if tc.rejected {
-				require.Error(t, err)
-				var paramsErr *invalidParamsError
-				require.ErrorAs(t, err, &paramsErr)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-// ##
 
 func TestSignTransaction(t *testing.T) {
 	t.Parallel()

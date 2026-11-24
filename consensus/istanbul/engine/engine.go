@@ -1474,6 +1474,22 @@ func (e *Engine) applyReceivedSystemTransaction(
 	return e.applySystemTransaction(msg, actualTx, state, header, chainContext, header.Coinbase, txs, receipts, usedGas, tracer)
 }
 
+// ##CROSS: consensus system contract
+// systemCallGasCap returns the per-call gas cap that the chain reader opts into, or 0 when it carries none.
+func systemCallGasCap(cc core.ChainContext) uint64 {
+	ctx, ok := cc.(*chainContext)
+	if !ok {
+		return 0
+	}
+	capper, ok := ctx.Chain.(interface{ SystemCallGasCap() uint64 })
+	if !ok {
+		return 0
+	}
+	return capper.SystemCallGasCap()
+}
+
+// ##
+
 func (e *Engine) applySystemTransaction(
 	msg *core.Message,
 	tx *types.Transaction,
@@ -1486,6 +1502,11 @@ func (e *Engine) applySystemTransaction(
 	usedGas *uint64,
 	tracer *tracing.Hooks,
 ) error {
+	// ##CROSS: consensus system contract
+	if gasCap := systemCallGasCap(chainContext); gasCap > 0 && msg.GasLimit > gasCap {
+		msg.GasLimit = gasCap
+	}
+	// ##
 	context := core.NewEVMBlockContext(header, chainContext, &author)
 	evm := vm.NewEVM(context, state, chainContext.Config(), vm.Config{Tracer: tracer})
 
