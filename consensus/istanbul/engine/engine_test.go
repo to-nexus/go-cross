@@ -613,6 +613,64 @@ func (c *chainMock) GetTd(hash common.Hash, number uint64) *big.Int          { r
 
 // ##
 
+// ##CROSS: consensus system contract
+// capChainMock is a chainMock that also advertises a system-call gas cap.
+type capChainMock struct {
+	*chainMock
+	cap uint64
+}
+
+func (c capChainMock) SystemCallGasCap() uint64 { return c.cap }
+
+func TestApplySystemTransaction_SystemCallGasCap(t *testing.T) {
+	t.Parallel()
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	var (
+		sender      = crypto.PubkeyToAddress(key.PublicKey)
+		to          = contracts.RewardHubAddr
+		chainConfig = params.TestChainConfig
+		engine      = &Engine{}
+		// JUMPDEST; PUSH1 0; POP; PUSH1 0; JUMP -> infinite loop
+		loopCode = common.FromHex("0x5b600050600056")
+		gasCap   = uint64(1_000_000)
+	)
+	header := &types.Header{
+		Number:     big.NewInt(100),
+		Coinbase:   sender,
+		BaseFee:    big.NewInt(1_000_000_000),
+		GasLimit:   10_000_000,
+		Difficulty: big.NewInt(0),
+		Time:       1_000_000_000,
+	}
+	capReader := capChainMock{chainMock: &chainMock{config: chainConfig}, cap: gasCap}
+
+	// The cap is read only from a simulation chain reader.
+	require.Equal(t, uint64(0), systemCallGasCap(&chainMock{config: chainConfig}))
+	require.Equal(t, uint64(0), systemCallGasCap(&chainContext{Chain: &chainMock{config: chainConfig}}))
+	require.Equal(t, gasCap, systemCallGasCap(&chainContext{Chain: capReader}))
+
+	// A looping system-call target is bounded by the cap instead of running on
+	// the MaxUint64/2 consensus budget.
+	stateDB := newTestStateDB(t)
+	stateDB.SetCode(to, loopCode, tracing.CodeChangeUnspecified)
+	var (
+		txs      []*types.Transaction
+		receipts []*types.Receipt
+		usedGas  uint64
+	)
+	msg := newSystemMessage(sender, to, nil, nil)
+	tx := types.NewTransaction(0, to, big.NewInt(0), msg.GasLimit, big.NewInt(0), nil)
+	err = engine.applySystemTransaction(msg, tx, stateDB, header, &chainContext{Chain: capReader}, header.Coinbase, &txs, &receipts, &usedGas, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of gas")
+	require.Equal(t, gasCap, msg.GasLimit)
+}
+
+// ##
+
 func TestWriteCommittedSeals(t *testing.T) {
 	istRawData := hexutil.MustDecode("0xf89f80f8549444add0ec310f115a0e603b2d7db9f067778eaf8a94294fc7e8f22b3bcdcf955dd7ff3ba2ed833f8212946beaaed781d2d2ab6350f5c4566a2c6eaac407a6948be76812f765c24641ec63dc2852b378aba2b440c080f843b841010203000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080")
 	expectedCommittedSeal := append([]byte{1, 2, 3}, bytes.Repeat([]byte{0x00}, types.IstanbulExtraSeal-3)...)

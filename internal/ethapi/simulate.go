@@ -163,6 +163,13 @@ func (m *simChainHeadReader) GetHeaderByHash(hash common.Hash) *types.Header {
 	return header
 }
 
+// ##CROSS: consensus system contract
+// SystemCallGasCap bounds the gas of each Istanbul finalization system call during eth_simulateV1.
+// The RPC gas cap is reused; 0 (gas cap disabled) keeps the unbounded behaviour.
+func (m *simChainHeadReader) SystemCallGasCap() uint64 {
+	return m.Backend.RPCGasCap()
+}
+
 // simulator is a stateful object that simulates a series of blocks.
 // it is not safe for concurrent use.
 type simulator struct {
